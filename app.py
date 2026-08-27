@@ -44,7 +44,7 @@ st.markdown("_Scrape → Filter → Enrich → Export_")
 col1, col2, col3 = st.columns([1, 1, 1])
 with col3:
     if st.button("+ Neuer Run", use_container_width=True, type="primary"):
-        st.switch_page("pages/3_Neuer_Run.py")
+        st.switch_page("pages/run_new.py")
 
 st.markdown("---")
 
@@ -108,9 +108,9 @@ else:
                 """, unsafe_allow_html=True)
 
         with col4:
-            if st.button("Öffnen", key=f"run_{run.id}", use_container_width=True):
-                st.session_state["current_run_id"] = run.id
-                st.switch_page("pages/4_Run_Detail.py")
+            if st.button("View", key=f"run_{run.id}", use_container_width=True):
+                st.session_state["view_run_id"] = run.id
+                st.switch_page("pages/run_history_detail.py")
 
         if i < len(runs) - 1 and i < 9:
             st.divider()
