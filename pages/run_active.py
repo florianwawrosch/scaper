@@ -13,28 +13,13 @@ from core.gemini_classifier import classify_batch
 from core.close_export import to_close_columns
 from core.enrichment import mock_enrich, get_providers
 from core.scraping_config import get_source_config
+from core.config import format_date, translate
+from core.ui import apply_global_styles
 from core import criteria_store
 
 st.set_page_config(page_title="Active Run", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
 
-st.markdown("""
-<style>
-    [data-testid="stMainBlockContainer"] {
-        padding-top: 1.5rem;
-    }
-    h1 {
-        font-size: 2rem !important;
-        font-weight: 600 !important;
-        letter-spacing: -0.01em !important;
-        margin-bottom: 0.25rem !important;
-    }
-    .header-info {
-        color: #6b7280;
-        font-size: 0.95rem !important;
-        margin-bottom: 1.5rem !important;
-    }
-</style>
-""", unsafe_allow_html=True)
+apply_global_styles()
 
 run_id = st.session_state.get("current_run_id")
 if not run_id:
@@ -46,10 +31,26 @@ if not run:
     st.error(f"Run {run_id} nicht gefunden")
     st.stop()
 
-st.markdown(f"# {run_id}")
-st.markdown(f'<div class="header-info">{run.source.replace("_", " ").title()} • {run.created_at[:10]}</div>', unsafe_allow_html=True)
+col1, col2 = st.columns([3, 1])
+with col1:
+    st.markdown(f"# {run_id}")
+    created_date = format_date(run.created_at, "short")
+    status_labels = {"draft": "Draft", "scraping": "Scraping", "dataset_ready": "Dataset bereit", "in_progress": "In Bearbeitung", "completed": "Abgeschlossen"}
+    status_label = status_labels.get(run.status, run.status)
+    st.markdown(
+        f'<div style="color: #6b7280; font-size: 0.95rem; margin-bottom: 1.5rem;">'
+        f'{run.source.replace("_", " ").title()} • {created_date} • '
+        f'<span style="font-weight:600; color:#374151;">{status_label}</span>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
-tab1, tab2, tab3, tab4 = st.tabs(["Scraping", "Review & Filter", "Enrichment", "Export"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    translate("scraping"),
+    translate("review_filter"),
+    translate("enrichment"),
+    translate("export"),
+])
 
 source_labels = {
     "meta_ads_library": "Meta Ads Library",
