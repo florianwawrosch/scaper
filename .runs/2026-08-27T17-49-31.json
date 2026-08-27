@@ -1,0 +1,48 @@
+{
+  "id": "2026-08-27T17-49-31",
+  "created_at": "2026-08-27T17:49:31.877975",
+  "updated_at": "2026-08-27T17:49:31.905189",
+  "status": "completed",
+  "modules": {
+    "modul_1": {
+      "name": "Modul 1: Scraping",
+      "status": "pending",
+      "started_at": "",
+      "completed_at": "",
+      "result_count": 0,
+      "error": "",
+      "config": {}
+    },
+    "modul_2": {
+      "name": "Modul 2: Klassifizierung",
+      "status": "pending",
+      "started_at": "",
+      "completed_at": "",
+      "result_count": 0,
+      "error": "",
+      "config": {}
+    },
+    "modul_3": {
+      "name": "Modul 3: Anreicherung",
+      "status": "pending",
+      "started_at": "",
+      "completed_at": "",
+      "result_count": 0,
+      "error": "",
+      "config": {}
+    }
+  },
+  "classification_results": {
+    "Gemini": {
+      "keep": 2,
+      "reject": 3,
+      "unklar": 0
+    }
+  },
+  "rating": 4,
+  "feedback": "Great results! Only one false positive (Manifestationscoach)",
+  "best_model": "Gemini",
+  "source": "phantombuster_linkedin",
+  "data_file": "",
+  "final_export": ""
+}
