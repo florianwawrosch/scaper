@@ -27,6 +27,7 @@ class ClassificationResult:
     decision: str          # "keep" | "reject" | "unklar"
     matched_rule: str | None
     reason: str
+    niche: str | None = None   # id aus criteria["niches"], nur bei decision=="keep" gesetzt
     raw: str = ""
 
 
@@ -49,6 +50,16 @@ def build_prompt(lead: Lead, criteria: dict) -> str:
         f'- id="{r["id"]}": {r["label"]} -- {r["description"].strip()}'
         for r in active_rules
     )
+    niches = sorted(criteria.get("niches", []), key=lambda n: n.get("priority", 999))
+    niches_text = "\n".join(f'- id="{n["id"]}": {n["label"]}' for n in niches)
+    niche_instruction = (
+        f"""
+NISCHEN (nur relevant wenn decision="keep", waehle die am besten passende):
+{niches_text}
+"""
+        if niches
+        else ""
+    )
     return f"""Du bewertest Leads fuer eine Vertriebs-Pipeline.
 
 ZIELPROFIL (das wollen wir BEHALTEN):
@@ -56,15 +67,16 @@ ZIELPROFIL (das wollen wir BEHALTEN):
 
 AUSSCHLUSSREGELN (wenn EINE davon zutrifft: ablehnen):
 {rules_text or "(keine aktiven Regeln)"}
-
+{niche_instruction}
 LEAD-DATEN:
 {lead.classification_text()}
 
 Antworte AUSSCHLIESSLICH als JSON-Objekt in dieser Form, ohne weiteren Text:
-{{"decision": "keep" | "reject", "matched_rule": "<id der Regel oder null>", "reason": "<ein kurzer Satz auf Deutsch>"}}
+{{"decision": "keep" | "reject", "matched_rule": "<id der Regel oder null>", "niche": "<id der Nische oder null>", "reason": "<ein kurzer Satz auf Deutsch>"}}
 
-Wenn keine Ausschlussregel eindeutig zutrifft und der Lead zum Zielprofil passt: decision="keep", matched_rule=null.
-Wenn du unsicher bist, aber tendenziell nicht passt: decision="reject" mit der am ehesten zutreffenden Regel.
+Wenn keine Ausschlussregel eindeutig zutrifft und der Lead zum Zielprofil passt: decision="keep", matched_rule=null,
+niche=<am besten passende Nischen-id>.
+Wenn du unsicher bist, aber tendenziell nicht passt: decision="reject" mit der am ehesten zutreffenden Regel, niche=null.
 """
 
 
@@ -82,6 +94,7 @@ def _parse_response(text: str) -> ClassificationResult:
         return ClassificationResult(
             decision=decision,
             matched_rule=data.get("matched_rule"),
+            niche=data.get("niche") if decision == "keep" else None,
             reason=str(data.get("reason", "")),
             raw=text,
         )

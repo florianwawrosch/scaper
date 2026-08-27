@@ -35,4 +35,22 @@ exclusion_rules:
       Premium-Positionierung o.ae.).
     active: true
 
+# Nischen-Priorisierung: Beziehungs-/Datingcoaches zuerst (dort schon
+# Kundenerfolge), danach Fitness, danach Business. "sonstige" faengt alles
+# andere auf, was trotzdem als High-Ticket-Coach durchgeht. Reihenfolge =
+# Prioritaet, niedrigere Zahl = wichtiger.
+niches:
+  - id: beziehung_dating
+    label: "Beziehungscoach / Datingcoach / Relationshipcoach"
+    priority: 1
+  - id: fitness
+    label: "Fitnesscoach"
+    priority: 2
+  - id: business
+    label: "Businesscoach"
+    priority: 3
+  - id: sonstige
+    label: "Sonstige Nische"
+    priority: 9
+
 notes: []

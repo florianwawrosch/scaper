@@ -30,5 +30,19 @@ exclusion_rules:
       High-Ticket-Angebot.
     active: true
 
+niches:
+  - id: beziehung_dating
+    label: "Beziehungscoach / Datingcoach / Relationshipcoach"
+    priority: 1
+  - id: fitness
+    label: "Fitnesscoach"
+    priority: 2
+  - id: business
+    label: "Businesscoach"
+    priority: 3
+  - id: sonstige
+    label: "Sonstige Nische"
+    priority: 9
+
 notes:
   - "LinkedIn-Quelle liefert tendenziell schon bessere Treffer als frueher (Kommentar-Sourcing statt Direktsuche), Kriterien trotzdem identisch zur Meta-Quelle als Startpunkt."

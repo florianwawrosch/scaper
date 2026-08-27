@@ -10,6 +10,7 @@ from core import criteria_store
 from core.loaders import load_table, rows_from_df
 from core.schema import CANONICAL_FIELDS, guess_mapping, rows_to_leads
 from core.gemini_classifier import classify_batch
+from core.close_export import to_close_columns
 
 st.set_page_config(page_title="Modul 2 -- Filterung", page_icon="\U0001F50D", layout="wide")
 st.title("Modul 2 -- Validierung & Filterung")
@@ -79,9 +80,8 @@ if uploaded is not None:
             out_rows.append(
                 {
                     **row,
-                    "gemini_decision": result.decision,
-                    "gemini_matched_rule": result.matched_rule or "",
-                    "gemini_reason": result.reason,
+                    **to_close_columns(result, criteria),
+                    "_decision": result.decision,  # intern fuer Sortierung/Metriken, nicht Teil des Close-Imports
                 }
             )
         out_df = pd.DataFrame(out_rows)
@@ -93,7 +93,7 @@ if "last_result" in st.session_state:
     out_df = st.session_state["last_result"]
     st.subheader("Ergebnis")
 
-    counts = out_df["gemini_decision"].value_counts()
+    counts = out_df["_decision"].value_counts()
     m1, m2, m3 = st.columns(3)
     m1.metric("Behalten", int(counts.get("keep", 0)))
     m2.metric("Rausgefiltert", int(counts.get("reject", 0)))
@@ -101,15 +101,16 @@ if "last_result" in st.session_state:
 
     tab_keep, tab_reject, tab_all = st.tabs(["Behalten", "Rausgefiltert", "Alle"])
     with tab_keep:
-        st.dataframe(out_df[out_df["gemini_decision"] == "keep"], use_container_width=True)
+        st.dataframe(out_df[out_df["_decision"] == "keep"], use_container_width=True)
     with tab_reject:
-        st.dataframe(out_df[out_df["gemini_decision"] == "reject"], use_container_width=True)
+        st.dataframe(out_df[out_df["_decision"] == "reject"], use_container_width=True)
     with tab_all:
         st.dataframe(out_df, use_container_width=True)
 
+    export_df = out_df.drop(columns=["_decision"])
     st.download_button(
-        "Ergebnis als CSV herunterladen",
-        data=out_df.to_csv(index=False).encode("utf-8"),
+        "Ergebnis als CSV herunterladen (Close-Import-Format)",
+        data=export_df.to_csv(index=False).encode("utf-8"),
         file_name="leads_klassifiziert.csv",
         mime="text/csv",
     )
