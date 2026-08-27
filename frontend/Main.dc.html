@@ -1,0 +1,415 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #07070a;
+      color: #e9e6df;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: #e5c88b; text-decoration: none; }
+
+    .container { max-width: 1180px; margin: 0 auto; padding: 2rem; }
+
+    .header {
+      margin: 16px 0 32px;
+      padding: 28px 0 24px;
+      border-top: 1px solid #8a6f3d;
+      border-bottom: 1px solid #23262f;
+      position: relative;
+    }
+
+    .header::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: -1px;
+      width: 130px;
+      height: 2px;
+      background: #c9a35f;
+    }
+
+    .tag-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      letter-spacing: 0.26em;
+      text-transform: uppercase;
+      color: #c9a35f;
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 300;
+      font-size: 44px;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+      margin: 0 0 8px;
+      color: #e9e6df;
+    }
+
+    h1 em {
+      font-style: italic;
+      color: #e5c88b;
+    }
+
+    .subtitle {
+      color: #9a978f;
+      font-size: 14px;
+      margin: 0;
+      font-weight: 300;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .section-index {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #c9a35f;
+      letter-spacing: 0.14em;
+    }
+
+    h2 {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 400;
+      font-size: 26px;
+      margin: 0;
+      letter-spacing: 0.005em;
+      color: #e9e6df;
+    }
+
+    .section-rule {
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, #23262f 0%, transparent 100%);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9.5px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: #6a6862;
+      font-weight: 500;
+    }
+
+    input, select, textarea {
+      background: #12141b;
+      border: 1px solid #23262f;
+      border-radius: 8px;
+      color: #e9e6df;
+      font-size: 13.5px;
+      padding: 10px 12px;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 20px 0;
+    }
+
+    button {
+      font-family: 'Inter', system-ui, sans-serif;
+      border-radius: 8px;
+      height: 40px;
+      font-weight: 500;
+      font-size: 13px;
+      letter-spacing: 0.02em;
+      border: 1px solid #23262f;
+      background: #12141b;
+      color: #e9e6df;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      border-color: #8a6f3d;
+      background: #171a22;
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, #c9a35f, #8a6f3d);
+      color: #07070a;
+      border-color: #c9a35f;
+      font-weight: 600;
+    }
+
+    button.primary:hover {
+      background: linear-gradient(135deg, #e5c88b, #c9a35f);
+      border-color: #e5c88b;
+    }
+
+    .table-container {
+      border: 1px solid #1a1d25;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+    }
+
+    thead th {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9.5px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #6a6862;
+      text-align: left;
+      padding: 12px 16px;
+      border-bottom: 1px solid #23262f;
+      font-weight: 500;
+      background: #0d0e13;
+    }
+
+    tbody td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #1a1d25;
+      vertical-align: middle;
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.014);
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid;
+    }
+
+    .badge.completed {
+      color: #6bb39a;
+      border-color: rgba(107, 179, 154, 0.35);
+      background: rgba(107, 179, 154, 0.07);
+    }
+
+    .badge.in_progress {
+      color: #d9a441;
+      border-color: rgba(217, 164, 65, 0.35);
+      background: rgba(217, 164, 65, 0.07);
+    }
+
+    .status-text {
+      color: #9a978f;
+      font-size: 13px;
+    }
+
+    .helper-text {
+      font-size: 13px;
+      color: #9a978f;
+      line-height: 1.55;
+      margin-top: 8px;
+    }
+  </style>
+</helmet>
+
+<div style="background: #07070a; min-height: 100vh; padding: 2rem;">
+  <div class="container">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="tag-label">Lead Pipeline · Multi-Source Scraper</div>
+      <h1>Lead <em>Pipeline</em></h1>
+      <p class="subtitle">Scrape · Filter · Enrich · Export</p>
+    </div>
+
+    <!-- Section 01: New Run -->
+    <div style="margin-top: 32px;">
+      <div class="section-header">
+        <span class="section-index">01</span>
+        <h2>Neuer Run</h2>
+        <div class="section-rule"></div>
+      </div>
+
+      <div style="margin-top: 20px;">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Datenquelle</label>
+            <select>
+              <option>PhantomBuster (LinkedIn)</option>
+              <option selected>Meta Ads Library</option>
+              <option>Job Portal Scraper (coming soon)</option>
+            </select>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: flex-end;">
+            <div class="form-group" style="flex: 1;">
+              <label style="visibility: hidden;">-</label>
+              <button type="button" style="height: 40px;">Config laden</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Meta Ads Config Form -->
+        <div style="margin-top: 24px; padding: 16px; background: #12141b; border: 1px solid #1a1d25; border-radius: 10px;">
+          <h3 style="font-family: 'Inter', system-ui, sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #e9e6df; margin: 0 0 16px;">Suchparameter</h3>
+
+          <div class="form-group">
+            <label>Suchbegriffe</label>
+            <textarea placeholder="z.B. High Ticket Coach&#10;Manifestation&#10;Online Business"></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Länder</label>
+              <select multiple>
+                <option selected>AT</option>
+                <option selected>DE</option>
+                <option>CH</option>
+                <option>US</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Status</label>
+              <select>
+                <option selected>ACTIVE</option>
+                <option>ALL</option>
+                <option>INACTIVE</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Plattformen</label>
+              <select multiple>
+                <option selected>FACEBOOK</option>
+                <option selected>INSTAGRAM</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Medientyp</label>
+              <select>
+                <option selected>ALL</option>
+                <option>IMAGE</option>
+                <option>VIDEO</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="button-row">
+            <div class="form-group">
+              <label style="visibility: hidden;">-</label>
+              <button type="button">Config speichern</button>
+            </div>
+            <div class="form-group">
+              <label style="visibility: hidden;">-</label>
+              <button type="button" class="primary">Run starten</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 02: Recent Runs -->
+    <div style="margin-top: 48px;">
+      <div class="section-header">
+        <span class="section-index">02</span>
+        <h2>Letzte Runs</h2>
+        <div class="section-rule"></div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Quelle</th>
+              <th>Datum</th>
+              <th>Keep</th>
+              <th>Rating</th>
+              <th>Aktion</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge completed">ABGESCHLOSSEN</span></td>
+              <td class="status-text">PhantomBuster LinkedIn</td>
+              <td class="status-text" style="font-family: 'JetBrains Mono', monospace;">27.08.2026</td>
+              <td style="font-family: 'JetBrains Mono', monospace; color: #6bb39a; font-weight: 600;">2</td>
+              <td style="color: #c9a35f; letter-spacing: 3px;">★★★★☆</td>
+              <td><button type="button" style="width: 100%; max-width: 120px; height: 32px; font-size: 12px;">Details</button></td>
+            </tr>
+            <tr>
+              <td><span class="badge in_progress">IN BEARBEITUNG</span></td>
+              <td class="status-text">PhantomBuster LinkedIn</td>
+              <td class="status-text" style="font-family: 'JetBrains Mono', monospace;">27.08.2026</td>
+              <td></td>
+              <td></td>
+              <td><button type="button" class="primary" style="width: 100%; max-width: 120px; height: 32px; font-size: 12px;">Fortsetzen</button></td>
+            </tr>
+            <tr>
+              <td><span class="badge" style="color: #6a6862; border-color: rgba(106, 104, 98, 0.35); background: rgba(106, 104, 98, 0.07);">ENTWURF</span></td>
+              <td class="status-text">Meta Ads Library</td>
+              <td class="status-text" style="font-family: 'JetBrains Mono', monospace;">26.08.2026</td>
+              <td></td>
+              <td></td>
+              <td><button type="button" class="primary" style="width: 100%; max-width: 120px; height: 32px; font-size: 12px;">Fortsetzen</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
