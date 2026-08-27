@@ -14,7 +14,26 @@ from core.gemini_classifier import classify_batch
 from core.close_export import to_close_columns
 from core import criteria_store
 
-st.set_page_config(page_title="Run Detail", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Run Detail", page_icon="✨", layout="wide", initial_sidebar_state="collapsed")
+
+st.markdown("""
+<style>
+    [data-testid="stMainBlockContainer"] {
+        padding-top: 1.5rem;
+    }
+    h1 {
+        font-size: 2rem !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.01em !important;
+        margin-bottom: 0.25rem !important;
+    }
+    .header-info {
+        color: #6b7280;
+        font-size: 0.95rem !important;
+        margin-bottom: 1.5rem !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 run_id = st.session_state.get("current_run_id")
 if not run_id:
@@ -26,10 +45,10 @@ if not run:
     st.error(f"Run {run_id} nicht gefunden.")
     st.stop()
 
-st.title(f"📊 Run {run_id}")
-st.caption(f"Quelle: {run.source} • Status: {run.status} • Erstellt: {run.created_at}")
+st.markdown(f"# ✨ {run_id}")
+st.markdown(f'<div class="header-info">{run.source.replace("_", " ").title()} • Status: {run.status} • {run.created_at[:10]}</div>', unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4 = st.tabs(["📥 Modul 1: Scraping", "🤖 Modul 2: Klassifizierung", "✨ Modul 3: Anreicherung", "🎯 Review & Export"])
+tab1, tab2, tab3, tab4 = st.tabs(["📥 Scraping", "👀 Review & Filter", "✨ Enrichment", "📊 Export"])
 
 source_labels = {
     "meta_ads_library": "Meta Ads Library",
@@ -37,24 +56,15 @@ source_labels = {
 }
 
 with tab1:
-    st.subheader("Modul 1: Daten-Import")
+    st.markdown("## Daten hochladen")
     if run.source == "meta_ads_library":
-        st.info("🚧 Meta Scraper: noch in Entwicklung (braucht `_ad_library_common.py`)")
-        st.markdown("""
-        - Keywords eingeben
-        - Länder auswählen
-        - Filter setzen (page_limit, max_pages)
-        - "Scrape starten" → läuft im Hintergrund
-        """)
+        st.markdown("🚧 Meta Scraper ist noch in Entwicklung")
     elif run.source == "phantombuster_linkedin":
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**CSV/XLSX hochladen:**")
-            uploaded = st.file_uploader("PhantomBuster-Export", type=["csv", "xlsx", "xls"], key="modul1_uploader")
-
+            uploaded = st.file_uploader("CSV/XLSX hochladen", type=["csv", "xlsx", "xls"], key="modul1_uploader", label_visibility="collapsed")
         with col2:
-            st.markdown("**oder Test-Daten laden:**")
-            if st.button("📊 Test-Daten laden", key="load_test_data"):
+            if st.button("📊 Test-Daten laden", key="load_test_data", use_container_width=True):
                 test_df = pd.DataFrame({
                     "fullName": ["John Coach", "Sarah Fitness", "Mike Tech", "Emma Manifestation", "David B2B"],
                     "companyName": ["High Ticket Academy", "Fit Pro Coaching", "Tech Startup Hub", "Manifestation Coaching", "Corporate Solutions"],
@@ -63,21 +73,19 @@ with tab1:
                     "linkedinDescription": ["I help entrepreneurs scale", "Personal training", "Building tech solutions", "Manifest your dreams", "Corporate strategy"],
                 })
                 st.session_state[f"run_{run_id}_df"] = test_df
-                st.success("Test-Daten geladen!")
                 st.rerun()
 
         df = None
         if uploaded:
             df = load_table(uploaded)
-            st.success(f"Datei geladen: {uploaded.name}")
         elif f"run_{run_id}_df" in st.session_state:
             df = st.session_state[f"run_{run_id}_df"]
 
         if df is not None:
-            st.info(f"{len(df)} Zeilen, {len(df.columns)} Spalten")
+            st.markdown(f"**{len(df)} Zeilen** • {len(df.columns)} Spalten")
+            st.markdown("---")
 
-            st.subheader("Spalten-Zuordnung")
-            st.caption("Vorschlag automatisch erkannt -- bei Bedarf korrigieren.")
+            st.markdown("### Spalten-Zuordnung")
             mapping = guess_mapping(list(df.columns), run.source)
             cols = st.columns(len(CANONICAL_FIELDS))
             new_mapping = {}
@@ -88,97 +96,115 @@ with tab1:
                     idx = options.index(current) if current in options else 0
                     new_mapping[field] = st.selectbox(field, options=options, index=idx, key=f"map_{field}")
 
-            st.subheader("Voransicht (erste 5 Zeilen)")
-            st.dataframe(df.head(5), use_container_width=True)
+            st.markdown("---")
+            st.markdown("### Voransicht")
+            st.dataframe(df.head(5), use_container_width=True, height=300)
 
-            if st.button("Bestätigen & zu Modul 2", type="primary", use_container_width=True, key="modul1_confirm"):
+            if st.button("→ Zu Klassifizierung", type="primary", use_container_width=True, key="modul1_confirm"):
                 st.session_state[f"run_{run_id}_df"] = df
                 st.session_state[f"run_{run_id}_mapping"] = new_mapping
-                st.success("Daten gespeichert! Gehe zu Modul 2.")
-                st.rerun()
+                st.switch_page("pages/4_Run_Detail.py")
 
 with tab2:
-    st.subheader("Modul 2: Automatische Klassifizierung")
+    st.markdown("## Review & Filter")
 
     if f"run_{run_id}_df" not in st.session_state:
-        st.info("Bitte lade zuerst Daten in Modul 1 hoch.")
+        st.markdown("👈 Lade zuerst Daten in **Scraping** Tab hoch")
     else:
         df = st.session_state[f"run_{run_id}_df"]
         mapping = st.session_state[f"run_{run_id}_mapping"]
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**KI-Modelle auswählen:**")
-            models = st.multiselect(
-                "Welche Modelle sollen klassifizieren?",
-                ["Gemini", "ChatGPT (OpenAI)", "Claude (Anthropic)"],
-                default=["Gemini"],
-                key="models_select"
-            )
-        with col2:
-            st.markdown("**Status:**")
-            if run.classification_results:
-                for model_key, result in run.classification_results.items():
-                    keep = result.get("keep", 0)
-                    reject = result.get("reject", 0)
-                    st.caption(f"✅ {model_key}: {keep} behalten, {reject} abgelehnt")
-            else:
-                if models:
+        if f"run_{run_id}_results" not in st.session_state:
+            st.markdown("### Klassifizierung")
+            col1, col2 = st.columns(2)
+            with col1:
+                models = st.multiselect(
+                    "KI-Modelle",
+                    ["Gemini", "ChatGPT (OpenAI)", "Claude (Anthropic)"],
+                    default=["Gemini"],
+                    key="models_select",
+                    label_visibility="collapsed"
+                )
+            with col2:
+                st.markdown("")
+                st.markdown("_Bereit zum Klassifizieren_")
+
+            if st.button("→ Klassifizieren", type="primary", use_container_width=True, key="modul2_classify"):
+                rows = rows_from_df(df)
+                leads = rows_to_leads(rows, mapping)
+                criteria = criteria_store.load_criteria(run.source)
+
+                progress = st.progress(0.0, text="Läuft...")
+                def on_progress(done, total):
+                    progress.progress(done / total, text=f"{done}/{total}")
+
+                try:
+                    results = classify_batch(leads, criteria, progress_callback=on_progress)
+
+                    keep_count = sum(1 for r in results if r.decision == "keep")
+                    reject_count = sum(1 for r in results if r.decision == "reject")
+                    unklar_count = sum(1 for r in results if r.decision == "unklar")
+
                     for model in models:
-                        st.caption(f"⏳ {model}: bereit")
+                        run.classification_results[model] = {
+                            "keep": keep_count,
+                            "reject": reject_count,
+                            "unklar": unklar_count,
+                        }
 
-        if st.button("Klassifizierung starten", type="primary", use_container_width=True, key="modul2_classify"):
+                    st.session_state[f"run_{run_id}_results"] = results
+                    save_run(run)
+                    st.rerun()
+
+                except RuntimeError as exc:
+                    if "GEMINI_API_KEY" in str(exc):
+                        st.error("GEMINI_API_KEY nicht gesetzt")
+                    else:
+                        st.error(f"Fehler: {str(exc)}")
+                except Exception as exc:
+                    st.error(f"Fehler: {str(exc)[:150]}")
+
+        else:
+            results = st.session_state[f"run_{run_id}_results"]
             rows = rows_from_df(df)
-            leads = rows_to_leads(rows, mapping)
-
-            criteria_key = source_labels.get(run.source, run.source)
             criteria = criteria_store.load_criteria(run.source)
 
-            progress = st.progress(0.0, text="Starte Klassifizierung...")
+            out_rows = []
+            for row, result in zip(rows, results):
+                out_rows.append({
+                    **row,
+                    **to_close_columns(result, criteria),
+                    "_decision": result.decision,
+                    "_reason": result.reason,
+                })
+            out_df = pd.DataFrame(out_rows)
 
-            def on_progress(done, total):
-                progress.progress(done / total, text=f"{done}/{total} klassifiziert")
+            keep_count = (out_df["_decision"] == "keep").sum()
+            reject_count = (out_df["_decision"] == "reject").sum()
 
-            try:
-                results = classify_batch(leads, criteria, progress_callback=on_progress)
+            col1, col2, col3 = st.columns(3)
+            col1.markdown(f"<div style='text-align: center;'><div style='font-size: 1.5rem; font-weight: 600; color: #10b981;'>{int(keep_count)}</div><div style='font-size: 0.85rem; color: #6b7280;'>Behalten</div></div>", unsafe_allow_html=True)
+            col2.markdown(f"<div style='text-align: center;'><div style='font-size: 1.5rem; font-weight: 600; color: #ef4444;'>{int(reject_count)}</div><div style='font-size: 0.85rem; color: #6b7280;'>Abgelehnt</div></div>", unsafe_allow_html=True)
 
-                keep_count = sum(1 for r in results if r.decision == "keep")
-                reject_count = sum(1 for r in results if r.decision == "reject")
-                unklar_count = sum(1 for r in results if r.decision == "unklar")
-
-                for model in models:
-                    run.classification_results[model] = {
-                        "keep": keep_count,
-                        "reject": reject_count,
-                        "unklar": unklar_count,
-                    }
-
-                st.session_state[f"run_{run_id}_results"] = results
-                save_run(run)
-                st.success(f"Klassifizierung abgeschlossen! {keep_count} behalten, {reject_count} abgelehnt")
-                st.rerun()
-
-            except RuntimeError as exc:
-                st.error(f"Fehler: {str(exc)}")
-                if "GEMINI_API_KEY" in str(exc):
-                    st.info("💡 Bitte GEMINI_API_KEY in der Umgebung setzen (.env Datei)")
-            except Exception as exc:
-                st.error(f"Fehler bei Klassifizierung: {str(exc)[:200]}")
+            st.markdown("---")
+            st.markdown("### Klassifizierungsergebnisse")
+            display_cols = [c for c in out_df.columns if not c.startswith("_")]
+            st.dataframe(out_df[display_cols], use_container_width=True, height=350)
 
 with tab3:
-    st.subheader("Modul 3: Datenen-Anreicherung")
-    st.info("🚧 Hunter.io / FindyMail: noch in Entwicklung")
+    st.markdown("## Data Enrichment")
+    st.markdown("🚧 _Hunter.io / FindyMail Integration in Entwicklung_")
     st.markdown("""
-    - E-Mails/Kontakte pro Lead suchen
+    - E-Mails & Kontakte suchen
     - Verifizieren
-    - Ausgabe mit Erfolgsquote
+    - Erfolgsquote anzeigen
     """)
 
 with tab4:
-    st.subheader("Review, Feedback & Export")
+    st.markdown("## Export")
 
     if f"run_{run_id}_results" not in st.session_state or f"run_{run_id}_df" not in st.session_state:
-        st.info("Bitte führe zunächst Modul 1 und 2 aus.")
+        st.markdown("👈 Führe zunächst **Scraping** und **Review & Filter** aus")
     else:
         df = st.session_state[f"run_{run_id}_df"]
         results = st.session_state[f"run_{run_id}_results"]
@@ -198,47 +224,44 @@ with tab4:
             })
         out_df = pd.DataFrame(out_rows)
 
-        col1, col2, col3 = st.columns(3)
         keep_count = (out_df["_decision"] == "keep").sum()
         reject_count = (out_df["_decision"] == "reject").sum()
-        unklar_count = (out_df["_decision"] == "unklar").sum()
 
-        col1.metric("Behalten", int(keep_count))
-        col2.metric("Rausgefiltert", int(reject_count))
-        col3.metric("Unklar", int(unklar_count))
+        col1, col2, col3 = st.columns(3)
+        col1.markdown(f"<div style='text-align: center;'><div style='font-size: 1.5rem; font-weight: 600; color: #10b981;'>{int(keep_count)}</div><div style='font-size: 0.85rem; color: #6b7280;'>Behalten</div></div>", unsafe_allow_html=True)
+        col2.markdown(f"<div style='text-align: center;'><div style='font-size: 1.5rem; font-weight: 600; color: #ef4444;'>{int(reject_count)}</div><div style='font-size: 0.85rem; color: #6b7280;'>Abgelehnt</div></div>", unsafe_allow_html=True)
 
-        st.subheader("Klassifizierungsergebnisse")
+        st.markdown("---")
+        st.markdown("### Ergebnisse")
         display_cols = [c for c in out_df.columns if not c.startswith("_")]
-        st.dataframe(out_df[display_cols], use_container_width=True, height=400)
+        st.dataframe(out_df[display_cols], use_container_width=True, height=350)
 
-        st.divider()
-        st.subheader("Feedback & Rating")
-
+        st.markdown("---")
+        st.markdown("### Bewertung")
         col1, col2 = st.columns(2)
         with col1:
-            rating = st.slider("Rating (1-5 Sterne)", 1, 5, 3, key="rating_slider", value=run.rating if run.rating else 3)
+            rating = st.slider("Rating", 1, 5, run.rating if run.rating else 3, key="rating_slider", label_visibility="collapsed")
         with col2:
-            best_model = st.selectbox("Bestes Modell:", ["Gemini", "ChatGPT", "Claude"], key="best_model_select", index=0 if not run.best_model else ["Gemini", "ChatGPT", "Claude"].index(run.best_model) if run.best_model in ["Gemini", "ChatGPT", "Claude"] else 0)
+            best_model = st.selectbox("Bestes Modell", ["Gemini", "ChatGPT", "Claude"], key="best_model_select", index=0, label_visibility="collapsed")
 
-        feedback = st.text_area("Konkretes Feedback:", value=run.feedback, key="feedback_area", height=100)
+        feedback = st.text_area("Feedback", value=run.feedback, key="feedback_area", height=80, placeholder="Deine Anmerkungen...", label_visibility="collapsed")
 
-        if st.button("Feedback speichern", use_container_width=True):
+        if st.button("💾 Speichern", use_container_width=True, type="primary"):
             run.rating = rating
             run.feedback = feedback
             run.best_model = best_model
             save_run(run)
-            st.success("Feedback gespeichert!")
+            st.success("Gespeichert!")
 
-        st.divider()
-        st.subheader("Export")
-
+        st.markdown("---")
+        st.markdown("### Download")
         export_df = out_df[[c for c in out_df.columns if not c.startswith("_")]].copy()
         csv_data = export_df.to_csv(index=False).encode("utf-8")
 
         st.download_button(
-            "📥 CSV für Close herunterladen",
+            "📥 CSV herunterladen",
             data=csv_data,
-            file_name=f"run_{run_id}_export.csv",
+            file_name=f"leads_{run_id}.csv",
             mime="text/csv",
             use_container_width=True
         )
