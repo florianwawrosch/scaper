@@ -47,11 +47,33 @@ with tab1:
         - "Scrape starten" → läuft im Hintergrund
         """)
     elif run.source == "phantombuster_linkedin":
-        st.markdown("**CSV/XLSX hochladen:**")
-        uploaded = st.file_uploader("PhantomBuster-Export", type=["csv", "xlsx", "xls"], key="modul1_uploader")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**CSV/XLSX hochladen:**")
+            uploaded = st.file_uploader("PhantomBuster-Export", type=["csv", "xlsx", "xls"], key="modul1_uploader")
+
+        with col2:
+            st.markdown("**oder Test-Daten laden:**")
+            if st.button("📊 Test-Daten laden", key="load_test_data"):
+                test_df = pd.DataFrame({
+                    "fullName": ["John Coach", "Sarah Fitness", "Mike Tech", "Emma Manifestation", "David B2B"],
+                    "companyName": ["High Ticket Academy", "Fit Pro Coaching", "Tech Startup Hub", "Manifestation Coaching", "Corporate Solutions"],
+                    "personalWebsite": ["https://highticket.com", "https://fitpro.de", "", "https://manifest.de", "https://b2bsolutions.de"],
+                    "linkedinHeadline": ["Business Coach", "Fitness Coach", "Tech Consultant", "Life Coach", "Business Development"],
+                    "linkedinDescription": ["I help entrepreneurs scale", "Personal training", "Building tech solutions", "Manifest your dreams", "Corporate strategy"],
+                })
+                st.session_state[f"run_{run_id}_df"] = test_df
+                st.success("Test-Daten geladen!")
+                st.rerun()
+
+        df = None
         if uploaded:
-            st.success(f"Datei geladen: {uploaded.name}")
             df = load_table(uploaded)
+            st.success(f"Datei geladen: {uploaded.name}")
+        elif f"run_{run_id}_df" in st.session_state:
+            df = st.session_state[f"run_{run_id}_df"]
+
+        if df is not None:
             st.info(f"{len(df)} Zeilen, {len(df.columns)} Spalten")
 
             st.subheader("Spalten-Zuordnung")
@@ -120,11 +142,11 @@ with tab2:
             try:
                 results = classify_batch(leads, criteria, progress_callback=on_progress)
 
-                for model in models:
-                    keep_count = sum(1 for r in results if r.decision == "keep")
-                    reject_count = sum(1 for r in results if r.decision == "reject")
-                    unklar_count = sum(1 for r in results if r.decision == "unklar")
+                keep_count = sum(1 for r in results if r.decision == "keep")
+                reject_count = sum(1 for r in results if r.decision == "reject")
+                unklar_count = sum(1 for r in results if r.decision == "unklar")
 
+                for model in models:
                     run.classification_results[model] = {
                         "keep": keep_count,
                         "reject": reject_count,
@@ -137,7 +159,11 @@ with tab2:
                 st.rerun()
 
             except RuntimeError as exc:
-                st.error(str(exc))
+                st.error(f"Fehler: {str(exc)}")
+                if "GEMINI_API_KEY" in str(exc):
+                    st.info("💡 Bitte GEMINI_API_KEY in der Umgebung setzen (.env Datei)")
+            except Exception as exc:
+                st.error(f"Fehler bei Klassifizierung: {str(exc)[:200]}")
 
 with tab3:
     st.subheader("Modul 3: Datenen-Anreicherung")

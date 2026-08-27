@@ -1,0 +1,42 @@
+{
+  "id": "2026-08-27T17-47-25",
+  "created_at": "2026-08-27T17:47:25.889396",
+  "updated_at": "2026-08-27T17:47:25.889527",
+  "status": "in_progress",
+  "modules": {
+    "modul_1": {
+      "name": "Modul 1: Scraping",
+      "status": "pending",
+      "started_at": "",
+      "completed_at": "",
+      "result_count": 0,
+      "error": "",
+      "config": {}
+    },
+    "modul_2": {
+      "name": "Modul 2: Klassifizierung",
+      "status": "pending",
+      "started_at": "",
+      "completed_at": "",
+      "result_count": 0,
+      "error": "",
+      "config": {}
+    },
+    "modul_3": {
+      "name": "Modul 3: Anreicherung",
+      "status": "pending",
+      "started_at": "",
+      "completed_at": "",
+      "result_count": 0,
+      "error": "",
+      "config": {}
+    }
+  },
+  "classification_results": {},
+  "rating": 0,
+  "feedback": "",
+  "best_model": "",
+  "source": "phantombuster_linkedin",
+  "data_file": "",
+  "final_export": ""
+}
