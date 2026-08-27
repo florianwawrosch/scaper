@@ -2,21 +2,12 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export interface ScrapeRun {
   id: string;
-  source_key: string;
+  source: string;
   status: 'draft' | 'scraping' | 'dataset_ready' | 'in_progress' | 'completed' | 'failed';
-  raw_dataset: Record<string, unknown>[];
-  filtered_dataset: Record<string, unknown>[];
-  enriched_dataset: Record<string, unknown>[];
-  exported_data: unknown;
-  config: Record<string, unknown>;
   created_at: string;
-  completed_at: string | null;
-  keep_count: number;
-  reject_count: number;
-  unklar_count: number;
-  rating: number | null;
-  feedback: string | null;
-  error_message: string | null;
+  rating: number;
+  feedback: string;
+  classification_results: Record<string, { keep: number; reject: number; unklar: number }>;
 }
 
 export interface Source {
@@ -52,58 +43,40 @@ export const api = {
       return res.json() as Promise<ScrapeRun>;
     },
 
-    create: async (sourceKey: string, config: Record<string, unknown>) => {
+    create: async (source: string, scraperConfig?: Record<string, unknown>) => {
       const res = await fetch(`${API_BASE}/api/runs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_key: sourceKey, config }),
+        body: JSON.stringify({ source, scraper_config: scraperConfig }),
       });
       if (!res.ok) throw new Error('Failed to create run');
       return res.json() as Promise<ScrapeRun>;
     },
 
-    uploadRawData: async (runId: string, data: Record<string, unknown>[]) => {
-      const res = await fetch(`${API_BASE}/api/runs/${runId}/upload`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data }),
-      });
-      if (!res.ok) throw new Error('Failed to upload data');
-      return res.json() as Promise<ScrapeRun>;
-    },
-
-    getDataset: async (runId: string, datasetType: 'raw' | 'filtered' | 'enriched') => {
-      const res = await fetch(`${API_BASE}/api/runs/${runId}/dataset?type=${datasetType}`);
+    getDataset: async (runId: string) => {
+      const res = await fetch(`${API_BASE}/api/runs/${runId}/dataset`);
       if (!res.ok) throw new Error('Failed to fetch dataset');
-      return res.json() as Promise<Record<string, unknown>[]>;
+      return res.json();
     },
 
-    updateDataset: async (runId: string, datasetType: 'filtered' | 'enriched', data: Record<string, unknown>[]) => {
+    saveDataset: async (runId: string, dfData: unknown[], mapping: Record<string, unknown>) => {
       const res = await fetch(`${API_BASE}/api/runs/${runId}/dataset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: datasetType, data }),
+        body: JSON.stringify({ df_data: dfData, mapping }),
       });
-      if (!res.ok) throw new Error('Failed to update dataset');
-      return res.json() as Promise<ScrapeRun>;
+      if (!res.ok) throw new Error('Failed to save dataset');
+      return res.json();
     },
 
-    classify: async (runId: string) => {
+    classify: async (runId: string, dfData: unknown[], mapping: Record<string, unknown>, model: string = 'Gemini') => {
       const res = await fetch(`${API_BASE}/api/runs/${runId}/classify`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ df_data: dfData, mapping, model }),
       });
       if (!res.ok) throw new Error('Failed to classify');
-      return res.json() as Promise<ScrapeRun>;
-    },
-
-    updateRating: async (runId: string, rating: number, feedback: string) => {
-      const res = await fetch(`${API_BASE}/api/runs/${runId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rating, feedback }),
-      });
-      if (!res.ok) throw new Error('Failed to update run');
-      return res.json() as Promise<ScrapeRun>;
+      return res.json();
     },
   },
 

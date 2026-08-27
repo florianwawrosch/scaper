@@ -5,8 +5,8 @@ import { api, type ScrapeRun, type Source } from '@/lib/api';
 
 export default function Home() {
   const [runs, setRuns] = useState<ScrapeRun[]>([]);
-  const [sources, setSources] = useState<Source[]>([]);
-  const [selectedSource, setSelectedSource] = useState('meta-ads');
+  const [sources, setSources] = useState<Record<string, Source>>({});
+  const [selectedSource, setSelectedSource] = useState('meta_ads_library');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,9 +102,9 @@ export default function Home() {
                   onChange={(e) => setSelectedSource(e.target.value)}
                   className="w-full bg-panel-2 border border-line rounded-lg text-ink px-3 py-2.5 text-sm"
                 >
-                  {sources.map((src) => (
-                    <option key={src.key} value={src.key}>
-                      {src.label}
+                  {Object.entries(sources).map(([key, src]) => (
+                    <option key={key} value={key}>
+                      {src.name}
                     </option>
                   ))}
                 </select>
@@ -237,6 +237,8 @@ export default function Home() {
               <tbody>
                 {runs.slice(0, 3).map((run) => {
                   const statusInfo = getStatusBadge(run.status);
+                  const classificationResult = Object.values(run.classification_results)[0];
+                  const keepCount = classificationResult?.keep || 0;
                   return (
                     <tr key={run.id} className="border-b border-line-soft hover:bg-panel-3/50 transition-colors">
                       <td className="px-4 py-3">
@@ -244,9 +246,9 @@ export default function Home() {
                           {statusInfo.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-ink-dim">{run.source_key}</td>
+                      <td className="px-4 py-3 text-sm text-ink-dim">{run.source}</td>
                       <td className="px-4 py-3 text-sm text-ink-dim font-mono">{formatDate(run.created_at)}</td>
-                      <td className="px-4 py-3 text-sm font-mono text-good font-semibold">{run.keep_count}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-good font-semibold">{keepCount}</td>
                       <td className="px-4 py-3 text-sm">{renderStars(run.rating)}</td>
                       <td className="px-4 py-3">
                         <button className="text-sm px-3 py-1.5 bg-panel-3 border border-line rounded hover:border-gold-dim transition-colors text-ink">
