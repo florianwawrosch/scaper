@@ -1,46 +1,116 @@
-"""Config-Optionen für verschiedene Scraping-Quellen"""
+"""Config-Optionen für verschiedene Scraping-Quellen.
+
+Meta Ads Library API parameters based on:
+  - https://www.facebook.com/ads/library/api/
+  - https://developers.facebook.com/docs/marketing-api/reference/ads_archive/
+"""
 
 SCRAPING_SOURCES = {
     "meta_ads_library": {
         "name": "Meta Ads Library",
-        "description": "Scrape active ads from Meta Ads Library",
+        "description": "Aktive Werbeanzeigen aus der Meta Ad Library durchsuchen und exportieren.",
         "fields": [
             {
-                "key": "keywords",
-                "label": "Keywords",
+                "key": "search_terms",
+                "label": "Suchbegriffe",
                 "type": "text_area",
-                "placeholder": "Enter keywords (one per line)",
+                "placeholder": "z.B. High Ticket Coach\nManifestation\nOnline Business",
+                "help": "Ein Suchbegriff pro Zeile. Alle werden nacheinander abgefragt.",
                 "required": True,
             },
             {
-                "key": "countries",
-                "label": "Countries",
+                "key": "ad_reached_countries",
+                "label": "Länder",
                 "type": "multiselect",
-                "options": ["US", "DE", "UK", "FR", "IT", "AT", "CH"],
-                "default": ["DE"],
+                "options": ["AT", "DE", "CH", "US", "GB", "FR", "IT", "ES", "NL", "BE", "PL", "CZ", "HU", "RO", "SE", "NO", "DK", "FI", "PT", "IE", "AU", "CA", "BR", "MX", "IN"],
+                "default": ["AT", "DE"],
+                "help": "ISO-Ländercodes. Pflichtfeld für die API.",
                 "required": True,
             },
             {
-                "key": "page_limit",
-                "label": "Pages per keyword",
-                "type": "number",
-                "value": 5,
-                "min": 1,
-                "max": 50,
+                "key": "ad_active_status",
+                "label": "Status",
+                "type": "selectbox",
+                "options": ["ACTIVE", "ALL", "INACTIVE"],
+                "default": "ACTIVE",
+                "help": "ACTIVE = nur laufende Anzeigen, ALL = alle, INACTIVE = abgelaufene.",
             },
             {
-                "key": "max_results",
-                "label": "Max results per page",
+                "key": "publisher_platforms",
+                "label": "Plattformen",
+                "type": "multiselect",
+                "options": ["FACEBOOK", "INSTAGRAM", "AUDIENCE_NETWORK", "MESSENGER"],
+                "default": ["FACEBOOK", "INSTAGRAM"],
+                "help": "Auf welchen Plattformen die Anzeige geschaltet wird.",
+            },
+            {
+                "key": "languages",
+                "label": "Sprachen",
+                "type": "multiselect",
+                "options": ["de", "en", "fr", "it", "es", "pt", "nl", "pl", "cs", "hu", "ro", "sv", "no", "da", "fi"],
+                "default": ["de"],
+                "help": "Sprachfilter für Anzeigentexte.",
+            },
+            {
+                "key": "media_type",
+                "label": "Medientyp",
+                "type": "selectbox",
+                "options": ["ALL", "IMAGE", "VIDEO", "MEME", "NONE"],
+                "default": "ALL",
+                "help": "Typ des Werbemittels filtern.",
+            },
+            {
+                "key": "search_type",
+                "label": "Suchtyp",
+                "type": "selectbox",
+                "options": ["KEYWORD_UNORDERED", "KEYWORD_EXACT_PHRASE"],
+                "default": "KEYWORD_UNORDERED",
+                "help": "KEYWORD_UNORDERED = beliebige Reihenfolge, KEYWORD_EXACT_PHRASE = exakte Phrase.",
+            },
+            {
+                "key": "ad_delivery_date_min",
+                "label": "Anzeige ab (Datum)",
+                "type": "date",
+                "help": "Nur Anzeigen, die ab diesem Datum ausgeliefert wurden.",
+                "required": False,
+            },
+            {
+                "key": "ad_delivery_date_max",
+                "label": "Anzeige bis (Datum)",
+                "type": "date",
+                "help": "Nur Anzeigen, die bis zu diesem Datum ausgeliefert wurden.",
+                "required": False,
+            },
+            {
+                "key": "bylines",
+                "label": "Bezahlt von (Byline)",
+                "type": "text",
+                "placeholder": "z.B. Firmenname GmbH",
+                "help": "Filter nach 'Bezahlt von'-Angabe der Anzeige.",
+                "required": False,
+            },
+            {
+                "key": "search_page_ids",
+                "label": "Facebook Page IDs",
+                "type": "text_area",
+                "placeholder": "z.B. 123456789\n987654321",
+                "help": "Nur Anzeigen von bestimmten Facebook-Seiten. Eine Page-ID pro Zeile.",
+                "required": False,
+            },
+            {
+                "key": "limit",
+                "label": "Max Ergebnisse pro Suchbegriff",
                 "type": "number",
-                "value": 10,
+                "value": 50,
                 "min": 1,
-                "max": 100,
+                "max": 500,
+                "help": "Maximale Anzahl Anzeigen pro Suchbegriff.",
             },
         ],
     },
     "phantombuster_linkedin": {
         "name": "PhantomBuster Upload",
-        "description": "Import LinkedIn profiles from PhantomBuster export",
+        "description": "LinkedIn-Profile aus PhantomBuster CSV/XLSX-Export importieren.",
         "fields": [
             {
                 "key": "file_upload",
@@ -53,7 +123,7 @@ SCRAPING_SOURCES = {
     },
     "job_portal": {
         "name": "Job Portal Scraper",
-        "description": "Scrape job listings from various job portals",
+        "description": "Stellenanzeigen von Job-Portalen scrapen (in Entwicklung).",
         "fields": [
             {
                 "key": "portal",
@@ -64,21 +134,21 @@ SCRAPING_SOURCES = {
             },
             {
                 "key": "keywords",
-                "label": "Job Title Keywords",
+                "label": "Suchbegriffe",
                 "type": "text_area",
-                "placeholder": "e.g. Coach, Trainer, Consultant",
+                "placeholder": "z.B. Coach, Trainer, Berater",
                 "required": True,
             },
             {
                 "key": "location",
-                "label": "Location",
+                "label": "Ort",
                 "type": "text",
-                "placeholder": "City or region",
+                "placeholder": "Stadt oder Region",
                 "required": True,
             },
             {
                 "key": "max_pages",
-                "label": "Max pages to scrape",
+                "label": "Max Seiten",
                 "type": "number",
                 "value": 3,
                 "min": 1,
@@ -90,10 +160,8 @@ SCRAPING_SOURCES = {
 
 
 def get_source_config(source_key: str) -> dict:
-    """Get config for a specific source"""
     return SCRAPING_SOURCES.get(source_key, {})
 
 
 def list_sources() -> list:
-    """List all available sources"""
     return list(SCRAPING_SOURCES.keys())

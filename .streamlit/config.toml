@@ -3,11 +3,11 @@ headless = true
 runOnSave = true
 
 [theme]
-base = "light"
-primaryColor = "#10b981"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f9fafb"
-textColor = "#111827"
+base = "dark"
+primaryColor = "#c9a35f"
+backgroundColor = "#07070a"
+secondaryBackgroundColor = "#0d0e13"
+textColor = "#e9e6df"
 font = "sans serif"
 
 [browser]

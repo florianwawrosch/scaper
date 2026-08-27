@@ -48,6 +48,9 @@ class Run:
     feedback: str = ""
     best_model: str = ""  # welches Modell war am besten?
 
+    # Scraper-Konfiguration (für Meta Ads Library etc.)
+    scraper_config: dict = field(default_factory=dict)
+
     # Metadaten
     source: str = ""  # "meta_ads_library", "phantombuster_upload"
     data_file: str = ""  # pfad zu den rohdetaten
@@ -66,6 +69,7 @@ class Run:
             "rating": self.rating,
             "feedback": self.feedback,
             "best_model": self.best_model,
+            "scraper_config": self.scraper_config,
             "source": self.source,
             "data_file": self.data_file,
             "final_export": self.final_export,
@@ -97,6 +101,7 @@ class Run:
             rating=data.get("rating", 0),
             feedback=data.get("feedback", ""),
             best_model=data.get("best_model", ""),
+            scraper_config=data.get("scraper_config", {}),
             source=data.get("source", ""),
             data_file=data.get("data_file", ""),
             final_export=data.get("final_export", ""),

@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -7,9 +8,11 @@ import pandas as pd
 import streamlit as st
 from core.runs import list_runs, create_run
 from core.config import format_date, translate
-from core.ui import apply_global_styles, metric_card
+from core.ui import apply_global_styles, metric_card, section_header, status_badge
 from core.loaders import load_table
 from core.schema import CANONICAL_FIELDS, guess_mapping
+from core.scraping_config import get_source_config
+from core.presets import save_preset, list_presets, load_preset, get_last_preset
 
 st.set_page_config(page_title="Lead Pipeline", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
 
@@ -19,52 +22,191 @@ if "language" not in st.session_state:
 apply_global_styles()
 
 # ── Header ─────────────────────────────────────────────────────
-h1, h2 = st.columns([5, 1])
-with h1:
-    st.markdown("# Lead Pipeline")
-with h2:
+st.markdown("""
+<div class="app-header">
+    <div class="tag-label">Lead Pipeline · Multi-Source Scraper</div>
+    <h1 style="font-family:'Cormorant Garamond',serif!important;font-weight:300!important;font-size:clamp(28px,4vw,44px)!important;color:var(--ink)!important;margin:0 0 8px!important;">Lead <em style="font-style:italic;color:var(--gold-bright)!important;">Pipeline</em></h1>
+    <p style="color:var(--ink-dim)!important;font-size:14px!important;margin:0!important;font-weight:300!important;">Scrape · Filter · Enrich · Export</p>
+</div>
+""", unsafe_allow_html=True)
+
+lang_col1, lang_col2 = st.columns([6, 1])
+with lang_col2:
     st.session_state.language = st.selectbox(
         "Lang", ["de", "en"], index=0 if st.session_state.language == "de" else 1,
         format_func=lambda x: "DE" if x == "de" else "EN",
         key="lang", label_visibility="collapsed",
     )
 
-# ── New Run (compact) ──────────────────────────────────────────
-st.markdown("---")
+# ── New Run ───────────────────────────────────────────────────
+st.markdown(section_header("01", "Neuer Run"), unsafe_allow_html=True)
 
 source_options = {
     "phantombuster_linkedin": "PhantomBuster (LinkedIn)",
-    "meta_ads_library": "Meta Ads Library (coming soon)",
+    "meta_ads_library": "Meta Ads Library",
     "job_portal": "Job Portal Scraper (coming soon)",
 }
 
-c1, c2 = st.columns([2, 3])
-with c1:
-    selected_source = st.selectbox(
-        "Datenquelle", list(source_options.keys()),
-        format_func=lambda k: source_options[k],
-        key="source_select",
-    )
+selected_source = st.selectbox(
+    "Datenquelle", list(source_options.keys()),
+    format_func=lambda k: source_options[k],
+    key="source_select",
+)
 
-# Conditional UI based on source
-with c2:
-    if selected_source == "phantombuster_linkedin":
+
+def render_source_form(source_key: str):
+    """Dynamisches Formular basierend auf der Source-Config rendern."""
+    config = get_source_config(source_key)
+    if not config or source_key == "phantombuster_linkedin":
+        return None
+
+    fields = config.get("fields", [])
+    if not fields:
+        return None
+
+    # Preset laden
+    existing_presets = list_presets(source_key)
+    last = get_last_preset(source_key)
+    defaults = last or {}
+
+    if existing_presets:
+        preset_col1, preset_col2 = st.columns([2, 1])
+        with preset_col1:
+            selected_preset = st.selectbox(
+                "Gespeicherte Config laden",
+                ["— Neue Konfiguration —"] + existing_presets,
+                key=f"preset_{source_key}",
+            )
+        if selected_preset != "— Neue Konfiguration —":
+            loaded = load_preset(source_key, selected_preset)
+            if loaded:
+                defaults = loaded
+
+    values = {}
+    for field in fields:
+        key = field["key"]
+        ftype = field["type"]
+        label = field.get("label", key)
+        help_text = field.get("help", None)
+        default = defaults.get(key, field.get("default", field.get("value")))
+
+        if ftype == "text_area":
+            val = st.text_area(
+                label, value=default or "",
+                placeholder=field.get("placeholder", ""),
+                help=help_text, key=f"form_{source_key}_{key}",
+                height=100,
+            )
+            values[key] = val
+
+        elif ftype == "text":
+            val = st.text_input(
+                label, value=default or "",
+                placeholder=field.get("placeholder", ""),
+                help=help_text, key=f"form_{source_key}_{key}",
+            )
+            values[key] = val
+
+        elif ftype == "number":
+            val = st.number_input(
+                label,
+                value=default if default is not None else field.get("value", 1),
+                min_value=field.get("min", 1),
+                max_value=field.get("max", 1000),
+                help=help_text, key=f"form_{source_key}_{key}",
+            )
+            values[key] = val
+
+        elif ftype == "selectbox":
+            options = field.get("options", [])
+            default_val = default or field.get("default", options[0] if options else "")
+            idx = options.index(default_val) if default_val in options else 0
+            val = st.selectbox(
+                label, options=options, index=idx,
+                help=help_text, key=f"form_{source_key}_{key}",
+            )
+            values[key] = val
+
+        elif ftype == "multiselect":
+            options = field.get("options", [])
+            default_list = default if isinstance(default, list) else field.get("default", [])
+            val = st.multiselect(
+                label, options=options, default=default_list,
+                help=help_text, key=f"form_{source_key}_{key}",
+            )
+            values[key] = val
+
+        elif ftype == "date":
+            val = st.date_input(
+                label, value=None,
+                help=help_text, key=f"form_{source_key}_{key}",
+            )
+            values[key] = val
+
+    return values
+
+
+# ── Source-specific UI ────────────────────────────────────────
+uploaded = None
+
+if selected_source == "phantombuster_linkedin":
+    upload_col, btn_col = st.columns([3, 1])
+    with upload_col:
         uploaded = st.file_uploader(
             "CSV / XLSX hochladen", type=["csv", "xlsx", "xls"],
             key="home_uploader", label_visibility="collapsed",
         )
-    elif selected_source == "meta_ads_library":
-        st.markdown('<div class="helper-text" style="margin-top:0.5rem;">Meta Ads Library Scraper ist noch in Entwicklung.</div>', unsafe_allow_html=True)
-        uploaded = None
-    else:
-        st.markdown('<div class="helper-text" style="margin-top:0.5rem;">Job Portal Scraper ist noch in Entwicklung.</div>', unsafe_allow_html=True)
-        uploaded = None
+    with btn_col:
+        test_btn = st.button("Testdaten", key="test_data_btn", use_container_width=True)
 
-# Show preview + mapping + start button if file uploaded
+elif selected_source == "meta_ads_library":
+    form_values = render_source_form(selected_source)
+
+    if form_values:
+        save_col, start_col = st.columns([1, 1])
+        with save_col:
+            preset_name = st.text_input(
+                "Config speichern als",
+                placeholder="z.B. AT_Coaches_Standard",
+                key="preset_save_name",
+                label_visibility="collapsed",
+            )
+            if preset_name and st.button("Config speichern", key="save_preset_btn", use_container_width=True):
+                save_preset(selected_source, preset_name, form_values)
+                st.rerun()
+
+        with start_col:
+            if st.button("Run starten", type="primary", use_container_width=True, key="start_meta_run"):
+                from core.runs import save_raw_dataset, save_raw_mapping, save_run
+                run = create_run(selected_source)
+                run.scraper_config = form_values
+                run.status = "dataset_ready"
+                save_run(run)
+                save_preset(selected_source, "_last", form_values)
+                st.session_state["current_run_id"] = run.id
+                st.markdown("""
+                <div class="callout">
+                    <div class="callout-title">Info</div>
+                    <p>Meta Ads Library Scraper ist noch in Entwicklung. Die Konfiguration wurde gespeichert.</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+elif selected_source == "job_portal":
+    st.markdown(
+        '<div class="callout"><div class="callout-title">In Entwicklung</div>'
+        '<p>Job Portal Scraper ist noch nicht verfügbar.</p></div>',
+        unsafe_allow_html=True,
+    )
+
+# ── PhantomBuster: File Upload Flow ──────────────────────────
 if selected_source == "phantombuster_linkedin" and uploaded:
     df = load_table(uploaded)
     if df is not None:
-        st.markdown(f'<div class="helper-text" style="margin-top:0.5rem;">{len(df)} Zeilen &middot; {len(df.columns)} Spalten</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="helper-text"><span class="num" style="color:var(--gold-bright)!important;font-weight:500!important;">{len(df)}</span> Zeilen · '
+            f'<span class="num" style="color:var(--gold-bright)!important;font-weight:500!important;">{len(df.columns)}</span> Spalten</div>',
+            unsafe_allow_html=True,
+        )
 
         with st.expander("Spaltenzuordnung & Vorschau", expanded=False):
             mapping = guess_mapping(list(df.columns), selected_source)
@@ -92,9 +234,12 @@ if selected_source == "phantombuster_linkedin" and uploaded:
             st.session_state["current_run_id"] = run.id
             st.switch_page("pages/run_active.py")
 
-# Test data shortcut
+# PhantomBuster: Test Data shortcut
 if selected_source == "phantombuster_linkedin" and not uploaded:
-    if st.button("Mit Testdaten starten", key="test_data_btn"):
+    if "test_data_btn" in st.session_state and st.session_state.get("test_data_btn"):
+        pass  # button handled below
+
+    if st.session_state.get("test_data_btn"):
         from core.runs import save_raw_dataset, save_raw_mapping, save_run
         test_df = pd.DataFrame({
             "fullName": ["John Coach", "Sarah Fitness", "Mike Tech", "Emma Manifestation", "David B2B"],
@@ -114,19 +259,12 @@ if selected_source == "phantombuster_linkedin" and not uploaded:
         st.session_state["current_run_id"] = run.id
         st.switch_page("pages/run_active.py")
 
-# ── Run History (compact table) ────────────────────────────────
+# ── Run History ───────────────────────────────────────────────
 runs = list_runs()
 if runs:
-    st.markdown("---")
-    st.markdown("### Letzte Runs")
+    st.markdown(section_header("02", "Letzte Runs"), unsafe_allow_html=True)
 
-    # Build table data
-    table_data = []
-    for run in runs[:15]:
-        status_map = {
-            "draft": "Entwurf", "scraping": "Scraping", "dataset_ready": "Bereit",
-            "in_progress": "In Bearbeitung", "completed": "Abgeschlossen",
-        }
+    for i, run in enumerate(runs[:15]):
         keep = ""
         if run.classification_results:
             k = sum(r.get("keep", 0) for r in run.classification_results.values())
@@ -136,38 +274,38 @@ if runs:
         if run.rating:
             rating_str = f"{'★' * run.rating}{'☆' * (5 - run.rating)}"
 
-        table_data.append({
-            "Status": status_map.get(run.status, run.status),
-            "Quelle": run.source.replace("_", " ").title(),
-            "Datum": format_date(run.created_at, "short"),
-            "Behalten": keep,
-            "Rating": rating_str,
-            "_id": run.id,
-            "_status": run.status,
-        })
-
-    # Render compact rows
-    for i, row in enumerate(table_data):
-        cols = st.columns([1.2, 1.5, 1, 0.8, 1, 1])
+        cols = st.columns([1.5, 1.8, 1, 0.8, 1, 1])
 
         with cols[0]:
-            st.markdown(f'<div style="font-size:0.82rem;color:#6b7280;padding-top:0.4rem;">{row["Status"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'{status_badge(run.status)}', unsafe_allow_html=True)
         with cols[1]:
-            st.markdown(f'<div style="font-size:0.82rem;padding-top:0.4rem;">{row["Quelle"]}</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="font-size:13px;padding-top:0.2rem;color:var(--ink)!important;">{run.source.replace("_", " ").title()}</div>',
+                unsafe_allow_html=True,
+            )
         with cols[2]:
-            st.markdown(f'<div style="font-size:0.82rem;color:#6b7280;padding-top:0.4rem;">{row["Datum"]}</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="num" style="font-size:12px;padding-top:0.3rem;color:var(--ink-faint)!important;">{format_date(run.created_at, "short")}</div>',
+                unsafe_allow_html=True,
+            )
         with cols[3]:
-            if row["Behalten"]:
-                st.markdown(f'<div style="font-size:0.82rem;color:#10b981;font-weight:600;padding-top:0.4rem;">{row["Behalten"]}</div>', unsafe_allow_html=True)
+            if keep:
+                st.markdown(
+                    f'<div class="num" style="font-size:13px;color:var(--good)!important;font-weight:600;padding-top:0.3rem;">{keep}</div>',
+                    unsafe_allow_html=True,
+                )
         with cols[4]:
-            if row["Rating"]:
-                st.markdown(f'<div style="font-size:0.75rem;color:#f59e0b;padding-top:0.4rem;">{row["Rating"]}</div>', unsafe_allow_html=True)
+            if rating_str:
+                st.markdown(
+                    f'<div style="font-size:12px;color:var(--gold)!important;padding-top:0.3rem;">{rating_str}</div>',
+                    unsafe_allow_html=True,
+                )
         with cols[5]:
-            if row["_status"] == "completed":
-                if st.button("Details", key=f"r_{row['_id']}", use_container_width=True):
-                    st.session_state["view_run_id"] = row["_id"]
+            if run.status == "completed":
+                if st.button("Details", key=f"r_{run.id}", use_container_width=True):
+                    st.session_state["view_run_id"] = run.id
                     st.switch_page("pages/run_history_detail.py")
-            elif row["_status"] in ("dataset_ready", "in_progress"):
-                if st.button("Fortsetzen", key=f"r_{row['_id']}", use_container_width=True, type="primary"):
-                    st.session_state["current_run_id"] = row["_id"]
+            elif run.status in ("dataset_ready", "in_progress"):
+                if st.button("Fortsetzen", key=f"r_{run.id}", use_container_width=True, type="primary"):
+                    st.session_state["current_run_id"] = run.id
                     st.switch_page("pages/run_active.py")
