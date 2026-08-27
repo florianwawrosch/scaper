@@ -9,6 +9,9 @@ from typing import Any
 
 RUNS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".runs")
 
+# Dateien, die zu einem Run gehoeren, aber selbst kein Run sind.
+SIDECAR_SUFFIXES = ("_raw.json", "_raw_mapping.json", "_results.json")
+
 
 @dataclass
 class ModuleState:
@@ -145,10 +148,14 @@ def list_runs() -> list[Run]:
     os.makedirs(RUNS_DIR, exist_ok=True)
     runs = []
     for fname in sorted(os.listdir(RUNS_DIR), reverse=True):
-        if fname.endswith(".json") and not fname.endswith("_raw.json") and not fname.endswith("_mapping.json"):
-            run = load_run(fname[:-5])
-            if run:
-                runs.append(run)
+        if not fname.endswith(".json"):
+            continue
+        # Sidecar-Dateien (_raw, _raw_mapping, _results) sind keine Runs.
+        if any(fname.endswith(sfx) for sfx in SIDECAR_SUFFIXES):
+            continue
+        run = load_run(fname[:-5])
+        if run:
+            runs.append(run)
     return runs
 
 
@@ -164,6 +171,24 @@ def save_raw_dataset(run_id: str, df_data: list[dict]) -> str:
 def load_raw_dataset(run_id: str) -> list[dict] | None:
     """Lade den Raw Dataset."""
     path = os.path.join(RUNS_DIR, f"{run_id}_raw.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_results(run_id: str, results: list[dict]) -> str:
+    """Speichere die Klassifizierungs-Ergebnisse (pro Filter-Durchlauf ueberschrieben)."""
+    os.makedirs(RUNS_DIR, exist_ok=True)
+    path = os.path.join(RUNS_DIR, f"{run_id}_results.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def load_results(run_id: str) -> list[dict] | None:
+    """Lade die Klassifizierungs-Ergebnisse."""
+    path = os.path.join(RUNS_DIR, f"{run_id}_results.json")
     if not os.path.exists(path):
         return None
     with open(path, encoding="utf-8") as f:
