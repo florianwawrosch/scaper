@@ -11,6 +11,8 @@ from core.loaders import load_table, rows_from_df
 from core.schema import CANONICAL_FIELDS, guess_mapping, rows_to_leads
 from core.gemini_classifier import classify_batch
 from core.close_export import to_close_columns
+from core.enrichment import mock_enrich, get_providers
+from core.scraping_config import get_source_config
 from core import criteria_store
 
 st.set_page_config(page_title="Active Run", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
@@ -55,30 +57,43 @@ source_labels = {
 }
 
 with tab1:
-    st.markdown("## Upload Data")
-    if run.source == "meta_ads_library":
-        st.markdown("🚧 Meta Scraper in Development")
-    elif run.source == "phantombuster_linkedin":
-        col1, col2 = st.columns(2)
-        with col1:
-            uploaded = st.file_uploader("CSV/XLSX", type=["csv", "xlsx", "xls"], key="modul1_uploader", label_visibility="collapsed")
-        with col2:
-            if st.button("Test Data", key="load_test_data", use_container_width=True):
-                test_df = pd.DataFrame({
-                    "fullName": ["John Coach", "Sarah Fitness", "Mike Tech", "Emma Manifestation", "David B2B"],
-                    "companyName": ["High Ticket Academy", "Fit Pro Coaching", "Tech Startup Hub", "Manifestation Coaching", "Corporate Solutions"],
-                    "personalWebsite": ["https://highticket.com", "https://fitpro.de", "", "https://manifest.de", "https://b2bsolutions.de"],
-                    "linkedinHeadline": ["Business Coach", "Fitness Coach", "Tech Consultant", "Life Coach", "Business Development"],
-                    "linkedinDescription": ["I help entrepreneurs scale", "Personal training", "Building tech solutions", "Manifest your dreams", "Corporate strategy"],
-                })
-                st.session_state[f"run_{run_id}_df"] = test_df
-                st.rerun()
+    st.markdown("## Data Import")
+    source_config = get_source_config(run.source)
+
+    if not source_config:
+        st.error(f"Unknown source: {run.source}")
+    else:
+        st.markdown(f"_{source_config['description']}_")
+        st.markdown("---")
 
         df = None
-        if uploaded:
-            df = load_table(uploaded)
-        elif f"run_{run_id}_df" in st.session_state:
-            df = st.session_state[f"run_{run_id}_df"]
+
+        if run.source == "phantombuster_linkedin":
+            col1, col2 = st.columns(2)
+            with col1:
+                uploaded = st.file_uploader("CSV/XLSX", type=["csv", "xlsx", "xls"], key="modul1_uploader", label_visibility="collapsed")
+            with col2:
+                if st.button("Test Data", key="load_test_data", use_container_width=True):
+                    test_df = pd.DataFrame({
+                        "fullName": ["John Coach", "Sarah Fitness", "Mike Tech", "Emma Manifestation", "David B2B"],
+                        "companyName": ["High Ticket Academy", "Fit Pro Coaching", "Tech Startup Hub", "Manifestation Coaching", "Corporate Solutions"],
+                        "personalWebsite": ["https://highticket.com", "https://fitpro.de", "", "https://manifest.de", "https://b2bsolutions.de"],
+                        "linkedinHeadline": ["Business Coach", "Fitness Coach", "Tech Consultant", "Life Coach", "Business Development"],
+                        "linkedinDescription": ["I help entrepreneurs scale", "Personal training", "Building tech solutions", "Manifest your dreams", "Corporate strategy"],
+                    })
+                    st.session_state[f"run_{run_id}_df"] = test_df
+                    st.rerun()
+
+            if uploaded:
+                df = load_table(uploaded)
+            elif f"run_{run_id}_df" in st.session_state:
+                df = st.session_state[f"run_{run_id}_df"]
+
+        elif run.source == "meta_ads_library":
+            st.markdown("🚧 Meta Ads Library scraper coming soon")
+
+        else:
+            st.markdown(f"🚧 {source_config['name']} scraper in development")
 
         if df is not None:
             st.markdown(f"**{len(df)} rows** • {len(df.columns)} columns")
@@ -192,7 +207,72 @@ with tab2:
 
 with tab3:
     st.markdown("## Enrichment")
-    st.markdown("🚧 _Hunter.io / FindyMail Integration in Development_")
+
+    if f"run_{run_id}_df" not in st.session_state or f"run_{run_id}_results" not in st.session_state:
+        st.markdown("👈 Complete **Scraping** and **Review & Filter** tabs first")
+    else:
+        df = st.session_state[f"run_{run_id}_df"]
+        results = st.session_state[f"run_{run_id}_results"]
+        mapping = st.session_state[f"run_{run_id}_mapping"]
+
+        rows = rows_from_df(df)
+        criteria = criteria_store.load_criteria(run.source)
+
+        out_rows = []
+        for row, result in zip(rows, results):
+            out_rows.append({
+                **row,
+                **to_close_columns(result, criteria),
+                "_decision": result.decision,
+                "_reason": result.reason,
+            })
+        out_df = pd.DataFrame(out_rows)
+
+        keep_df = out_df[out_df["_decision"] == "keep"].copy()
+
+        if len(keep_df) == 0:
+            st.markdown("No leads to enrich (all rejected)")
+        else:
+            providers = get_providers()
+            selected_provider = st.selectbox(
+                "Enrichment Provider",
+                providers,
+                index=0,
+                key="enrichment_provider_select",
+                label_visibility="collapsed"
+            )
+
+            if st.button("→ Enrich", type="primary", use_container_width=True, key="modul3_enrich"):
+                enriched_rows = []
+                progress = st.progress(0.0, text="Enriching...")
+
+                for idx, (_, row) in enumerate(keep_df.iterrows()):
+                    name = row.get("name", "")
+                    company = row.get("company", "")
+
+                    if name and company:
+                        enrichment_result = mock_enrich(name, company, selected_provider)
+                        enriched_rows.append({
+                            **row,
+                            "email": enrichment_result.email,
+                            "phone": enrichment_result.phone,
+                            "enrichment_confidence": enrichment_result.confidence,
+                            "enrichment_provider": enrichment_result.provider,
+                        })
+                    else:
+                        enriched_rows.append(row)
+
+                    progress.progress((idx + 1) / len(keep_df), text=f"{idx + 1}/{len(keep_df)}")
+
+                st.session_state[f"run_{run_id}_enriched_df"] = pd.DataFrame(enriched_rows)
+                st.rerun()
+
+            if f"run_{run_id}_enriched_df" in st.session_state:
+                enriched_df = st.session_state[f"run_{run_id}_enriched_df"]
+                st.markdown("---")
+                st.markdown("### Enriched Results")
+                display_cols = [c for c in enriched_df.columns if not c.startswith("_")]
+                st.dataframe(enriched_df[display_cols], use_container_width=True, height=350)
 
 with tab4:
     st.markdown("## Export")
@@ -216,6 +296,15 @@ with tab4:
                 "_reason": result.reason,
             })
         out_df = pd.DataFrame(out_rows)
+
+        # Use enriched data if available
+        if f"run_{run_id}_enriched_df" in st.session_state:
+            enriched_df = st.session_state[f"run_{run_id}_enriched_df"]
+            # Merge enriched data back to full dataframe
+            keep_ids = out_df[out_df["_decision"] == "keep"].index
+            for col in ["email", "phone", "enrichment_confidence", "enrichment_provider"]:
+                if col in enriched_df.columns:
+                    out_df.loc[keep_ids, col] = enriched_df[col].values
 
         keep_count = (out_df["_decision"] == "keep").sum()
         reject_count = (out_df["_decision"] == "reject").sum()
