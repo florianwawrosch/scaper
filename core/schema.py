@@ -33,6 +33,13 @@ DEFAULT_MAPPINGS: dict[str, dict[str, str]] = {
         "headline": "linkedinHeadline",
         "description": "linkedinDescription",
     },
+    "phantombuster_upload": {
+        "name": "fullName",
+        "company": "companyName",
+        "website": "personalWebsite",
+        "headline": "linkedinHeadline",
+        "description": "linkedinDescription",
+    },
     "meta_ads_library": {
         # Platzhalter-Vorschlag, bis die echten PAGE_COLS aus
         # _ad_library_common.py vorliegen. In der UI frei anpassbar.

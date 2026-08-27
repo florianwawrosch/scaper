@@ -41,7 +41,7 @@ Importiere einen PhantomBuster-Export (LinkedIn-Profile).
     )
     if st.button("PhantomBuster-CSV hochladen", key="btn_pb", use_container_width=True, type="primary"):
         st.session_state["upload_mode"] = True
-        run = create_run("phantombuster_upload")
+        run = create_run("phantombuster_linkedin")
         st.session_state["current_run_id"] = run.id
         st.success(f"Run {run.id} erstellt. Upload-Seite lädt...")
         st.switch_page("pages/4_Run_Detail.py")
