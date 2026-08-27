@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 import streamlit as st
-from core.runs import load_run, save_run
+from core.runs import load_run, save_run, save_raw_dataset, load_raw_dataset, save_raw_mapping, load_raw_mapping
 from core.loaders import load_table, rows_from_df
 from core.schema import CANONICAL_FIELDS, guess_mapping, rows_to_leads
 from core.gemini_classifier import classify_batch
@@ -115,6 +115,18 @@ with tab1:
             st.dataframe(df.head(5), use_container_width=True, height=300)
 
             if st.button("→ Next", type="primary", use_container_width=True, key="modul1_confirm"):
+                # Save raw dataset (immutable after Step 1)
+                raw_data = df.to_dict(orient="records")
+                raw_dataset_path = save_raw_dataset(run_id, raw_data)
+                raw_mapping_path = save_raw_mapping(run_id, new_mapping)
+
+                # Update Run status
+                run.status = "dataset_ready"
+                run.raw_dataset_file = raw_dataset_path
+                run.raw_mapping_file = raw_mapping_path
+                save_run(run)
+
+                # Load into session state
                 st.session_state[f"run_{run_id}_df"] = df
                 st.session_state[f"run_{run_id}_mapping"] = new_mapping
                 st.rerun()
@@ -122,11 +134,28 @@ with tab1:
 with tab2:
     st.markdown("## Review & Filter")
 
+    # Load raw dataset if not in session state
     if f"run_{run_id}_df" not in st.session_state:
-        st.markdown("👈 Upload data in **Scraping** tab first")
+        raw_data = load_raw_dataset(run_id)
+        if raw_data:
+            df = pd.DataFrame(raw_data)
+            st.session_state[f"run_{run_id}_df"] = df
+        else:
+            df = None
     else:
         df = st.session_state[f"run_{run_id}_df"]
+
+    # Load mapping if not in session state
+    if f"run_{run_id}_mapping" not in st.session_state:
+        mapping = load_raw_mapping(run_id)
+        if mapping:
+            st.session_state[f"run_{run_id}_mapping"] = mapping
+    else:
         mapping = st.session_state[f"run_{run_id}_mapping"]
+
+    if df is None or mapping is None:
+        st.markdown("👈 Upload data in **Scraping** tab first")
+    else:
 
         if f"run_{run_id}_results" not in st.session_state:
             st.markdown("### Classify")
@@ -208,6 +237,24 @@ with tab2:
 with tab3:
     st.markdown("## Enrichment")
 
+    # Load data if needed
+    if f"run_{run_id}_df" not in st.session_state:
+        raw_data = load_raw_dataset(run_id)
+        if raw_data:
+            df = pd.DataFrame(raw_data)
+            st.session_state[f"run_{run_id}_df"] = df
+        else:
+            df = None
+    else:
+        df = st.session_state[f"run_{run_id}_df"]
+
+    if f"run_{run_id}_mapping" not in st.session_state:
+        mapping = load_raw_mapping(run_id)
+        if mapping:
+            st.session_state[f"run_{run_id}_mapping"] = mapping
+    else:
+        mapping = st.session_state[f"run_{run_id}_mapping"]
+
     if f"run_{run_id}_df" not in st.session_state or f"run_{run_id}_results" not in st.session_state:
         st.markdown("👈 Complete **Scraping** and **Review & Filter** tabs first")
     else:
@@ -276,6 +323,24 @@ with tab3:
 
 with tab4:
     st.markdown("## Export")
+
+    # Load data if needed
+    if f"run_{run_id}_df" not in st.session_state:
+        raw_data = load_raw_dataset(run_id)
+        if raw_data:
+            df = pd.DataFrame(raw_data)
+            st.session_state[f"run_{run_id}_df"] = df
+        else:
+            df = None
+    else:
+        df = st.session_state[f"run_{run_id}_df"]
+
+    if f"run_{run_id}_mapping" not in st.session_state:
+        mapping = load_raw_mapping(run_id)
+        if mapping:
+            st.session_state[f"run_{run_id}_mapping"] = mapping
+    else:
+        mapping = st.session_state[f"run_{run_id}_mapping"]
 
     if f"run_{run_id}_results" not in st.session_state or f"run_{run_id}_df" not in st.session_state:
         st.markdown("👈 Complete **Scraping** and **Review & Filter** tabs first")

@@ -28,7 +28,11 @@ class Run:
     id: str  # eindeutige ID (timestamp oder uuid)
     created_at: str
     updated_at: str
-    status: str  # "in_progress", "completed", "failed"
+    status: str  # "scraping" (Step 1 in progress), "dataset_ready" (Step 1 done, can reprocess), "completed"
+
+    # Raw Dataset (immutable nach Step 1)
+    raw_dataset_file: str = ""  # pfad zu .runs/{run_id}_raw.json
+    raw_mapping_file: str = ""  # pfad zu .runs/{run_id}_raw_mapping.json
 
     # Pipeline-Schritte
     modules: dict[str, ModuleState] = field(default_factory=dict)
@@ -52,6 +56,8 @@ class Run:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "status": self.status,
+            "raw_dataset_file": self.raw_dataset_file,
+            "raw_mapping_file": self.raw_mapping_file,
             "modules": {k: asdict(v) for k, v in self.modules.items()},
             "classification_results": self.classification_results,
             "rating": self.rating,
@@ -81,6 +87,8 @@ class Run:
             created_at=data["created_at"],
             updated_at=data["updated_at"],
             status=data["status"],
+            raw_dataset_file=data.get("raw_dataset_file", ""),
+            raw_mapping_file=data.get("raw_mapping_file", ""),
             modules=modules,
             classification_results=data.get("classification_results", {}),
             rating=data.get("rating", 0),
@@ -137,8 +145,44 @@ def list_runs() -> list[Run]:
     os.makedirs(RUNS_DIR, exist_ok=True)
     runs = []
     for fname in sorted(os.listdir(RUNS_DIR), reverse=True):
-        if fname.endswith(".json"):
+        if fname.endswith(".json") and not fname.endswith("_raw.json") and not fname.endswith("_mapping.json"):
             run = load_run(fname[:-5])
             if run:
                 runs.append(run)
     return runs
+
+
+def save_raw_dataset(run_id: str, df_data: list[dict]) -> str:
+    """Speichere den Raw Dataset (immutable nach Step 1)."""
+    os.makedirs(RUNS_DIR, exist_ok=True)
+    path = os.path.join(RUNS_DIR, f"{run_id}_raw.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(df_data, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def load_raw_dataset(run_id: str) -> list[dict] | None:
+    """Lade den Raw Dataset."""
+    path = os.path.join(RUNS_DIR, f"{run_id}_raw.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_raw_mapping(run_id: str, mapping: dict) -> str:
+    """Speichere das Raw Mapping (immutable nach Step 1)."""
+    os.makedirs(RUNS_DIR, exist_ok=True)
+    path = os.path.join(RUNS_DIR, f"{run_id}_raw_mapping.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(mapping, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def load_raw_mapping(run_id: str) -> dict | None:
+    """Lade das Raw Mapping."""
+    path = os.path.join(RUNS_DIR, f"{run_id}_raw_mapping.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
