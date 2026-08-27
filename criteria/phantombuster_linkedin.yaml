@@ -1,0 +1,34 @@
+# Filterkriterien fuer die Quelle "PhantomBuster / LinkedIn".
+# Quelle der Profile: Kommentare unter Posts der groessten High-Ticket-Coaches
+# (Engagement-basiertes Sourcing) -> im Schnitt bessere Trefferquote als die
+# frueher genutzte direkte LinkedIn-Suche, aber weiterhin Nacharbeit noetig.
+
+source: phantombuster_linkedin
+target_profile: >
+  High-Ticket-Online-Coaches, die nach dem Setter-/Closer-Prinzip arbeiten
+  und kostenlose Erstgespraeche, kostenlose Erstberatung oder eine
+  kostenlose Analyse als Einstieg anbieten.
+
+exclusion_rules:
+  - id: konzerncoach
+    label: "Konzerncoach / traditioneller Corporate Coach"
+    description: >
+      Angestellter Firmentrainer, Konzern-Personalentwickler oder klassischer
+      Trainer/Coach ohne eigenes High-Ticket-Online-Business.
+    active: true
+
+  - id: competitor
+    label: "Wettbewerber / Marketingagentur"
+    description: >
+      Andere Marketing-, Werbe- oder Funnel-Agenturen sowie Lead-Gen-Anbieter.
+    active: true
+
+  - id: no_high_ticket
+    label: "Kein High-Ticket-Coaching"
+    description: >
+      Normale/guenstige Coaches oder Berater ohne erkennbares
+      High-Ticket-Angebot.
+    active: true
+
+notes:
+  - "LinkedIn-Quelle liefert tendenziell schon bessere Treffer als frueher (Kommentar-Sourcing statt Direktsuche), Kriterien trotzdem identisch zur Meta-Quelle als Startpunkt."

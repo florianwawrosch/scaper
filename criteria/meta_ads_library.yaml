@@ -1,0 +1,38 @@
+# Filterkriterien fuer die Quelle "Meta Ads Library".
+# target_profile beschreibt, wen wir BEHALTEN wollen.
+# exclusion_rules sind einzelne, unabhaengig ein-/ausschaltbare Ausschlussgruende.
+# Neue Muster koennen hier jederzeit als neue Regel ergaenzt werden (id muss
+# eindeutig sein), ohne Code zu aendern.
+
+source: meta_ads_library
+target_profile: >
+  High-Ticket-Online-Coaches, die nach dem Setter-/Closer-Prinzip arbeiten
+  und kostenlose Erstgespraeche, kostenlose Erstberatung oder eine
+  kostenlose Analyse als Einstieg anbieten.
+
+exclusion_rules:
+  - id: konzerncoach
+    label: "Konzerncoach / traditioneller Corporate Coach"
+    description: >
+      Klassischer, alteingesessener Konzern- oder Firmentrainer ohne
+      erkennbares High-Ticket-Online-Business (z.B. angestellte Trainer,
+      klassische Weiterbildungsinstitute, Konzern-Vertriebstrainer ohne
+      eigenes Coaching-Funnel-Modell).
+    active: true
+
+  - id: competitor
+    label: "Wettbewerber / Marketingagentur"
+    description: >
+      Andere Marketing-, Werbe- oder Funnel-Agenturen. Das sind Konkurrenten,
+      keine potenziellen Kunden.
+    active: true
+
+  - id: no_high_ticket
+    label: "Kein High-Ticket-Coaching"
+    description: >
+      "Normale" bzw. guenstige Coaches/Berater ohne erkennbares
+      High-Ticket-Angebot (kein Hinweis auf hochpreisige Programme,
+      Premium-Positionierung o.ae.).
+    active: true
+
+notes: []
