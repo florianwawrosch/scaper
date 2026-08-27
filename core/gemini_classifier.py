@@ -62,10 +62,19 @@ NISCHEN (nur relevant wenn decision="keep", waehle die am besten passende):
     )
     return f"""Du bewertest Leads fuer eine Vertriebs-Pipeline.
 
-ZIELPROFIL (das wollen wir BEHALTEN):
+KERNFRAGE (das Einzige, was wirklich zaehlt): Ist dieser Lead ein
+High-Ticket-Online-Coach mit Setter-/Closer-Prinzip und einem Call-Funnel
+(z.B. kostenloses Erstgespraech/Erstberatung/Analyse als Einstieg), UND ist
+er KEIN Konkurrent? Wenn beides zutrifft: decision="keep".
+
+ZIELPROFIL:
 {criteria.get("target_profile", "").strip()}
 
-AUSSCHLUSSREGELN (wenn EINE davon zutrifft: ablehnen):
+REGELN: Genau eine davon ("competitor") ist ein eigenstaendiger, harter
+Ausschlussgrund. Alle anderen sind nur Erkennungsmerkmale/Hilfsindikatoren,
+die dir bei der Kernfrage helfen sollen zu erkennen, ob jemand KEIN
+High-Ticket-Coach ist (z.B. Konzerncoach-Muster) -- sie sind kein separates
+Ausschlusskriterium fuer sich genommen, sondern Belege fuer die Kernfrage.
 {rules_text or "(keine aktiven Regeln)"}
 {niche_instruction}
 LEAD-DATEN:

@@ -1,33 +1,46 @@
 # Filterkriterien fuer die Quelle "PhantomBuster / LinkedIn".
-# Quelle der Profile: Kommentare unter Posts der groessten High-Ticket-Coaches
-# (Engagement-basiertes Sourcing) -> im Schnitt bessere Trefferquote als die
-# frueher genutzte direkte LinkedIn-Suche, aber weiterhin Nacharbeit noetig.
+# Quelle der Profile: Kommentare/Likes unter Posts der groessten
+# High-Ticket-Coaches (Engagement-basiertes Sourcing) -> im Schnitt bessere
+# Trefferquote als die frueher genutzte direkte LinkedIn-Suche, aber
+# weiterhin Nacharbeit noetig.
+#
+# Kernentscheidung (das einzige, was wirklich zaehlt): Ist es ein
+# High-Ticket-Coach mit Setter-/Closer-Prinzip und Call-Funnel, UND ist er
+# KEIN Konkurrent? Wenn ja -> potenzieller Kunde. "konzerncoach" und
+# "no_high_ticket" sind nur Erkennungsmerkmale/Hilfsindikatoren dafuer, dass
+# jemand KEIN High-Ticket-Coach ist (z.B. "viele Konzernfuzzis auf LinkedIn"
+# -> Muster erkennen -> als Signal nutzen). "competitor" ist der einzige
+# zusaetzliche, eigenstaendige Ausschlussgrund.
 
 source: phantombuster_linkedin
 target_profile: >
-  High-Ticket-Online-Coaches, die nach dem Setter-/Closer-Prinzip arbeiten
-  und kostenlose Erstgespraeche, kostenlose Erstberatung oder eine
-  kostenlose Analyse als Einstieg anbieten.
+  High-Ticket-Online-Coaches mit Setter-/Closer-Prinzip und einem
+  Call-Funnel (z.B. kostenloses Erstgespraech, kostenlose Erstberatung oder
+  kostenlose Analyse als Einstieg). Das ist die einzige harte Bedingung,
+  zusammen mit "kein Konkurrent" (siehe Regel "competitor").
 
 exclusion_rules:
-  - id: konzerncoach
-    label: "Konzerncoach / traditioneller Corporate Coach"
-    description: >
-      Angestellter Firmentrainer, Konzern-Personalentwickler oder klassischer
-      Trainer/Coach ohne eigenes High-Ticket-Online-Business.
-    active: true
-
   - id: competitor
-    label: "Wettbewerber / Marketingagentur"
+    label: "Wettbewerber / Marketingagentur (harter Ausschluss)"
     description: >
       Andere Marketing-, Werbe- oder Funnel-Agenturen sowie Lead-Gen-Anbieter.
+      Das sind Konkurrenten, keine potenziellen Kunden.
+    active: true
+
+  - id: konzerncoach
+    label: "Signal: Konzerncoach / traditioneller Corporate Coach"
+    description: >
+      Hilfsindikator dafuer, dass jemand KEIN High-Ticket-Online-Coach ist:
+      angestellter Firmentrainer, Konzern-Personalentwickler oder
+      klassischer Trainer/Coach ohne eigenes High-Ticket-Online-Business.
     active: true
 
   - id: no_high_ticket
-    label: "Kein High-Ticket-Coaching"
+    label: "Signal: kein erkennbares High-Ticket-Angebot / kein Call-Funnel"
     description: >
-      Normale/guenstige Coaches oder Berater ohne erkennbares
-      High-Ticket-Angebot.
+      Hilfsindikator dafuer, dass jemand KEIN High-Ticket-Online-Coach ist:
+      normale/guenstige Coaches oder Berater ohne erkennbares
+      High-Ticket-Angebot oder Call-Funnel.
     active: true
 
 niches:
