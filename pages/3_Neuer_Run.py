@@ -8,7 +8,7 @@ from core.runs import create_run
 
 st.set_page_config(page_title="Neuer Run", page_icon="✨", layout="wide", initial_sidebar_state="collapsed")
 
-st.markdown("# ✨ Neuer Run")
+st.markdown("# Neuer Run")
 st.markdown("_Wähle eine Datenquelle aus_")
 st.markdown("---")
 

@@ -8,7 +8,7 @@ from core.runs import list_runs, load_run
 
 st.set_page_config(
     page_title="Lead Pipeline",
-    page_icon="✨",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -38,8 +38,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Header
-st.markdown("# ✨ Lead Pipeline")
-st.markdown("_Scrape • Klassifiziere • Exportiere_")
+st.markdown("# Lead Pipeline")
+st.markdown("_Scrape → Filter → Enrich → Export_")
 
 col1, col2, col3 = st.columns([1, 1, 1])
 with col3:

@@ -14,7 +14,7 @@ from core.gemini_classifier import classify_batch
 from core.close_export import to_close_columns
 from core import criteria_store
 
-st.set_page_config(page_title="Run Detail", page_icon="✨", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Run Detail", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
 <style>
@@ -45,7 +45,7 @@ if not run:
     st.error(f"Run {run_id} nicht gefunden.")
     st.stop()
 
-st.markdown(f"# ✨ {run_id}")
+st.markdown(f"# {run_id}")
 st.markdown(f'<div class="header-info">{run.source.replace("_", " ").title()} • Status: {run.status} • {run.created_at[:10]}</div>', unsafe_allow_html=True)
 
 tab1, tab2, tab3, tab4 = st.tabs(["📥 Scraping", "👀 Review & Filter", "✨ Enrichment", "📊 Export"])
