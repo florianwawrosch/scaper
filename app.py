@@ -3,139 +3,171 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import pandas as pd
 import streamlit as st
-from core.runs import list_runs, load_run, create_run
+from core.runs import list_runs, create_run
 from core.config import format_date, translate
-from core.ui import apply_global_styles, status_badge
+from core.ui import apply_global_styles, metric_card
+from core.loaders import load_table
+from core.schema import CANONICAL_FIELDS, guess_mapping
 
-st.set_page_config(
-    page_title="Lead Pipeline",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="Lead Pipeline", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
 
-# Initialize language
 if "language" not in st.session_state:
     st.session_state.language = "de"
 
 apply_global_styles()
 
 # ── Header ─────────────────────────────────────────────────────
-head_l, head_r = st.columns([4, 1])
-with head_l:
+h1, h2 = st.columns([5, 1])
+with h1:
     st.markdown("# Lead Pipeline")
-    st.markdown('<div class="subtitle">Scrape &rarr; Filter &rarr; Enrich &rarr; Export</div>', unsafe_allow_html=True)
-with head_r:
+with h2:
     st.session_state.language = st.selectbox(
-        "Sprache", ["de", "en"],
-        index=0 if st.session_state.language == "de" else 1,
-        format_func=lambda x: "Deutsch" if x == "de" else "English",
-        key="lang_selector",
-        label_visibility="collapsed",
+        "Lang", ["de", "en"], index=0 if st.session_state.language == "de" else 1,
+        format_func=lambda x: "DE" if x == "de" else "EN",
+        key="lang", label_visibility="collapsed",
     )
 
-# ── New Run ────────────────────────────────────────────────────
+# ── New Run (compact) ──────────────────────────────────────────
 st.markdown("---")
 
-# If there's an active run waiting, go straight there
-if st.session_state.get("current_run_id"):
-    st.switch_page("pages/run_active.py")
+source_options = {
+    "phantombuster_linkedin": "PhantomBuster (LinkedIn)",
+    "meta_ads_library": "Meta Ads Library (coming soon)",
+    "job_portal": "Job Portal Scraper (coming soon)",
+}
 
-st.markdown("## Neuen Run starten")
-st.markdown('<div class="helper-text">Wähle eine Datenquelle, um einen neuen Run zu starten.</div>', unsafe_allow_html=True)
+c1, c2 = st.columns([2, 3])
+with c1:
+    selected_source = st.selectbox(
+        "Datenquelle", list(source_options.keys()),
+        format_func=lambda k: source_options[k],
+        key="source_select",
+    )
 
-col1, col2, col3 = st.columns(3, gap="medium")
+# Conditional UI based on source
+with c2:
+    if selected_source == "phantombuster_linkedin":
+        uploaded = st.file_uploader(
+            "CSV / XLSX hochladen", type=["csv", "xlsx", "xls"],
+            key="home_uploader", label_visibility="collapsed",
+        )
+    elif selected_source == "meta_ads_library":
+        st.markdown('<div class="helper-text" style="margin-top:0.5rem;">Meta Ads Library Scraper ist noch in Entwicklung.</div>', unsafe_allow_html=True)
+        uploaded = None
+    else:
+        st.markdown('<div class="helper-text" style="margin-top:0.5rem;">Job Portal Scraper ist noch in Entwicklung.</div>', unsafe_allow_html=True)
+        uploaded = None
 
-sources = [
-    ("meta_ads_library", "Meta Ads Library",
-     "Scrape aktive Werbung aus der Meta Ads Library.",
-     "Keywords, Länder, Filter • Meta API Token nötig"),
-    ("phantombuster_linkedin", "PhantomBuster Upload",
-     "LinkedIn-Profile aus PhantomBuster-Export importieren.",
-     "CSV / XLSX • Spalten werden automatisch erkannt"),
-    ("job_portal", "Job Portal Scraper",
-     "Job-Inserate von LinkedIn, Indeed oder Xing scrapen.",
-     "Portal, Keywords, Region • In Entwicklung"),
-]
+# Show preview + mapping + start button if file uploaded
+if selected_source == "phantombuster_linkedin" and uploaded:
+    df = load_table(uploaded)
+    if df is not None:
+        st.markdown(f'<div class="helper-text" style="margin-top:0.5rem;">{len(df)} Zeilen &middot; {len(df.columns)} Spalten</div>', unsafe_allow_html=True)
 
-for col, (source_key, name, desc, details) in zip([col1, col2, col3], sources):
-    with col:
-        st.markdown(f"""
-        <div class="source-card">
-            <h4>{name}</h4>
-            <p>{desc}</p>
-            <p style="margin-top: 0.75rem; font-size: 0.8rem; color: #9ca3af;">{details}</p>
-        </div>
-        """, unsafe_allow_html=True)
+        with st.expander("Spaltenzuordnung & Vorschau", expanded=False):
+            mapping = guess_mapping(list(df.columns), selected_source)
+            cols = st.columns(len(CANONICAL_FIELDS))
+            new_mapping = {}
+            options = [""] + list(df.columns)
+            for col, field in zip(cols, CANONICAL_FIELDS):
+                with col:
+                    current = mapping.get(field, "")
+                    idx = options.index(current) if current in options else 0
+                    new_mapping[field] = st.selectbox(field, options=options, index=idx, key=f"hmap_{field}")
 
-        disabled = source_key in ("meta_ads_library", "job_portal")
-        label = "Bald verfügbar" if disabled else "Start"
-        if st.button(label, key=f"btn_{source_key}", use_container_width=True,
-                     type="primary" if not disabled else "secondary",
-                     disabled=disabled):
-            run = create_run(source_key)
+            st.dataframe(df.head(5), use_container_width=True, height=200)
+
+        if st.button("Run starten", type="primary", use_container_width=False, key="start_run"):
+            from core.runs import save_raw_dataset, save_raw_mapping, save_run
+            run = create_run(selected_source)
+            raw_data = df.to_dict(orient="records")
+            run.raw_dataset_file = save_raw_dataset(run.id, raw_data)
+            run.raw_mapping_file = save_raw_mapping(run.id, new_mapping)
+            run.status = "dataset_ready"
+            save_run(run)
+            st.session_state[f"run_{run.id}_df"] = df
+            st.session_state[f"run_{run.id}_mapping"] = new_mapping
             st.session_state["current_run_id"] = run.id
             st.switch_page("pages/run_active.py")
 
-# ── Run History ────────────────────────────────────────────────
+# Test data shortcut
+if selected_source == "phantombuster_linkedin" and not uploaded:
+    if st.button("Mit Testdaten starten", key="test_data_btn"):
+        from core.runs import save_raw_dataset, save_raw_mapping, save_run
+        test_df = pd.DataFrame({
+            "fullName": ["John Coach", "Sarah Fitness", "Mike Tech", "Emma Manifestation", "David B2B"],
+            "companyName": ["High Ticket Academy", "Fit Pro Coaching", "Tech Startup Hub", "Manifestation Coaching", "Corporate Solutions"],
+            "personalWebsite": ["https://highticket.com", "https://fitpro.de", "", "https://manifest.de", "https://b2bsolutions.de"],
+            "linkedinHeadline": ["Business Coach", "Fitness Coach", "Tech Consultant", "Life Coach", "Business Development"],
+            "linkedinDescription": ["I help entrepreneurs scale", "Personal training", "Building tech solutions", "Manifest your dreams", "Corporate strategy"],
+        })
+        mapping = guess_mapping(list(test_df.columns), selected_source)
+        run = create_run(selected_source)
+        run.raw_dataset_file = save_raw_dataset(run.id, test_df.to_dict(orient="records"))
+        run.raw_mapping_file = save_raw_mapping(run.id, mapping)
+        run.status = "dataset_ready"
+        save_run(run)
+        st.session_state[f"run_{run.id}_df"] = test_df
+        st.session_state[f"run_{run.id}_mapping"] = mapping
+        st.session_state["current_run_id"] = run.id
+        st.switch_page("pages/run_active.py")
+
+# ── Run History (compact table) ────────────────────────────────
 runs = list_runs()
 if runs:
     st.markdown("---")
-    st.markdown(f"## {translate('last_runs')}")
+    st.markdown("### Letzte Runs")
 
-    for i, run in enumerate(runs[:10]):
-        cols = st.columns([0.3, 3, 1, 1, 1])
-
-        status_icons = {
-            "draft": "📝", "scraping": "🔄", "dataset_ready": "📦",
-            "in_progress": "⚙️", "completed": "✅", "failed": "❌",
+    # Build table data
+    table_data = []
+    for run in runs[:15]:
+        status_map = {
+            "draft": "Entwurf", "scraping": "Scraping", "dataset_ready": "Bereit",
+            "in_progress": "In Bearbeitung", "completed": "Abgeschlossen",
         }
+        keep = ""
+        if run.classification_results:
+            k = sum(r.get("keep", 0) for r in run.classification_results.values())
+            keep = str(k)
+
+        rating_str = ""
+        if run.rating:
+            rating_str = f"{'★' * run.rating}{'☆' * (5 - run.rating)}"
+
+        table_data.append({
+            "Status": status_map.get(run.status, run.status),
+            "Quelle": run.source.replace("_", " ").title(),
+            "Datum": format_date(run.created_at, "short"),
+            "Behalten": keep,
+            "Rating": rating_str,
+            "_id": run.id,
+            "_status": run.status,
+        })
+
+    # Render compact rows
+    for i, row in enumerate(table_data):
+        cols = st.columns([1.2, 1.5, 1, 0.8, 1, 1])
 
         with cols[0]:
-            st.markdown(f"<div style='font-size: 1.2rem; margin-top: 0.5rem;'>{status_icons.get(run.status, '❓')}</div>", unsafe_allow_html=True)
-
+            st.markdown(f'<div style="font-size:0.82rem;color:#6b7280;padding-top:0.4rem;">{row["Status"]}</div>', unsafe_allow_html=True)
         with cols[1]:
-            created_date = format_date(run.created_at, "short")
-            source_label = run.source.replace("_", " ").title()
-            st.markdown(f"""
-            <div class="run-row">
-                <div>
-                    <div class="run-title">{run.id}</div>
-                    <div class="run-meta">{source_label} &middot; {created_date}</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
+            st.markdown(f'<div style="font-size:0.82rem;padding-top:0.4rem;">{row["Quelle"]}</div>', unsafe_allow_html=True)
         with cols[2]:
-            if run.classification_results:
-                keep = sum(r.get("keep", 0) for r in run.classification_results.values())
-                st.markdown(f"""
-                <div style="text-align: center; padding-top: 0.5rem;">
-                    <div style="font-size: 1.1rem; font-weight: 700; color: #10b981;">{keep}</div>
-                    <div style="font-size: 0.75rem; color: #6b7280;">{translate("keep")}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
+            st.markdown(f'<div style="font-size:0.82rem;color:#6b7280;padding-top:0.4rem;">{row["Datum"]}</div>', unsafe_allow_html=True)
         with cols[3]:
-            if run.rating:
-                stars = "★" * run.rating + "☆" * (5 - run.rating)
-                st.markdown(f"""
-                <div style="text-align: center; padding-top: 0.5rem;">
-                    <div style="font-size: 0.85rem; letter-spacing: 1px; color: #f59e0b;">{stars}</div>
-                    <div style="font-size: 0.75rem; color: #6b7280;">{run.rating}/5</div>
-                </div>
-                """, unsafe_allow_html=True)
-
+            if row["Behalten"]:
+                st.markdown(f'<div style="font-size:0.82rem;color:#10b981;font-weight:600;padding-top:0.4rem;">{row["Behalten"]}</div>', unsafe_allow_html=True)
         with cols[4]:
-            if run.status == "completed":
-                if st.button("Details", key=f"run_{run.id}", use_container_width=True):
-                    st.session_state["view_run_id"] = run.id
+            if row["Rating"]:
+                st.markdown(f'<div style="font-size:0.75rem;color:#f59e0b;padding-top:0.4rem;">{row["Rating"]}</div>', unsafe_allow_html=True)
+        with cols[5]:
+            if row["_status"] == "completed":
+                if st.button("Details", key=f"r_{row['_id']}", use_container_width=True):
+                    st.session_state["view_run_id"] = row["_id"]
                     st.switch_page("pages/run_history_detail.py")
-            elif run.status in ("dataset_ready", "in_progress"):
-                if st.button("Fortsetzen", key=f"run_{run.id}", use_container_width=True, type="primary"):
-                    st.session_state["current_run_id"] = run.id
+            elif row["_status"] in ("dataset_ready", "in_progress"):
+                if st.button("Fortsetzen", key=f"r_{row['_id']}", use_container_width=True, type="primary"):
+                    st.session_state["current_run_id"] = row["_id"]
                     st.switch_page("pages/run_active.py")
-
-        if i < len(runs) - 1 and i < 9:
-            st.markdown('<div style="border-top: 1px solid #f3f4f6;"></div>', unsafe_allow_html=True)
