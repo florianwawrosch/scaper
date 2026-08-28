@@ -53,6 +53,16 @@ export const api = {
       return res.json() as Promise<ScrapeRun>;
     },
 
+    update: async (runId: string, data: Partial<ScrapeRun>) => {
+      const res = await fetch(`${API_BASE}/api/runs/${runId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to update run');
+      return res.json() as Promise<ScrapeRun>;
+    },
+
     getDataset: async (runId: string) => {
       const res = await fetch(`${API_BASE}/api/runs/${runId}/dataset`);
       if (!res.ok) throw new Error('Failed to fetch dataset');

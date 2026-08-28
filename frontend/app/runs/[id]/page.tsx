@@ -16,12 +16,17 @@ export default function RunDetail() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('Scraping');
   const [error, setError] = useState<string | null>(null);
+  const [rating, setRating] = useState<number>(0);
+  const [feedback, setFeedback] = useState('');
+  const [savingRating, setSavingRating] = useState(false);
 
   useEffect(() => {
     const loadRun = async () => {
       try {
         const data = await api.runs.get(runId);
         setRun(data);
+        setRating(data.rating || 0);
+        setFeedback(data.feedback || '');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load run');
       } finally {
@@ -30,6 +35,22 @@ export default function RunDetail() {
     };
     loadRun();
   }, [runId]);
+
+  const handleSaveRating = async () => {
+    if (!run) return;
+    setSavingRating(true);
+    try {
+      const updated = await api.runs.update(runId, {
+        rating,
+        feedback,
+      });
+      setRun(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save rating');
+    } finally {
+      setSavingRating(false);
+    }
+  };
 
   const getStatusBadge = (status: ScrapeRun['status']) => {
     const statusMap = {
@@ -146,67 +167,158 @@ export default function RunDetail() {
         {/* Tab Content */}
         <div className="mb-8">
           {activeTab === 'Scraping' && (
-            <div className="space-y-4">
-              <div className="bg-panel-2 border border-line-soft rounded-lg p-6">
-                <h3 className="font-mono text-xs tracking-wider uppercase text-ink-faint mb-4 font-medium">
-                  Scraping Progress
+            <div className="space-y-3">
+              <div className="bg-panel-2 border border-line-soft rounded p-4">
+                <h3 className="font-mono text-xs tracking-wider text-ink-faint mb-3 font-medium">
+                  Progress
                 </h3>
                 <div className="space-y-3">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-ink-dim">Keywords scraped</span>
-                    <span className="font-mono text-gold font-semibold">{classificationResult?.keep || 0} / 100</span>
-                  </div>
-                  <div className="w-full h-2 bg-panel-3 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-gold to-gold-bright rounded-full"
-                      style={{ width: `${((classificationResult?.keep || 0) / 100) * 100}%` }}
-                    />
+                  <div>
+                    <div className="flex justify-between items-center text-xs mb-1">
+                      <span className="text-ink-dim">Scraped</span>
+                      <span className="font-mono text-gold font-semibold">{classificationResult?.keep || 0}</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-panel-3 rounded overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-gold to-gold-bright" style={{ width: '75%' }} />
+                    </div>
                   </div>
                 </div>
               </div>
-              <p className="text-ink-dim text-sm">Status: <span className="text-ink font-mono">{run.status}</span></p>
+              <div className="bg-panel-3 rounded p-3 text-xs text-ink-dim font-mono">
+                <div className="space-y-1">
+                  <div>Status: <span className="text-ink">{run.status}</span></div>
+                  <div>Created: <span className="text-ink-faint">{formatDate(run.created_at)}</span></div>
+                </div>
+              </div>
             </div>
           )}
 
           {activeTab === 'Review & Filter' && (
-            <div className="bg-panel-2 border border-line-soft rounded-lg p-6">
-              <p className="text-ink-dim text-sm mb-4">
-                Review and filter the scraped data. Keep entries you want to enrich further.
-              </p>
-              <div className="text-center py-8">
-                <p className="text-ink-faint text-sm">Filtered: <span className="text-gold font-mono font-semibold">{classificationResult?.keep || 0}</span></p>
+            <div className="space-y-3">
+              <div className="bg-panel-2 border border-line-soft rounded p-4">
+                <h3 className="font-mono text-xs tracking-wider text-ink-faint mb-3 font-medium">
+                  Filter
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <button className="h-8 bg-good/10 border border-good/35 text-good rounded text-xs font-medium hover:bg-good/20 transition-colors">
+                    Behalten
+                  </button>
+                  <button className="h-8 bg-bad/10 border border-bad/35 text-bad rounded text-xs font-medium hover:bg-bad/20 transition-colors">
+                    Ablehnen
+                  </button>
+                </div>
+              </div>
+              <div className="bg-panel-3 rounded p-3">
+                <div className="grid grid-cols-3 gap-3 text-center text-xs">
+                  <div>
+                    <p className="text-ink-faint mb-1">Behalten</p>
+                    <p className="text-good font-mono font-semibold">{classificationResult?.keep || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-ink-faint mb-1">Ablehnen</p>
+                    <p className="text-bad font-mono font-semibold">{classificationResult?.reject || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-ink-faint mb-1">Unklar</p>
+                    <p className="text-warn font-mono font-semibold">{classificationResult?.unklar || 0}</p>
+                  </div>
+                </div>
               </div>
             </div>
           )}
 
           {activeTab === 'Enrichment' && (
-            <div className="bg-panel-2 border border-line-soft rounded-lg p-6">
-              <p className="text-ink-dim text-sm mb-4">
-                Enrich data with contact information, company details, and more.
-              </p>
-              <div className="text-center py-8">
-                <p className="text-ink-faint text-sm">Ready for enrichment: <span className="text-warn font-mono font-semibold">{classificationResult?.keep || 0}</span></p>
+            <div className="space-y-3">
+              <div className="bg-panel-2 border border-line-soft rounded p-4">
+                <h3 className="font-mono text-xs tracking-wider text-ink-faint mb-3 font-medium">
+                  Enrichment
+                </h3>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-ink-dim">Contact Info</span>
+                    <span className="text-warn font-mono">pending</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-ink-dim">Company Details</span>
+                    <span className="text-warn font-mono">pending</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-ink-dim">Email Validation</span>
+                    <span className="text-warn font-mono">pending</span>
+                  </div>
+                </div>
               </div>
+              <button className="w-full h-8 bg-gradient-to-r from-gold to-gold-dim text-noir rounded hover:from-gold-bright hover:to-gold transition-colors text-xs font-medium font-semibold">
+                Enrichment starten
+              </button>
             </div>
           )}
 
           {activeTab === 'Export' && (
-            <div className="space-y-4">
-              <div className="bg-panel-2 border border-line-soft rounded-lg p-6">
-                <h3 className="font-mono text-xs tracking-wider uppercase text-ink-faint mb-4 font-medium">
-                  Export Options
+            <div className="space-y-3">
+              <div className="bg-panel-2 border border-line-soft rounded p-4">
+                <h3 className="font-mono text-xs tracking-wider text-ink-faint mb-3 font-medium">
+                  Format
                 </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <button className="h-10 bg-panel-3 border border-line rounded-lg text-ink hover:border-gold-dim transition-colors text-sm font-medium">
-                    XLSX herunterladen
+                <div className="grid grid-cols-2 gap-3">
+                  <button className="h-8 bg-gradient-to-r from-gold/40 to-gold-dim/40 border border-gold/35 text-gold rounded hover:from-gold/60 hover:to-gold-dim/60 transition-colors text-xs font-medium">
+                    ↓ XLSX
                   </button>
-                  <button className="h-10 bg-panel-3 border border-line rounded-lg text-ink hover:border-gold-dim transition-colors text-sm font-medium">
-                    CSV herunterladen
+                  <button className="h-8 bg-gradient-to-r from-gold/40 to-gold-dim/40 border border-gold/35 text-gold rounded hover:from-gold/60 hover:to-gold-dim/60 transition-colors text-xs font-medium">
+                    ↓ CSV
                   </button>
                 </div>
               </div>
+              <div className="bg-panel-3 rounded p-3 text-xs text-ink-dim">
+                <p className="mb-1">Zeilen zum Export:</p>
+                <p className="font-mono text-gold font-semibold">{classificationResult?.keep || 0} Einträge</p>
+              </div>
             </div>
           )}
+        </div>
+
+        {/* Rating & Feedback */}
+        <div className="border-t border-line pt-6 mt-8">
+          <h3 className="text-lg font-disp font-normal mb-4">Bewertung & Feedback</h3>
+          <div className="bg-panel-2 border border-line-soft rounded p-4 space-y-3">
+            <div>
+              <label className="block text-xs font-mono tracking-wider text-ink-faint mb-2">
+                Rating
+              </label>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    onClick={() => setRating(star)}
+                    className={`text-2xl transition-colors cursor-pointer ${
+                      rating >= star ? 'text-gold' : 'text-ink-faint'
+                    } hover:text-gold-bright`}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-mono tracking-wider text-ink-faint mb-1">
+                Feedback
+              </label>
+              <textarea
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="Dein Feedback zu diesem Run..."
+                className="w-full bg-panel-3 border border-line rounded text-ink px-2.5 py-1.5 text-sm resize-none"
+                rows={2}
+              />
+            </div>
+            <button
+              onClick={handleSaveRating}
+              disabled={savingRating}
+              className="h-8 bg-gradient-to-r from-gold to-gold-dim text-noir rounded hover:from-gold-bright hover:to-gold transition-colors text-xs font-medium font-semibold w-full disabled:opacity-50"
+            >
+              {savingRating ? 'Wird gespeichert...' : 'Speichern'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
