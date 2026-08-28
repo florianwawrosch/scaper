@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, getApiBase } from '@/lib/api';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from './Toast';
 
@@ -45,7 +45,7 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
     const s = loadSettings();
     setApiKeys(s.apiKeys as Record<string, string>);
     // Also check which keys the backend has as env vars
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/config/providers`, { signal: AbortSignal.timeout(4000) })
+    fetch(`${getApiBase()}/api/config/providers`, { signal: AbortSignal.timeout(4000) })
       .then(r => r.ok ? r.json() : {})
       .then(setBackendKeys)
       .catch(() => {})

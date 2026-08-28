@@ -70,6 +70,7 @@ export default function Settings() {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [input,      setInput]      = useState('');
   const [show,       setShow]       = useState<Record<string, boolean>>({});
+  const [backendUrl, setBackendUrl] = useState('');
 
   useEffect(() => {
     const s = loadSettings();
@@ -80,7 +81,17 @@ export default function Settings() {
       const raw = localStorage.getItem('appSettings');
       if (raw) setLocalKeys((JSON.parse(raw) as any).apiKeys ?? {});
     } catch {}
+    try { setBackendUrl(localStorage.getItem('backendUrl') ?? ''); } catch {}
   }, []);
+
+  const saveBackendUrl = () => {
+    try {
+      const v = backendUrl.trim().replace(/\/+$/, '');
+      if (v) localStorage.setItem('backendUrl', v);
+      else localStorage.removeItem('backendUrl');
+      setBackendUrl(v);
+    } catch {}
+  };
 
   const persist = (nextKeys: Record<string, string>, nextTheme: 'noir' | 'classic') => {
     const current = loadSettings();
@@ -311,6 +322,34 @@ export default function Settings() {
                   )}
                 </div>
               ))}
+
+              {/* ── Backend URL ── */}
+              <div>
+                <div style={{ height: 1, background: T.lineS, marginBottom: 24 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <p style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: T.inkF }}>
+                    Backend
+                  </p>
+                  <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, opacity: .6 }}>API-Server für Scraping, Analyse und Enrichment</p>
+                </div>
+                <div style={{ background: T.panel2, border: '1px solid rgba(255,255,255,.06)', borderRadius: 7, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      value={backendUrl}
+                      onChange={e => setBackendUrl(e.target.value)}
+                      placeholder={process.env.NEXT_PUBLIC_API_URL || 'https://mein-backend.onrender.com'}
+                      style={{ fontFamily: T.mono, flex: 1, fontSize: 12, padding: '7px 10px', background: 'rgba(255,255,255,.03)', border: `1px solid ${T.line}`, borderRadius: 5, color: T.ink, outline: 'none' }}
+                    />
+                    <button type="button" onClick={saveBackendUrl}
+                      style={{ fontFamily: T.mono, fontSize: 11, padding: '7px 14px', borderRadius: 5, background: T.gold, border: 'none', color: '#07070a', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                      Speichern
+                    </button>
+                  </div>
+                  <p style={{ fontFamily: T.body, fontSize: 11, color: T.inkF, lineHeight: 1.5 }}>
+                    Leer lassen für den Standard{process.env.NEXT_PUBLIC_API_URL ? ` (${process.env.NEXT_PUBLIC_API_URL})` : ''}. Änderung wirkt nach dem Neuladen der Seite.
+                  </p>
+                </div>
+              </div>
             </div>
           </>
         )}

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { getApiKey } from '@/lib/settings';
+import { getApiBase } from '@/lib/api';
 import { useToast } from './Toast';
 
 interface Props {
@@ -64,7 +65,7 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
       const rid = runId || (resolveRunId ? await resolveRunId() : '');
       if (!rid) throw new Error('Kein Backend verbunden');
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/runs/${rid}/enrich`, {
+      const res = await fetch(`${getApiBase()}/api/runs/${rid}/enrich`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -181,6 +182,12 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
             <li key={f} style={{ ...mono, fontSize: 11, color: T.inkF }}>→ {f}</li>
           ))}
         </ul>
+
+        {leadsCount > 50 && (
+          <p style={{ ...mono, fontSize: 10, color: '#e8b04b', lineHeight: 1.5 }}>
+            ⓘ Max. 50 Zeilen pro Lauf (API-Kosten-Schutz). Es werden die ersten 50 verarbeitet.
+          </p>
+        )}
 
         {/* Run button */}
         <button

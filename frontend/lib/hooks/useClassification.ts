@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { getAiConfig, getApiKey } from '@/lib/settings';
+import { getApiBase } from '@/lib/api';
 import { useToast } from '@/app/components/Toast';
 
 export interface ClassificationRequest {
@@ -38,7 +39,7 @@ export function useClassification() {
       }
 
       // Call classification backend endpoint
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/classify`, {
+      const response = await fetch(`${getApiBase()}/api/classify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

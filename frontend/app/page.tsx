@@ -113,6 +113,7 @@ export default function Home() {
   const [showPresets,    setShowPresets]    = useState(false);
   const [formError,      setFormError]      = useState('');
   const [uploading,      setUploading]      = useState(false);
+  const [backendKeys,    setBackendKeys]    = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     api.runs.list().then(runs => {
@@ -120,6 +121,10 @@ export default function Home() {
       const last = runs[0];
       if (last?.scraper_config) applyRunConfig(last.scraper_config as Record<string, any>);
     }).catch(() => {}).finally(() => setLoading(false));
+    fetch(`${API_URL}/api/config/providers`, { signal: AbortSignal.timeout(4000) })
+      .then(r => r.ok ? r.json() : {})
+      .then(setBackendKeys)
+      .catch(() => {});
     const saved = localStorage.getItem('presets');
     if (saved) setPresets(JSON.parse(saved));
 
@@ -292,7 +297,11 @@ export default function Home() {
     if (tags.length === 0) { setFormError('Mindestens einen Suchbegriff eingeben'); return; }
     const settings = loadSettings();
     const token = settings.apiKeys.meta_ads;
-    if (!token) { setFormError('Meta Ads API-Token fehlt — bitte in Einstellungen eintragen'); return; }
+    // Allow start when token exists in browser settings OR on the backend as env var
+    if (!token && !backendKeys.meta_ads) {
+      setFormError('Meta Ads API-Token fehlt — bitte in den Einstellungen dieses Browsers eintragen (Einstellungen → Scraping → Meta Ads Library)');
+      return;
+    }
     setCreating(true);
     try {
       const run = await api.runs.create('meta_ads_library', {
