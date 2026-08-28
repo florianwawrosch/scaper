@@ -19,6 +19,26 @@ const AD_STATUS_OPTIONS = [
   { value: 'ALL',      label: 'Alle'    },
   { value: 'INACTIVE', label: 'Inaktiv' },
 ];
+const MEDIA_TYPE_OPTIONS = [
+  { value: 'ALL',   label: 'Alle'   },
+  { value: 'IMAGE', label: 'Bild'   },
+  { value: 'VIDEO', label: 'Video'  },
+  { value: 'MEME',  label: 'Meme'   },
+];
+const SEARCH_TYPE_OPTIONS = [
+  { value: 'KEYWORD_UNORDERED',    label: 'Ungeordnet'    },
+  { value: 'KEYWORD_EXACT_PHRASE', label: 'Exakter Begriff' },
+];
+const LANGUAGE_OPTIONS = [
+  { value: 'de', label: 'DE' },
+  { value: 'en', label: 'EN' },
+  { value: 'fr', label: 'FR' },
+  { value: 'es', label: 'ES' },
+  { value: 'it', label: 'IT' },
+  { value: 'nl', label: 'NL' },
+  { value: 'pl', label: 'PL' },
+];
+const LIMIT_OPTIONS = [50, 100, 250, 500, 1000];
 
 const STATUS_PILL: Record<ScrapeRun['status'], { label: string; cls: string }> = {
   draft:         { label: 'Draft',    cls: 'muted' },
@@ -78,6 +98,13 @@ export default function Home() {
   const [country,        setCountry]        = useState('DE');
   const [platforms,      setPlatforms]      = useState(['FACEBOOK', 'INSTAGRAM']);
   const [adStatus,       setAdStatus]       = useState('ACTIVE');
+  const [mediaType,      setMediaType]      = useState('ALL');
+  const [searchType,     setSearchType]     = useState('KEYWORD_UNORDERED');
+  const [languages,      setLanguages]      = useState<string[]>([]);
+  const [dateMin,        setDateMin]        = useState('');
+  const [dateMax,        setDateMax]        = useState('');
+  const [limit,          setLimit]          = useState(100);
+  const [bylines,        setBylines]        = useState('');
   const [csvFile,        setCsvFile]        = useState<File | null>(null);
   const [dragOver,       setDragOver]       = useState(false);
   const [presets,        setPresets]        = useState<Record<string, any>>({});
@@ -191,12 +218,19 @@ export default function Home() {
     }
     if (cfg.platforms) setPlatforms(cfg.platforms);
     if (cfg.ad_status) setAdStatus(cfg.ad_status);
+    if (cfg.media_type) setMediaType(cfg.media_type);
+    if (cfg.search_type) setSearchType(cfg.search_type);
+    if (cfg.languages) setLanguages(cfg.languages);
+    if (cfg.ad_delivery_date_min) setDateMin(cfg.ad_delivery_date_min);
+    if (cfg.ad_delivery_date_max) setDateMax(cfg.ad_delivery_date_max);
+    if (cfg.limit) setLimit(cfg.limit);
+    if (cfg.bylines) setBylines(cfg.bylines);
   };
 
   const savePreset = () => {
     const auto = tags[0] ?? new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
     const name = presetName.trim() || auto;
-    const cfg = { keywords: tags, country, platforms, adStatus, savedAt: new Date().toISOString() };
+    const cfg = { keywords: tags, country, platforms, adStatus, mediaType, searchType, languages, dateMin, dateMax, limit, bylines, savedAt: new Date().toISOString() };
     const next = { ...presets, [name]: cfg };
     setPresets(next);
     localStorage.setItem('presets', JSON.stringify(next));
@@ -210,6 +244,13 @@ export default function Home() {
     setCountry(p.country ?? p.countries?.[0] ?? 'DE');
     setPlatforms(p.platforms ?? ['FACEBOOK', 'INSTAGRAM']);
     setAdStatus(p.adStatus ?? 'ACTIVE');
+    if (p.mediaType) setMediaType(p.mediaType);
+    if (p.searchType) setSearchType(p.searchType);
+    if (p.languages) setLanguages(p.languages);
+    if (p.dateMin !== undefined) setDateMin(p.dateMin);
+    if (p.dateMax !== undefined) setDateMax(p.dateMax);
+    if (p.limit) setLimit(p.limit);
+    if (p.bylines !== undefined) setBylines(p.bylines);
     setShowPresets(false);
   };
 
@@ -233,6 +274,13 @@ export default function Home() {
         countries: country === 'ALL' ? ['ALL'] : [country],
         platforms,
         ad_status: adStatus,
+        media_type: mediaType,
+        search_type: searchType,
+        ...(languages.length > 0 && { languages }),
+        ...(dateMin && { ad_delivery_date_min: dateMin }),
+        ...(dateMax && { ad_delivery_date_max: dateMax }),
+        limit,
+        ...(bylines && { bylines: bylines.split(',').map(s => s.trim()).filter(Boolean) }),
         meta_ads_token: token,
       });
       setRuns(prev => [run, ...prev]);
@@ -326,6 +374,56 @@ export default function Home() {
                 <div>
                   <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Status</p>
                   <SingleChip options={AD_STATUS_OPTIONS} value={adStatus} onChange={setAdStatus} />
+                </div>
+              </div>
+
+              {/* Row 2: Medientyp + Suchtyp + Sprachen */}
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Medientyp</p>
+                  <SingleChip options={MEDIA_TYPE_OPTIONS} value={mediaType} onChange={setMediaType} />
+                </div>
+                <div>
+                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Suchtyp</p>
+                  <SingleChip options={SEARCH_TYPE_OPTIONS} value={searchType} onChange={setSearchType} />
+                </div>
+                <div>
+                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Sprachen</p>
+                  <ChipGroup options={LANGUAGE_OPTIONS} value={languages} onChange={setLanguages} />
+                </div>
+              </div>
+
+              {/* Row 3: Limit + Datum + Bylines */}
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div>
+                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Limit</p>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {LIMIT_OPTIONS.map(l => (
+                      <button key={l} onClick={() => setLimit(l)} className={`chip ${limit === l ? 'active' : ''}`} style={{ minWidth: 40 }}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Datum von</p>
+                  <input
+                    type="date" value={dateMin} onChange={e => setDateMin(e.target.value)}
+                    style={{ padding: '4px 8px', fontSize: 11, fontFamily: T.ffMono, borderRadius: 5, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none', colorScheme: 'dark' }}
+                  />
+                </div>
+                <div>
+                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Datum bis</p>
+                  <input
+                    type="date" value={dateMax} onChange={e => setDateMax(e.target.value)}
+                    style={{ padding: '4px 8px', fontSize: 11, fontFamily: T.ffMono, borderRadius: 5, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none', colorScheme: 'dark' }}
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Bylines (kommagetrennt)</p>
+                  <input
+                    type="text" value={bylines} onChange={e => setBylines(e.target.value)}
+                    placeholder="z.B. Axel Springer, DPK"
+                    style={{ width: '100%', padding: '4px 8px', fontSize: 11, fontFamily: T.ffMono, borderRadius: 5, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none', boxSizing: 'border-box' }}
+                  />
                 </div>
               </div>
               </div>
