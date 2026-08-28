@@ -141,9 +141,10 @@ export default function Home() {
   };
 
   const savePreset = () => {
-    if (!presetName.trim()) return;
+    const auto = tags[0] ?? new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    const name = presetName.trim() || auto;
     const cfg = { keywords: tags, country, platforms, adStatus, savedAt: new Date().toISOString() };
-    const next = { ...presets, [presetName.trim()]: cfg };
+    const next = { ...presets, [name]: cfg };
     setPresets(next);
     localStorage.setItem('presets', JSON.stringify(next));
     setPresetName('');

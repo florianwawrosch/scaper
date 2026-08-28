@@ -39,7 +39,7 @@ const ALL_COUNTRIES = [
   { code: 'MX', name: 'Mexiko' },
   { code: 'AR', name: 'Argentinien' },
   { code: 'ZA', name: 'Südafrika' },
-  { code: 'AE', name: 'Vereinigte Arab. Emirate' },
+  { code: 'AE', name: 'VAE' },
   { code: 'SA', name: 'Saudi-Arabien' },
   { code: 'SG', name: 'Singapur' },
   { code: 'LU', name: 'Luxemburg' },
@@ -67,7 +67,10 @@ export function CountrySelect({ value, onChange }: Props) {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -79,11 +82,20 @@ export function CountrySelect({ value, onChange }: Props) {
   );
 
   const selected = ALL_COUNTRIES.find(c => c.code === value);
-  const label = selected ? (value === 'ALL' ? 'Alle Länder' : `${value} – ${selected.name}`) : value;
+  const label = !selected || value === 'ALL'
+    ? 'Alle Länder'
+    : `${value} – ${selected.name}`;
+
+  const select = (code: string) => {
+    onChange(code);
+    setOpen(false);
+    setSearch('');
+  };
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button
+        type="button"
         onClick={() => setOpen(o => !o)}
         style={{
           display: 'flex', alignItems: 'center', gap: 6,
@@ -99,18 +111,20 @@ export function CountrySelect({ value, onChange }: Props) {
       </button>
 
       {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 50,
-          background: 'var(--th-panel)', border: '1px solid var(--th-line)',
-          borderRadius: 7, boxShadow: '0 8px 24px rgba(0,0,0,.35)',
-          width: 240, overflow: 'hidden',
-        }}>
+        <div
+          onMouseDown={e => e.preventDefault()}
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 200,
+            background: 'var(--th-panel)', border: '1px solid var(--th-line)',
+            borderRadius: 7, boxShadow: '0 8px 24px rgba(0,0,0,.45)',
+            width: 240, overflow: 'hidden',
+          }}
+        >
           <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--th-line-soft)' }}>
             <input
-              autoFocus
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Suchen…"
+              placeholder="Land suchen…"
               style={{
                 width: '100%', background: 'var(--th-panel2)', border: 'none', outline: 'none',
                 fontFamily: 'var(--ff-mono)', fontSize: 11, color: 'var(--th-ink)',
@@ -123,27 +137,29 @@ export function CountrySelect({ value, onChange }: Props) {
               const active = value === c.code;
               const isAll  = c.code === 'ALL';
               return (
-                <button
+                <div
                   key={c.code}
-                  onClick={() => { onChange(c.code); setOpen(false); setSearch(''); }}
+                  onClick={() => select(c.code)}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
-                    padding: isAll ? '7px 12px 7px 12px' : '5px 12px',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: isAll ? '7px 12px' : '5px 12px',
                     background: active ? 'var(--th-gold-d)' : 'transparent',
-                    border: 'none', cursor: 'pointer', transition: 'background .1s',
+                    cursor: 'pointer', transition: 'background .1s',
                     borderBottom: isAll ? '1px solid var(--th-line-soft)' : 'none',
                   }}
+                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.04)'; }}
+                  onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                 >
-                  {active && <span style={{ color: 'var(--th-gold)', fontSize: 10, flexShrink: 0 }}>●</span>}
-                  {!active && <span style={{ color: 'var(--th-ink-f)', fontSize: 10, flexShrink: 0 }}>○</span>}
-                  <span style={{ fontFamily: 'var(--ff-mono)', fontSize: 11, color: active ? 'var(--th-gold)' : 'var(--th-ink-d)' }}>
-                    {isAll ? (
-                      <strong style={{ color: active ? 'var(--th-gold)' : 'var(--th-ink)' }}>Alle Länder</strong>
-                    ) : (
-                      <><strong style={{ color: active ? 'var(--th-gold)' : 'var(--th-ink)' }}>{c.code}</strong>{' '}{c.name}</>
-                    )}
+                  <span style={{ fontSize: 10, flexShrink: 0, color: active ? 'var(--th-gold)' : 'var(--th-ink-f)' }}>
+                    {active ? '●' : '○'}
                   </span>
-                </button>
+                  <span style={{ fontFamily: 'var(--ff-mono)', fontSize: 11, color: active ? 'var(--th-gold)' : 'var(--th-ink-d)' }}>
+                    {isAll
+                      ? <strong style={{ color: active ? 'var(--th-gold)' : 'var(--th-ink)' }}>Alle Länder</strong>
+                      : <><strong style={{ color: active ? 'var(--th-gold)' : 'var(--th-ink)' }}>{c.code}</strong>{' '}{c.name}</>
+                    }
+                  </span>
+                </div>
               );
             })}
             {filtered.length === 0 && (
