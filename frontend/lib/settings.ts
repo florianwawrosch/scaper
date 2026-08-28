@@ -39,19 +39,30 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'noir',
 };
 
+// Env vars (NEXT_PUBLIC_*) as fallback when localStorage has no key saved yet.
+const ENV_KEYS: Record<keyof AppSettings['apiKeys'], string | undefined> = {
+  gemini:    process.env.NEXT_PUBLIC_GEMINI_API_KEY,
+  anthropic: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY,
+  openai:    process.env.NEXT_PUBLIC_OPENAI_API_KEY,
+  meta_ads:  process.env.NEXT_PUBLIC_META_ADS_TOKEN,
+  hunter_io: process.env.NEXT_PUBLIC_HUNTER_IO_KEY,
+  findymail:  process.env.NEXT_PUBLIC_FINDYMAIL_KEY,
+};
+
 export function loadSettings(): AppSettings {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;
 
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
+    const base: AppSettings = stored ? JSON.parse(stored) : { ...DEFAULT_SETTINGS };
+    // Fill any missing key from env var fallbacks
+    for (const k of Object.keys(ENV_KEYS) as (keyof AppSettings['apiKeys'])[]) {
+      if (!base.apiKeys[k] && ENV_KEYS[k]) base.apiKeys[k] = ENV_KEYS[k]!;
     }
-  } catch (error) {
-    console.error('Failed to load settings:', error);
+    return base;
+  } catch {
+    return DEFAULT_SETTINGS;
   }
-
-  return DEFAULT_SETTINGS;
 }
 
 export function saveSettings(settings: AppSettings): void {
