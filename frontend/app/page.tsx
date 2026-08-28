@@ -361,15 +361,19 @@ export default function Home() {
                 <button
                   onClick={() => setShowPresets(true)}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    fontFamily: T.ffMono, fontSize: 11, padding: '2px 8px', borderRadius: 4,
-                    background: Object.keys(presets).length > 0 ? T.goldD : 'transparent',
-                    border: `1px solid ${Object.keys(presets).length > 0 ? T.line : T.lineS}`,
-                    color: Object.keys(presets).length > 0 ? T.gold : T.inkF,
-                    cursor: 'pointer', transition: 'all .12s',
+                    display: 'flex', alignItems: 'center', gap: 7,
+                    fontFamily: T.ffMono, fontSize: 11, padding: '5px 12px', borderRadius: 8,
+                    background: 'rgba(255,255,255,.04)',
+                    border: `1px solid ${T.lineS}`,
+                    color: Object.keys(presets).length > 0 ? T.gold : T.inkD,
+                    cursor: 'pointer', transition: 'all .12s', flexShrink: 0,
                   }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.07)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.04)'; }}
                 >
-                  <span>▤</span>
+                  <svg width="10" height="12" viewBox="0 0 11 13" fill="currentColor">
+                    <path d="M1 1h9v11L5.5 8.8 1 12V1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                  </svg>
                   <span>Gespeicherte Suchen{Object.keys(presets).length > 0 ? ` (${Object.keys(presets).length})` : ''}</span>
                 </button>
                 <div style={{ flex: 1 }} />
