@@ -4,35 +4,36 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type ScrapeRun, type Source } from '@/lib/api';
 import { useToast } from '@/app/components/Toast';
-import { loadSettings, type AppSettings } from '@/lib/settings';
 
 const COUNTRY_OPTIONS = [
-  { value: 'DE', label: 'DE — Deutschland' },
-  { value: 'AT', label: 'AT — Österreich' },
-  { value: 'CH', label: 'CH — Schweiz' },
-  { value: 'US', label: 'US — USA' },
-  { value: 'GB', label: 'GB — UK' },
+  { value: 'DE', label: 'DE' },
+  { value: 'AT', label: 'AT' },
+  { value: 'CH', label: 'CH' },
+  { value: 'US', label: 'US' },
+  { value: 'GB', label: 'GB' },
 ];
 
 const PLATFORM_OPTIONS = [
-  { value: 'FACEBOOK', label: 'Facebook' },
+  { value: 'FACEBOOK',  label: 'Facebook'  },
   { value: 'INSTAGRAM', label: 'Instagram' },
 ];
 
-const STATUS_MAP: Record<ScrapeRun['status'], { label: string; cls: string }> = {
-  draft:         { label: 'Draft',       cls: 'text-ink-faint border-ink-faint/30 bg-ink-faint/5' },
-  scraping:      { label: 'Scraping',    cls: 'text-warn border-warn/40 bg-warn/8' },
-  dataset_ready: { label: 'Bereit',      cls: 'text-good border-good/40 bg-good/8' },
-  in_progress:   { label: 'Aktiv',       cls: 'text-warn border-warn/40 bg-warn/8' },
-  completed:     { label: 'Fertig',      cls: 'text-good border-good/40 bg-good/8' },
-  failed:        { label: 'Fehler',      cls: 'text-bad border-bad/40 bg-bad/8' },
+const AD_STATUS_OPTIONS = [
+  { value: 'ACTIVE',   label: 'Active'   },
+  { value: 'ALL',      label: 'All'      },
+  { value: 'INACTIVE', label: 'Inactive' },
+];
+
+const STATUS_PILL: Record<ScrapeRun['status'], { label: string; cls: string }> = {
+  draft:         { label: 'Draft',    cls: 'muted' },
+  scraping:      { label: 'Scraping', cls: 'warn'  },
+  dataset_ready: { label: 'Bereit',   cls: 'good'  },
+  in_progress:   { label: 'Aktiv',    cls: 'warn'  },
+  completed:     { label: 'Fertig',   cls: 'good'  },
+  failed:        { label: 'Fehler',   cls: 'bad'   },
 };
 
-function Toggle({
-  options,
-  value,
-  onChange,
-}: {
+function ChipGroup({ options, value, onChange }: {
   options: { value: string; label: string }[];
   value: string[];
   onChange: (v: string[]) => void;
@@ -40,17 +41,32 @@ function Toggle({
   const toggle = (v: string) =>
     onChange(value.includes(v) ? value.filter(x => x !== v) : [...value, v]);
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
       {options.map(o => (
         <button
           key={o.value}
-          type="button"
           onClick={() => toggle(o.value)}
-          className={`px-2.5 py-1 text-xs font-mono tracking-wide rounded border transition-all ${
-            value.includes(o.value)
-              ? 'bg-gold text-noir border-gold font-semibold'
-              : 'bg-transparent text-ink-faint border-line hover:border-gold-dim hover:text-ink'
-          }`}
+          className={`chip ${value.includes(o.value) ? 'active' : ''}`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SingleChip({ options, value, onChange }: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {options.map(o => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={`chip ${value === o.value ? 'active' : ''}`}
         >
           {o.label}
         </button>
@@ -62,17 +78,18 @@ function Toggle({
 export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
-  const [runs, setRuns] = useState<ScrapeRun[]>([]);
-  const [sources, setSources] = useState<{ key: string; label: string }[]>([]);
+
+  const [runs,           setRuns]           = useState<ScrapeRun[]>([]);
+  const [sources,        setSources]        = useState<Source[]>([]);
   const [selectedSource, setSelectedSource] = useState('meta_ads_library');
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [keywords, setKeywords] = useState('');
-  const [countries, setCountries] = useState(['DE', 'AT']);
-  const [platforms, setPlatforms] = useState(['FACEBOOK', 'INSTAGRAM']);
-  const [adStatus, setAdStatus] = useState('ACTIVE');
-  const [presets, setPresets] = useState<Record<string, any>>({});
-  const [presetName, setPresetName] = useState('');
+  const [loading,        setLoading]        = useState(true);
+  const [creating,       setCreating]       = useState(false);
+  const [keywords,       setKeywords]       = useState('');
+  const [countries,      setCountries]      = useState(['DE', 'AT']);
+  const [platforms,      setPlatforms]      = useState(['FACEBOOK', 'INSTAGRAM']);
+  const [adStatus,       setAdStatus]       = useState('ACTIVE');
+  const [presets,        setPresets]        = useState<Record<string, any>>({});
+  const [presetName,     setPresetName]     = useState('');
 
   useEffect(() => {
     (async () => {
@@ -139,210 +156,292 @@ export default function Home() {
   const fmt = (d: string) =>
     new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
 
-  return (
-    <div className="min-h-screen bg-noir">
-      <div className="max-w-7xl mx-auto px-6 py-10">
+  const completed = runs.filter(r => r.status === 'completed').length;
+  const totalKeep = runs.reduce((s, r) => {
+    const cr = Object.values(r.classification_results)[0];
+    return s + (cr?.keep ?? 0);
+  }, 0);
 
-        {/* Page Header */}
-        <div className="mb-12">
-          <p className="text-gold font-mono text-xs tracking-widest uppercase mb-3">Lead Acquisition System</p>
-          <h1 className="text-4xl font-disp font-light tracking-tight text-ink mb-2">
-            Neuen Run <em className="italic text-gold-bright">starten</em>
-          </h1>
-          <p className="text-ink-faint text-sm font-light">
-            Scrape · Filter · Enrich · Export
-          </p>
+  return (
+    <div style={{ minHeight: '100vh' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '48px 32px 80px' }}>
+
+        {/* ===== Boarding-pass ticket ===== */}
+        <div className="ticket">
+          <div className="tag">Lead Acquisition System · Multi-Source Scraper</div>
+          <h1>Lead <em style={{ color: '#f5cc77' }}>Pipeline</em></h1>
+          <p className="sub">Scrape · Filter · Enrich · Export — vollautomatisch.</p>
+          <div className="meta-row">
+            <div className="m">
+              <span className="k">Total Runs</span>
+              <span className="v">{runs.length}</span>
+            </div>
+            <div className="m">
+              <span className="k">Abgeschlossen</span>
+              <span className="v">{completed}</span>
+            </div>
+            <div className="m">
+              <span className="k">Leads gesammelt</span>
+              <span className="v">{totalKeep.toLocaleString('de')}</span>
+            </div>
+            <div className="m">
+              <span className="k">Quellen</span>
+              <span className="v">{sources.length || '—'}</span>
+            </div>
+          </div>
+          <div className="ticket-side">
+            <span className="big">{runs.length}</span>
+            <span className="lbl">Runs</span>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-8">
+        {/* ===== Main grid ===== */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 32, alignItems: 'start' }}>
+
           {/* Left: Form */}
-          <div className="space-y-1">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
 
-            {/* Section: Source */}
-            <div className="border border-line rounded-lg overflow-hidden">
-              <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
-                <span className="text-gold font-mono text-xs tracking-widest">01</span>
-                <span className="text-xs font-mono tracking-wider text-ink uppercase">Datenquelle</span>
+            {/* Section 01 — Quelle */}
+            <section>
+              <div className="sec-head">
+                <span className="idx">01</span>
+                <h2>Datenquelle</h2>
+                <div className="rule" />
               </div>
-              <div className="p-5 bg-panel-2 space-y-4">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {sources.map(s => (
-                    <button
-                      key={s.key}
-                      type="button"
-                      onClick={() => setSelectedSource(s.key)}
-                      className={`px-3 py-2.5 rounded border text-xs font-mono tracking-wide transition-all text-left ${
-                        selectedSource === s.key
-                          ? 'border-gold bg-gold/10 text-gold'
-                          : 'border-line bg-panel-3 text-ink-faint hover:border-line-soft hover:text-ink'
-                      }`}
-                    >
-                      {s.label || s.key}
-                    </button>
-                  ))}
-                  {sources.length === 0 && (
-                    <div className="col-span-3 text-ink-faint text-xs font-mono py-2">Backend nicht verbunden</div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Section: Keywords */}
-            <div className="border border-line rounded-lg overflow-hidden">
-              <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
-                <span className="text-gold font-mono text-xs tracking-widest">02</span>
-                <span className="text-xs font-mono tracking-wider text-ink uppercase">Suchbegriffe</span>
-                <span className="ml-auto text-ink-faint text-xs font-mono">je Zeile ein Begriff</span>
-              </div>
-              <div className="p-5 bg-panel-2">
-                <textarea
-                  value={keywords}
-                  onChange={e => setKeywords(e.target.value)}
-                  placeholder={"High Ticket Coach\nManifestation\nOnline Business\nPersonal Branding"}
-                  rows={5}
-                  className="w-full bg-panel-3 border border-line rounded text-ink text-sm font-mono px-3 py-2.5 resize-none focus:outline-none focus:border-gold-dim transition-colors placeholder:text-ink-faint/50"
-                />
-              </div>
-            </div>
-
-            {/* Section: Parameters */}
-            <div className="border border-line rounded-lg overflow-hidden">
-              <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
-                <span className="text-gold font-mono text-xs tracking-widest">03</span>
-                <span className="text-xs font-mono tracking-wider text-ink uppercase">Parameter</span>
-              </div>
-              <div className="p-5 bg-panel-2 space-y-5">
-
-                <div>
-                  <label className="block text-xs font-mono tracking-wider text-ink-faint mb-2 uppercase">Länder</label>
-                  <Toggle options={COUNTRY_OPTIONS} value={countries} onChange={setCountries} />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-mono tracking-wider text-ink-faint mb-2 uppercase">Plattformen</label>
-                  <Toggle options={PLATFORM_OPTIONS} value={platforms} onChange={setPlatforms} />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-mono tracking-wider text-ink-faint mb-2 uppercase">Ad-Status</label>
-                  <div className="flex gap-1.5">
-                    {['ACTIVE', 'ALL', 'INACTIVE'].map(s => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setAdStatus(s)}
-                        className={`px-2.5 py-1 text-xs font-mono tracking-wide rounded border transition-all ${
-                          adStatus === s
-                            ? 'bg-gold text-noir border-gold font-semibold'
-                            : 'bg-transparent text-ink-faint border-line hover:border-gold-dim hover:text-ink'
-                        }`}
-                      >
-                        {s}
-                      </button>
-                    ))}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                {sources.length === 0 ? (
+                  <div style={{
+                    gridColumn: '1/-1',
+                    padding: '20px 24px',
+                    background: '#0f1828',
+                    border: '1px solid rgba(255,255,255,.07)',
+                    borderRadius: 12,
+                    fontFamily: "'Spline Sans Mono', monospace",
+                    fontSize: 12,
+                    color: '#5f6e87',
+                    letterSpacing: '.04em',
+                  }}>
+                    Backend nicht verbunden — starte den Server.
                   </div>
+                ) : sources.map(s => (
+                  <button
+                    key={s.key}
+                    onClick={() => setSelectedSource(s.key)}
+                    style={{
+                      padding: '18px 20px',
+                      borderRadius: 12,
+                      border: selectedSource === s.key
+                        ? '1px solid rgba(232,176,75,.5)'
+                        : '1px solid rgba(255,255,255,.07)',
+                      background: selectedSource === s.key
+                        ? 'rgba(232,176,75,.08)'
+                        : 'rgba(255,255,255,.02)',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'all .15s',
+                      boxShadow: selectedSource === s.key
+                        ? '0 0 28px -6px rgba(232,176,75,.18)'
+                        : 'none',
+                    }}
+                  >
+                    <p style={{
+                      fontFamily: "'Fraunces', Georgia, serif",
+                      fontSize: 16,
+                      fontWeight: 500,
+                      color: selectedSource === s.key ? '#f5cc77' : '#f4efe4',
+                      marginBottom: 4,
+                    }}>{s.label || s.key}</p>
+                    <p style={{
+                      fontFamily: "'Spline Sans Mono', monospace",
+                      fontSize: 10,
+                      color: '#5f6e87',
+                      letterSpacing: '.1em',
+                      textTransform: 'uppercase',
+                    }}>{s.description?.slice(0, 40) || 'Datenquelle'}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* Section 02 — Keywords */}
+            <section>
+              <div className="sec-head">
+                <span className="idx">02</span>
+                <h2>Suchbegriffe</h2>
+                <div className="rule" />
+                <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.06em', whiteSpace: 'nowrap' }}>
+                  je Zeile ein Begriff
+                </span>
+              </div>
+              <textarea
+                value={keywords}
+                onChange={e => setKeywords(e.target.value)}
+                placeholder={"High Ticket Coach\nManifestation\nOnline Business\nPersonal Branding"}
+                rows={6}
+                style={{
+                  fontFamily: "'Spline Sans Mono', monospace",
+                  fontSize: 13,
+                  color: '#f4efe4',
+                  background: '#0f1828',
+                  border: '1px solid rgba(232,176,75,.18)',
+                  borderRadius: 10,
+                  padding: '14px 18px',
+                  width: '100%',
+                  outline: 'none',
+                  resize: 'vertical',
+                  lineHeight: 1.7,
+                }}
+                onFocus={e => { e.target.style.borderColor = 'rgba(232,176,75,.5)'; e.target.style.boxShadow = '0 0 0 3px rgba(232,176,75,.06)'; }}
+                onBlur={e => { e.target.style.borderColor = 'rgba(232,176,75,.18)'; e.target.style.boxShadow = 'none'; }}
+              />
+            </section>
+
+            {/* Section 03 — Parameter */}
+            <section>
+              <div className="sec-head">
+                <span className="idx">03</span>
+                <h2>Parameter</h2>
+                <div className="rule" />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                <div>
+                  <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, letterSpacing: '.18em', textTransform: 'uppercase', color: '#5f6e87', marginBottom: 12 }}>Länder</p>
+                  <ChipGroup options={COUNTRY_OPTIONS} value={countries} onChange={setCountries} />
+                </div>
+                <div>
+                  <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, letterSpacing: '.18em', textTransform: 'uppercase', color: '#5f6e87', marginBottom: 12 }}>Plattformen</p>
+                  <ChipGroup options={PLATFORM_OPTIONS} value={platforms} onChange={setPlatforms} />
+                </div>
+                <div>
+                  <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, letterSpacing: '.18em', textTransform: 'uppercase', color: '#5f6e87', marginBottom: 12 }}>Ad-Status</p>
+                  <SingleChip options={AD_STATUS_OPTIONS} value={adStatus} onChange={setAdStatus} />
                 </div>
               </div>
-            </div>
+            </section>
 
-            {/* Presets Bar */}
-            <div className="border border-line rounded-lg overflow-hidden">
-              <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
-                <span className="text-gold font-mono text-xs tracking-widest">04</span>
-                <span className="text-xs font-mono tracking-wider text-ink uppercase">Presets</span>
+            {/* Section 04 — Presets */}
+            <section>
+              <div className="sec-head">
+                <span className="idx">04</span>
+                <h2>Presets</h2>
+                <div className="rule" />
               </div>
-              <div className="p-4 bg-panel-2 flex flex-wrap gap-2 items-center">
+              <div style={{
+                background: '#0f1828',
+                border: '1px solid rgba(255,255,255,.07)',
+                borderRadius: 12,
+                padding: '18px 20px',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 10,
+                alignItems: 'center',
+              }}>
                 {Object.keys(presets).map(name => (
-                  <div key={name} className="flex items-center gap-1 bg-panel-3 border border-line rounded px-2 py-1">
+                  <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(232,176,75,.08)', border: '1px solid rgba(232,176,75,.2)', borderRadius: 999, padding: '4px 12px 4px 14px' }}>
                     <button
-                      type="button"
                       onClick={() => loadPreset(name)}
-                      className="text-xs font-mono text-ink-dim hover:text-gold transition-colors"
+                      style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#e8b04b', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                     >
                       {name}
                     </button>
                     <button
-                      type="button"
                       onClick={() => deletePreset(name)}
-                      className="text-ink-faint hover:text-bad transition-colors text-xs ml-1"
+                      style={{ fontSize: 14, color: '#5f6e87', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}
                     >
                       ×
                     </button>
                   </div>
                 ))}
-                <div className="flex items-center gap-2 ml-auto">
+                {Object.keys(presets).length === 0 && (
+                  <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.04em' }}>Noch keine Presets gespeichert</span>
+                )}
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input
                     type="text"
                     value={presetName}
                     onChange={e => setPresetName(e.target.value)}
-                    placeholder="Name..."
-                    className="h-7 bg-panel-3 border border-line rounded text-ink text-xs font-mono px-2 focus:outline-none focus:border-gold-dim w-32"
+                    onKeyDown={e => e.key === 'Enter' && savePreset()}
+                    placeholder="Name…"
+                    style={{ width: 130, padding: '6px 12px', fontSize: 12, fontFamily: "'Spline Sans Mono', monospace", background: '#131f33', border: '1px solid rgba(232,176,75,.18)', borderRadius: 8, color: '#f4efe4', outline: 'none' }}
                   />
-                  <button
-                    type="button"
-                    onClick={savePreset}
-                    className="h-7 px-3 text-xs font-mono border border-line rounded text-ink-faint hover:text-gold hover:border-gold-dim transition-colors"
-                  >
+                  <button className="btn-ghost" style={{ whiteSpace: 'nowrap', padding: '6px 14px' }} onClick={savePreset}>
                     Speichern
                   </button>
                 </div>
               </div>
-            </div>
+            </section>
 
             {/* CTA */}
-            <button
-              type="button"
-              onClick={createRun}
-              disabled={creating}
-              className="w-full py-3.5 rounded-lg bg-gradient-to-r from-gold to-gold-dim hover:from-gold-bright hover:to-gold text-noir font-semibold text-sm tracking-wide transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >
+            <button className="btn-primary" onClick={createRun} disabled={creating}>
               {creating ? 'Wird gestartet…' : '→ Run starten'}
             </button>
           </div>
 
           {/* Right: Recent Runs */}
-          <div>
-            <div className="border border-line rounded-lg overflow-hidden sticky top-20">
-              <div className="px-5 py-3 border-b border-line bg-panel flex items-center justify-between">
-                <span className="text-xs font-mono tracking-wider text-ink uppercase">Letzte Runs</span>
+          <div style={{ position: 'sticky', top: 80 }}>
+            <div style={{ background: '#0f1828', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14, overflow: 'hidden' }}>
+              {/* Header */}
+              <div style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid rgba(255,255,255,.07)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'rgba(0,0,0,.15)',
+              }}>
+                <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, letterSpacing: '.18em', textTransform: 'uppercase', color: '#5f6e87' }}>
+                  Letzte Runs
+                </span>
                 <button
                   onClick={() => router.push('/runs')}
-                  className="text-gold-bright font-mono text-xs hover:text-gold transition-colors tracking-wider"
+                  style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#e8b04b', background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '.06em' }}
                 >
                   Alle →
                 </button>
               </div>
 
               {loading ? (
-                <div className="p-6 text-center text-ink-faint text-xs font-mono">Lädt…</div>
+                <div style={{ padding: '28px 20px', textAlign: 'center', fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#5f6e87' }}>Lädt…</div>
               ) : runs.length === 0 ? (
-                <div className="p-8 text-center">
-                  <p className="text-ink-faint text-xs font-mono mb-1">Noch keine Runs</p>
-                  <p className="text-ink-faint/50 text-xs">Starte deinen ersten Run links.</p>
+                <div style={{ padding: '32px 20px', textAlign: 'center' }}>
+                  <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 18, color: '#5f6e87', marginBottom: 6 }}>Noch leer</p>
+                  <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.04em' }}>Starte deinen ersten Run.</p>
                 </div>
               ) : (
-                <div className="divide-y divide-line-soft">
+                <div>
                   {runs.slice(0, 8).map(run => {
-                    const s = STATUS_MAP[run.status];
-                    const keep = Object.values(run.classification_results)[0]?.keep || 0;
+                    const s = STATUS_PILL[run.status];
+                    const cr = Object.values(run.classification_results)[0];
                     return (
                       <button
                         key={run.id}
-                        type="button"
                         onClick={() => router.push(`/runs/${run.id}`)}
-                        className="w-full px-5 py-3 hover:bg-panel-3/40 transition-colors text-left flex items-center gap-3"
+                        style={{
+                          width: '100%',
+                          padding: '14px 20px',
+                          borderBottom: '1px solid rgba(255,255,255,.05)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          background: 'none',
+                          border: 'none',
+                          borderBottom: '1px solid rgba(255,255,255,.05)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'background .15s',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
                       >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-mono text-ink-dim truncate">{run.source}</p>
-                          <p className="text-xs text-ink-faint font-mono mt-0.5">{fmt(run.created_at)}</p>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#9aa7bd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{run.source}</p>
+                          <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, color: '#5f6e87', marginTop: 2, letterSpacing: '.04em' }}>{fmt(run.created_at)}</p>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {keep > 0 && (
-                            <span className="text-xs font-mono text-good font-semibold">{keep}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                          {(cr?.keep ?? 0) > 0 && (
+                            <span style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 18, color: '#4fd1c5', fontWeight: 600 }}>{cr!.keep}</span>
                           )}
-                          <span className={`px-1.5 py-0.5 rounded border text-xs font-mono tracking-wide ${s.cls}`}>
-                            {s.label}
-                          </span>
+                          <span className={`pill ${s.cls}`}>{s.label}</span>
                         </div>
                       </button>
                     );

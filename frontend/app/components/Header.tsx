@@ -3,54 +3,78 @@
 import { useRouter, usePathname } from 'next/navigation';
 
 const NAV = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/runs', label: 'Runs' },
-  { href: '/settings', label: 'Einstellungen' },
+  { href: '/',         label: 'Dashboard' },
+  { href: '/runs',     label: 'Runs' },
+  { href: '/settings', label: 'Settings' },
 ];
 
 export function Header() {
-  const router = useRouter();
+  const router   = useRouter();
   const pathname = usePathname();
 
   return (
-    <header className="bg-panel border-b border-line sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-6 h-12 flex items-center justify-between">
-        <div className="flex items-center gap-10">
-          <button
-            onClick={() => router.push('/')}
-            className="flex items-baseline gap-2 select-none"
-          >
-            <span className="text-gold font-mono text-xs tracking-widest uppercase font-semibold">LP</span>
-            <span className="text-ink font-disp text-base font-light tracking-tight">
-              Lead <em className="text-gold-bright italic">Pipeline</em>
-            </span>
-          </button>
+    <header style={{
+      background: 'rgba(7,11,22,.85)',
+      backdropFilter: 'blur(12px)',
+      borderBottom: '1px solid rgba(232,176,75,.12)',
+      position: 'sticky',
+      top: 0,
+      zIndex: 50,
+    }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 32px', height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
 
-          <nav className="hidden sm:flex items-center gap-6">
-            {NAV.map(({ href, label }) => {
-              const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
-              return (
-                <button
-                  key={href}
-                  onClick={() => router.push(href)}
-                  className={`relative text-xs font-mono tracking-wider transition-colors pb-0.5 ${
-                    active ? 'text-ink' : 'text-ink-faint hover:text-ink-dim'
-                  }`}
-                >
-                  {label}
-                  {active && (
-                    <span className="absolute -bottom-[13px] left-0 right-0 h-px bg-gold" />
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
+        {/* Logo */}
+        <button
+          onClick={() => router.push('/')}
+          style={{ display: 'flex', alignItems: 'baseline', gap: 10, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        >
+          <span style={{
+            fontFamily: "'Spline Sans Mono', monospace",
+            fontSize: 10,
+            letterSpacing: '.28em',
+            color: '#e8b04b',
+            textTransform: 'uppercase',
+            fontWeight: 600,
+          }}>LP</span>
+          <span style={{
+            fontFamily: "'Fraunces', Georgia, serif",
+            fontSize: 18,
+            fontWeight: 500,
+            color: '#f4efe4',
+            letterSpacing: '-.01em',
+          }}>
+            Lead <em style={{ color: '#f5cc77', fontStyle: 'italic' }}>Pipeline</em>
+          </span>
+        </button>
 
-        <div className="flex items-center gap-2 text-xs font-mono text-ink-faint">
-          <span className="w-1.5 h-1.5 rounded-full bg-good inline-block" />
-          <span className="tracking-wider">System OK</span>
-        </div>
+        {/* Nav */}
+        <nav style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {NAV.map(({ href, label }) => {
+            const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+            return (
+              <button
+                key={href}
+                onClick={() => router.push(href)}
+                style={{
+                  fontFamily: "'Spline Sans Mono', monospace",
+                  fontSize: 12,
+                  letterSpacing: '.08em',
+                  color: active ? '#f4efe4' : '#5f6e87',
+                  background: active ? 'rgba(232,176,75,.08)' : 'none',
+                  border: active ? '1px solid rgba(232,176,75,.2)' : '1px solid transparent',
+                  borderRadius: 8,
+                  padding: '5px 14px',
+                  cursor: 'pointer',
+                  transition: 'all .15s',
+                }}
+                onMouseEnter={e => { if (!active) (e.target as HTMLButtonElement).style.color = '#9aa7bd'; }}
+                onMouseLeave={e => { if (!active) (e.target as HTMLButtonElement).style.color = '#5f6e87'; }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </nav>
       </div>
     </header>
   );

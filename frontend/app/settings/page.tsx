@@ -5,30 +5,30 @@ import { useToast } from '@/app/components/Toast';
 import { loadSettings, saveSettings } from '@/lib/settings';
 
 const PROVIDERS = [
-  { id: 'gemini',    name: 'Gemini',    models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
-  { id: 'anthropic', name: 'Claude',    models: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'] },
-  { id: 'openai',    name: 'GPT',       models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
+  { id: 'gemini',    name: 'Gemini',  sub: 'Google AI',  models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
+  { id: 'anthropic', name: 'Claude',  sub: 'Anthropic',  models: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'] },
+  { id: 'openai',    name: 'GPT',     sub: 'OpenAI',     models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
 ] as const;
 
 const KEY_FIELDS = [
-  { key: 'gemini',    label: 'Google Gemini',   hint: 'AIzaSy…', group: 'AI' },
-  { key: 'anthropic', label: 'Anthropic Claude', hint: 'sk-ant-…', group: 'AI' },
-  { key: 'openai',    label: 'OpenAI',           hint: 'sk-…', group: 'AI' },
-  { key: 'hunter_io', label: 'Hunter.io',        hint: 'xxxxxxxx…', group: 'Enrichment' },
-  { key: 'findymail', label: 'FindyMail',        hint: 'Bearer token…', group: 'Enrichment' },
-  { key: 'meta_ads',  label: 'Meta Ads Library', hint: 'EAAxx…', group: 'Scraping' },
+  { key: 'gemini',    label: 'Google Gemini',   hint: 'AIzaSy…',       group: 'AI'          },
+  { key: 'anthropic', label: 'Anthropic Claude', hint: 'sk-ant-…',      group: 'AI'          },
+  { key: 'openai',    label: 'OpenAI',           hint: 'sk-…',          group: 'AI'          },
+  { key: 'hunter_io', label: 'Hunter.io',        hint: 'xxxxxxxx…',     group: 'Enrichment'  },
+  { key: 'findymail', label: 'FindyMail',        hint: 'Bearer token…', group: 'Enrichment'  },
+  { key: 'meta_ads',  label: 'Meta Ads Library', hint: 'EAAxx…',        group: 'Scraping'    },
 ] as const;
 
 type Section = 'ai' | 'keys';
 
 export default function Settings() {
   const { showToast } = useToast();
-  const [section, setSection] = useState<Section>('ai');
-  const [saving, setSaving] = useState(false);
-  const [show, setShow] = useState<Record<string, boolean>>({});
+  const [section,    setSection]    = useState<Section>('ai');
+  const [saving,     setSaving]     = useState(false);
+  const [show,       setShow]       = useState<Record<string, boolean>>({});
   const [aiProvider, setAiProvider] = useState('gemini');
-  const [aiModel, setAiModel] = useState('gemini-2.0-flash');
-  const [keys, setKeys] = useState<Record<string, string>>({
+  const [aiModel,    setAiModel]    = useState('gemini-2.0-flash');
+  const [keys,       setKeys]       = useState<Record<string, string>>({
     gemini: '', anthropic: '', openai: '', hunter_io: '', findymail: '', meta_ads: '',
   });
 
@@ -59,59 +59,61 @@ export default function Settings() {
   const filledKeys = KEY_FIELDS.filter(f => keys[f.key]?.length > 0).length;
 
   const NAV: { id: Section; label: string; desc: string }[] = [
-    { id: 'ai',   label: 'AI Modell',  desc: 'Provider & Modell auswählen' },
-    { id: 'keys', label: 'API Keys',   desc: `${filledKeys} / ${KEY_FIELDS.length} konfiguriert` },
+    { id: 'ai',   label: 'AI Modell', desc: 'Provider & Modell'             },
+    { id: 'keys', label: 'API Keys',  desc: `${filledKeys} / ${KEY_FIELDS.length} konfiguriert` },
   ];
 
   return (
-    <div className="min-h-screen bg-noir">
-      <div className="max-w-6xl mx-auto px-8 py-12">
+    <div style={{ minHeight: '100vh' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '48px 32px 80px' }}>
 
-        {/* Page Header */}
-        <div className="mb-12">
-          <p className="text-gold font-mono text-xs tracking-widest uppercase mb-3">Konfiguration</p>
-          <h1 className="font-disp text-5xl font-light tracking-tight text-ink mb-1">
-            <em className="italic text-gold-bright">Einstellungen</em>
-          </h1>
+        {/* Title */}
+        <div style={{ marginBottom: 48 }}>
+          <div className="sec-head" style={{ marginBottom: 0 }}>
+            <span className="idx">CONFIG</span>
+            <h1 style={{ fontSize: 'clamp(24px, 3vw, 38px)' }}><em style={{ color: '#f5cc77' }}>Einstellungen</em></h1>
+            <div className="rule" />
+          </div>
         </div>
 
-        <div className="grid grid-cols-[220px_1fr] gap-8">
+        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 32, alignItems: 'start' }}>
 
           {/* Sidebar */}
-          <div className="space-y-1">
-            {NAV.map(n => (
-              <button
-                key={n.id}
-                onClick={() => setSection(n.id)}
-                className={`w-full text-left px-4 py-3 rounded-lg transition-all ${
-                  section === n.id
-                    ? 'bg-panel-2 border border-gold-dim/40'
-                    : 'hover:bg-panel-2/50 border border-transparent'
-                }`}
-              >
-                <p className={`text-sm font-medium transition-colors ${section === n.id ? 'text-gold' : 'text-ink-dim'}`}>
-                  {n.label}
-                </p>
-                <p className="text-xs text-ink-faint mt-0.5 font-mono">{n.desc}</p>
-              </button>
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {NAV.map(n => {
+              const active = section === n.id;
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => setSection(n.id)}
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: 10,
+                    border: active ? '1px solid rgba(232,176,75,.25)' : '1px solid transparent',
+                    background: active ? 'rgba(232,176,75,.06)' : 'transparent',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    transition: 'all .15s',
+                  }}
+                >
+                  <p style={{ fontFamily: "'Spline Sans', sans-serif", fontSize: 13, fontWeight: 500, color: active ? '#e8b04b' : '#9aa7bd', marginBottom: 3 }}>{n.label}</p>
+                  <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, color: '#5f6e87', letterSpacing: '.04em' }}>{n.desc}</p>
+                </button>
+              );
+            })}
 
-            <div className="pt-6">
-              <button
-                onClick={save}
-                disabled={saving}
-                className="w-full py-3 rounded-lg bg-gradient-to-r from-gold to-gold-dim hover:from-gold-bright hover:to-gold text-noir text-sm font-semibold transition-all disabled:opacity-40"
-              >
+            <div style={{ marginTop: 20 }}>
+              <button className="btn-primary" onClick={save} disabled={saving} style={{ maxWidth: '100%' }}>
                 {saving ? 'Speichert…' : 'Speichern'}
               </button>
             </div>
 
-            {/* Status */}
-            <div className="pt-4 space-y-2">
+            {/* Key status */}
+            <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
               {KEY_FIELDS.map(f => (
-                <div key={f.key} className="flex items-center gap-2 px-1">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${keys[f.key] ? 'bg-good' : 'bg-line'}`} />
-                  <span className="text-xs font-mono text-ink-faint truncate">{f.label}</span>
+                <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px' }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: keys[f.key] ? '#4fd1c5' : 'rgba(95,110,135,.4)', flexShrink: 0 }} />
+                  <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10.5, color: '#5f6e87', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.label}</span>
                 </div>
               ))}
             </div>
@@ -119,108 +121,169 @@ export default function Settings() {
 
           {/* Content */}
           <div>
+
+            {/* ===== AI section ===== */}
             {section === 'ai' && (
-              <div className="space-y-6">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
                 <div>
-                  <h2 className="text-lg font-disp font-light mb-1">AI <em className="italic text-gold-bright">Provider</em></h2>
-                  <p className="text-sm text-ink-faint">Welches Modell für die Lead-Klassifizierung verwendet wird.</p>
+                  <div className="sec-head">
+                    <span className="idx">01</span>
+                    <h2>AI <em style={{ color: '#f5cc77' }}>Provider</em></h2>
+                    <div className="rule" />
+                  </div>
+                  <p style={{ color: '#5f6e87', fontSize: 13.5, marginBottom: 20 }}>
+                    Welches Modell für die Lead-Klassifizierung verwendet wird.
+                  </p>
+
+                  {/* Provider cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+                    {PROVIDERS.map(p => {
+                      const active = aiProvider === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => { setAiProvider(p.id); setAiModel(p.models[0]); }}
+                          style={{
+                            padding: '20px 22px',
+                            borderRadius: 14,
+                            border: active ? '1px solid rgba(232,176,75,.45)' : '1px solid rgba(255,255,255,.07)',
+                            background: active ? 'rgba(232,176,75,.07)' : 'rgba(255,255,255,.02)',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            transition: 'all .15s',
+                            boxShadow: active ? '0 0 28px -6px rgba(232,176,75,.2)' : 'none',
+                          }}
+                        >
+                          <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 20, fontWeight: 600, color: active ? '#f5cc77' : '#f4efe4', marginBottom: 4 }}>{p.name}</p>
+                          <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, color: '#5f6e87', letterSpacing: '.1em' }}>{p.sub}</p>
+                          <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, color: '#5f6e87', marginTop: 8 }}>{p.models.length} Modelle</p>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
-                  {PROVIDERS.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => { setAiProvider(p.id); setAiModel(p.models[0]); }}
-                      className={`p-5 rounded-xl border text-left transition-all ${
-                        aiProvider === p.id
-                          ? 'border-gold bg-gold/8 shadow-[0_0_30px_-8px_rgba(201,163,95,0.2)]'
-                          : 'border-line bg-panel-2 hover:border-line-soft'
-                      }`}
-                    >
-                      <p className={`text-base font-semibold mb-1 ${aiProvider === p.id ? 'text-gold' : 'text-ink'}`}>
-                        {p.name}
-                      </p>
-                      <p className="text-xs font-mono text-ink-faint">{p.models.length} Modelle</p>
-                    </button>
-                  ))}
-                </div>
-
+                {/* Model selection */}
                 <div>
-                  <h3 className="text-sm font-medium text-ink mb-3">Modell auswählen</h3>
-                  <div className="space-y-2">
-                    {currentProvider.models.map(m => (
-                      <button
-                        key={m}
-                        onClick={() => setAiModel(m)}
-                        className={`w-full flex items-center gap-4 px-5 py-4 rounded-lg border text-left transition-all ${
-                          aiModel === m
-                            ? 'border-gold-dim bg-panel-2'
-                            : 'border-line bg-panel-2/50 hover:border-line-soft hover:bg-panel-2'
-                        }`}
-                      >
-                        <div className={`w-3 h-3 rounded-full border-2 transition-colors shrink-0 ${
-                          aiModel === m ? 'border-gold bg-gold' : 'border-ink-faint'
-                        }`} />
-                        <span className={`font-mono text-sm ${aiModel === m ? 'text-ink' : 'text-ink-dim'}`}>{m}</span>
-                        {m === currentProvider.models[0] && (
-                          <span className="ml-auto text-xs font-mono text-gold-dim">empfohlen</span>
-                        )}
-                      </button>
-                    ))}
+                  <div className="sec-head">
+                    <span className="idx">02</span>
+                    <h2>Modell</h2>
+                    <div className="rule" />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {currentProvider.models.map((m, mi) => {
+                      const active = aiModel === m;
+                      return (
+                        <button
+                          key={m}
+                          onClick={() => setAiModel(m)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 16,
+                            padding: '16px 20px',
+                            borderRadius: 10,
+                            border: active ? '1px solid rgba(232,176,75,.35)' : '1px solid rgba(255,255,255,.07)',
+                            background: active ? 'rgba(232,176,75,.06)' : 'rgba(255,255,255,.02)',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            transition: 'all .15s',
+                          }}
+                        >
+                          <div style={{
+                            width: 14, height: 14, borderRadius: '50%',
+                            border: active ? '2px solid #e8b04b' : '2px solid rgba(95,110,135,.5)',
+                            background: active ? '#e8b04b' : 'transparent',
+                            flexShrink: 0,
+                            transition: 'all .15s',
+                          }} />
+                          <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 13, color: active ? '#f4efe4' : '#9aa7bd', flex: 1 }}>{m}</span>
+                          {mi === 0 && (
+                            <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, letterSpacing: '.1em', color: '#e8b04b', opacity: .7 }}>EMPFOHLEN</span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
             )}
 
+            {/* ===== Keys section ===== */}
             {section === 'keys' && (
-              <div className="space-y-6">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
                 <div>
-                  <h2 className="text-lg font-disp font-light mb-1">API <em className="italic text-gold-bright">Keys</em></h2>
-                  <p className="text-sm text-ink-faint">Nur lokal im Browser gespeichert. Nie an externe Server übertragen.</p>
+                  <div className="sec-head" style={{ marginBottom: 8 }}>
+                    <span className="idx">KEY</span>
+                    <h2>API <em style={{ color: '#f5cc77' }}>Keys</em></h2>
+                    <div className="rule" />
+                  </div>
+                  <p style={{ color: '#5f6e87', fontSize: 13.5, marginBottom: 0 }}>
+                    Nur lokal im Browser gespeichert. Nie an externe Server übertragen.
+                  </p>
                 </div>
 
                 {(['AI', 'Enrichment', 'Scraping'] as const).map(group => {
                   const fields = KEY_FIELDS.filter(f => f.group === group);
                   return (
                     <div key={group}>
-                      <p className="text-xs font-mono tracking-widest text-ink-faint uppercase mb-3">{group}</p>
-                      <div className="space-y-2">
+                      <div className="sec-head">
+                        <span className="idx">{group.toUpperCase()}</span>
+                        <h2 style={{ fontSize: 18 }}>{group}</h2>
+                        <div className="rule" />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {fields.map(({ key, label, hint }) => {
-                          const val = keys[key] || '';
+                          const val    = keys[key] || '';
                           const filled = val.length > 0;
                           return (
                             <div
                               key={key}
-                              className={`flex items-center gap-4 px-5 py-4 rounded-xl border transition-all ${
-                                filled ? 'border-good/30 bg-panel-2' : 'border-line bg-panel-2/60'
-                              }`}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 16,
+                                padding: '14px 20px',
+                                borderRadius: 12,
+                                border: filled ? '1px solid rgba(79,209,197,.2)' : '1px solid rgba(255,255,255,.07)',
+                                background: filled ? 'rgba(79,209,197,.04)' : 'rgba(255,255,255,.02)',
+                                transition: 'all .15s',
+                              }}
                             >
-                              <div className="w-28 shrink-0">
-                                <p className="text-sm font-medium text-ink">{label}</p>
+                              <div style={{ width: 120, flexShrink: 0 }}>
+                                <p style={{ fontFamily: "'Spline Sans', sans-serif", fontSize: 13, fontWeight: 500, color: '#f4efe4' }}>{label}</p>
                               </div>
-                              <div className="flex-1 relative">
+                              <div style={{ flex: 1, position: 'relative' }}>
                                 <input
                                   type={show[key] ? 'text' : 'password'}
                                   value={val}
                                   onChange={e => setKeys(p => ({ ...p, [key]: e.target.value }))}
                                   placeholder={hint}
-                                  className="w-full bg-transparent border-0 text-sm font-mono text-ink placeholder:text-ink-faint/30 outline-none py-0"
+                                  style={{
+                                    width: '100%',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    padding: 0,
+                                    fontSize: 13,
+                                    fontFamily: "'Spline Sans Mono', monospace",
+                                    color: '#f4efe4',
+                                    outline: 'none',
+                                    boxShadow: 'none',
+                                  }}
                                 />
                               </div>
-                              <div className="flex items-center gap-3 shrink-0">
-                                {filled && (
-                                  <span className="text-xs font-mono text-good">✓</span>
-                                )}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                                {filled && <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#4fd1c5' }}>✓</span>}
                                 <button
                                   onClick={() => setShow(p => ({ ...p, [key]: !p[key] }))}
-                                  className="text-ink-faint hover:text-ink transition-colors text-xs font-mono w-4"
+                                  style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#5f6e87', width: 16 }}
                                 >
                                   {show[key] ? '●' : '○'}
                                 </button>
                                 {filled && (
                                   <button
                                     onClick={() => setKeys(p => ({ ...p, [key]: '' }))}
-                                    className="text-ink-faint hover:text-bad transition-colors text-xs"
+                                    style={{ fontSize: 16, color: '#5f6e87', lineHeight: 1 }}
                                   >
                                     ×
                                   </button>

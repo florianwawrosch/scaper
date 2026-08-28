@@ -4,98 +4,87 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type ScrapeRun } from '@/lib/api';
 
-const STATUS_MAP: Record<ScrapeRun['status'], { label: string; cls: string }> = {
-  draft:         { label: 'Draft',    cls: 'text-ink-faint border-ink-faint/30 bg-ink-faint/5' },
-  scraping:      { label: 'Scraping', cls: 'text-warn border-warn/40 bg-warn/8' },
-  dataset_ready: { label: 'Bereit',   cls: 'text-good border-good/40 bg-good/8' },
-  in_progress:   { label: 'Aktiv',    cls: 'text-warn border-warn/40 bg-warn/8' },
-  completed:     { label: 'Fertig',   cls: 'text-good border-good/40 bg-good/8' },
-  failed:        { label: 'Fehler',   cls: 'text-bad border-bad/40 bg-bad/8' },
+const STATUS_PILL: Record<ScrapeRun['status'], { label: string; cls: string }> = {
+  draft:         { label: 'Draft',    cls: 'muted' },
+  scraping:      { label: 'Scraping', cls: 'warn'  },
+  dataset_ready: { label: 'Bereit',   cls: 'good'  },
+  in_progress:   { label: 'Aktiv',    cls: 'warn'  },
+  completed:     { label: 'Fertig',   cls: 'good'  },
+  failed:        { label: 'Fehler',   cls: 'bad'   },
 };
 
 const FILTERS = ['all', 'draft', 'dataset_ready', 'completed', 'failed'] as const;
 type Filter = typeof FILTERS[number];
+const FILTER_LABELS: Record<Filter, string> = { all: 'Alle', draft: 'Draft', dataset_ready: 'Bereit', completed: 'Fertig', failed: 'Fehler' };
 
 export default function RunsList() {
   const router = useRouter();
-  const [runs, setRuns] = useState<ScrapeRun[]>([]);
+  const [runs,    setRuns]    = useState<ScrapeRun[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<Filter>('all');
-  const [page, setPage] = useState(1);
+  const [filter,  setFilter]  = useState<Filter>('all');
+  const [page,    setPage]    = useState(1);
   const PAGE_SIZE = 25;
 
   useEffect(() => {
-    api.runs.list()
-      .then(setRuns)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    api.runs.list().then(setRuns).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  const filtered = filter === 'all' ? runs : runs.filter(r => r.status === filter);
+  const filtered   = filter === 'all' ? runs : runs.filter(r => r.status === filter);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const fmt = (d: string) =>
-    new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-  const FILTER_LABELS: Record<Filter, string> = {
-    all: 'Alle',
-    draft: 'Draft',
-    dataset_ready: 'Bereit',
-    completed: 'Fertig',
-    failed: 'Fehler',
-  };
+  const totalKeep   = runs.reduce((s, r) => s + (Object.values(r.classification_results)[0]?.keep ?? 0), 0);
+  const totalReject = runs.reduce((s, r) => s + (Object.values(r.classification_results)[0]?.reject ?? 0), 0);
 
   return (
-    <div className="min-h-screen bg-noir">
-      <div className="max-w-7xl mx-auto px-6 py-10">
+    <div style={{ minHeight: '100vh' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '48px 32px 80px' }}>
 
         {/* Header */}
-        <div className="mb-10">
+        <div style={{ marginBottom: 40 }}>
           <button
             onClick={() => router.push('/')}
-            className="text-ink-faint hover:text-gold-bright font-mono text-xs tracking-wider transition-colors mb-6 block"
+            style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, letterSpacing: '.1em', color: '#5f6e87', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 20, display: 'block' }}
           >
             ← Dashboard
           </button>
-          <p className="text-gold font-mono text-xs tracking-widest uppercase mb-2">Pipeline History</p>
-          <h1 className="text-4xl font-disp font-light tracking-tight">
-            Alle <em className="italic text-gold-bright">Runs</em>
-          </h1>
+          <div className="sec-head" style={{ marginBottom: 0 }}>
+            <span className="idx">HISTORY</span>
+            <h1 style={{ fontSize: 'clamp(24px, 3vw, 38px)' }}>Alle <em style={{ color: '#f5cc77' }}>Runs</em></h1>
+            <div className="rule" />
+          </div>
         </div>
 
-        {/* Summary Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+        {/* KPI Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 36 }}>
           {[
-            { label: 'Total', value: runs.length, cls: 'text-ink' },
-            { label: 'Fertig', value: runs.filter(r => r.status === 'completed').length, cls: 'text-good' },
-            { label: 'Aktiv', value: runs.filter(r => r.status === 'in_progress' || r.status === 'scraping').length, cls: 'text-warn' },
-            { label: 'Fehler', value: runs.filter(r => r.status === 'failed').length, cls: 'text-bad' },
-          ].map(({ label, value, cls }) => (
-            <div key={label} className="bg-panel-2 border border-line rounded-lg px-4 py-3">
-              <p className="text-xs font-mono tracking-wider text-ink-faint mb-1 uppercase">{label}</p>
-              <p className={`text-2xl font-disp font-light ${cls}`}>{value}</p>
+            { label: 'Total',       value: runs.length,                                                                   cls: '',     bar: 'muted' },
+            { label: 'Fertig',      value: runs.filter(r => r.status === 'completed').length,                             cls: 'teal', bar: 'teal'  },
+            { label: 'Leads Keep',  value: totalKeep.toLocaleString('de'),                                                cls: 'gold', bar: ''      },
+            { label: 'Fehler',      value: runs.filter(r => r.status === 'failed').length,                                cls: 'rose', bar: 'rose'  },
+          ].map(({ label, value, cls, bar }) => (
+            <div key={label} className="kpi">
+              <div className={`bar-accent ${bar}`} />
+              <div className="klbl">{label}</div>
+              <div className={`kval ${cls}`}>{value}</div>
             </div>
           ))}
         </div>
 
-        {/* Filters */}
-        <div className="flex gap-2 mb-5 flex-wrap">
+        {/* Filter chips */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
           {FILTERS.map(f => (
             <button
               key={f}
               onClick={() => { setFilter(f); setPage(1); }}
-              className={`px-3 py-1.5 text-xs font-mono tracking-wider rounded border transition-all ${
-                filter === f
-                  ? 'bg-gold text-noir border-gold font-semibold'
-                  : 'bg-panel-3 border-line text-ink-faint hover:text-ink hover:border-line-soft'
-              }`}
+              className={`chip ${filter === f ? 'active' : ''}`}
             >
               {FILTER_LABELS[f]}
               {f !== 'all' && (
-                <span className="ml-1.5 opacity-60">
-                  {runs.filter(r => r.status === f).length}
-                </span>
+                <span style={{ marginLeft: 6, opacity: .55 }}>{runs.filter(r => r.status === f).length}</span>
               )}
             </button>
           ))}
@@ -103,79 +92,61 @@ export default function RunsList() {
 
         {/* Table */}
         {loading ? (
-          <div className="border border-line rounded-lg bg-panel-2 p-12 text-center">
-            <p className="text-ink-faint font-mono text-xs tracking-wider">Lädt…</p>
+          <div style={{ padding: '48px', textAlign: 'center', background: '#0f1828', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14 }}>
+            <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#5f6e87', letterSpacing: '.1em' }}>Lädt…</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="border border-line rounded-lg bg-panel-2 p-12 text-center">
-            <p className="text-ink-faint font-mono text-xs">Keine Runs gefunden</p>
+          <div style={{ padding: '56px', textAlign: 'center', background: '#0f1828', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14 }}>
+            <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 22, color: '#5f6e87', marginBottom: 8 }}>Keine Runs</p>
+            <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.06em' }}>Filter anpassen oder neuen Run starten.</p>
           </div>
         ) : (
-          <div className="border border-line rounded-lg overflow-hidden">
-            <table className="w-full">
+          <div style={{ background: '#0f1828', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14, overflow: 'hidden' }}>
+            <table className="data-table">
               <thead>
-                <tr className="bg-panel border-b border-line">
-                  <th className="text-left px-4 py-2.5 text-xs font-mono tracking-wider text-ink-faint uppercase">Status</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-mono tracking-wider text-ink-faint uppercase">Quelle</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-mono tracking-wider text-ink-faint uppercase hidden sm:table-cell">Erstellt</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-mono tracking-wider text-ink-faint uppercase">Keep</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-mono tracking-wider text-ink-faint uppercase">Reject</th>
-                  <th className="px-4 py-2.5" />
+                <tr>
+                  <th>Status</th>
+                  <th>Quelle</th>
+                  <th>Erstellt</th>
+                  <th className="r">Keep</th>
+                  <th className="r">Reject</th>
+                  <th className="r">Unklar</th>
+                  <th style={{ width: 40 }} />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-line-soft">
+              <tbody>
                 {paginated.map(run => {
-                  const s = STATUS_MAP[run.status];
+                  const s  = STATUS_PILL[run.status];
                   const cr = Object.values(run.classification_results)[0];
                   return (
-                    <tr
-                      key={run.id}
-                      onClick={() => router.push(`/runs/${run.id}`)}
-                      className="hover:bg-panel-3/50 transition-colors cursor-pointer group"
-                    >
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-mono tracking-wide ${s.cls}`}>
-                          {s.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs font-mono text-ink-dim">{run.source}</td>
-                      <td className="px-4 py-3 text-xs font-mono text-ink-faint hidden sm:table-cell">{fmt(run.created_at)}</td>
-                      <td className="px-4 py-3 text-right text-xs font-mono font-semibold text-good">
+                    <tr key={run.id} onClick={() => router.push(`/runs/${run.id}`)}>
+                      <td><span className={`pill ${s.cls}`}>{s.label}</span></td>
+                      <td className="mono">{run.source}</td>
+                      <td style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#5f6e87' }}>{fmt(run.created_at)}</td>
+                      <td className="r" style={{ color: '#4fd1c5', fontFamily: "'Spline Sans Mono', monospace", fontWeight: 600, fontSize: 15 }}>
                         {cr?.keep ?? '—'}
                       </td>
-                      <td className="px-4 py-3 text-right text-xs font-mono text-bad">
+                      <td className="r" style={{ color: '#e8736b', fontFamily: "'Spline Sans Mono', monospace", fontSize: 13 }}>
                         {cr?.reject ?? '—'}
                       </td>
-                      <td className="px-4 py-3 text-right text-xs font-mono text-ink-faint group-hover:text-gold-bright transition-colors">
-                        →
+                      <td className="r" style={{ color: '#e8b04b', fontFamily: "'Spline Sans Mono', monospace", fontSize: 13 }}>
+                        {cr?.unklar ?? '—'}
                       </td>
+                      <td className="r" style={{ color: '#5f6e87' }}>→</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
 
-            {/* Pagination */}
             {totalPages > 1 && (
-              <div className="px-4 py-3 border-t border-line bg-panel flex items-center justify-between">
-                <span className="text-xs font-mono text-ink-faint">
+              <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,.12)' }}>
+                <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.04em' }}>
                   {filtered.length} Einträge · Seite {page} / {totalPages}
                 </span>
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="px-2.5 py-1 text-xs font-mono border border-line rounded text-ink-faint hover:border-gold-dim hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    ← Zurück
-                  </button>
-                  <button
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                    className="px-2.5 py-1 text-xs font-mono border border-line rounded text-ink-faint hover:border-gold-dim hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Weiter →
-                  </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn-ghost" style={{ padding: '5px 12px', fontSize: 11 }} onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>← Zurück</button>
+                  <button className="btn-ghost" style={{ padding: '5px 12px', fontSize: 11 }} onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Weiter →</button>
                 </div>
               </div>
             )}
