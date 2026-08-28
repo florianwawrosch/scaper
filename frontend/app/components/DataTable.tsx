@@ -1,11 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 
-interface AiColumn {
-  name: string;
-  values: string[];
-}
+interface AiColumn { name: string; values: string[] }
 
 interface DataTableProps {
   data: Record<string, any>[];
@@ -15,20 +12,137 @@ interface DataTableProps {
   onExcludeChange?: (indices: Set<number>) => void;
 }
 
+interface ColFilter { text: string; values: Set<string> | null }
+
 const PAGE = 25;
+const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
+
+function FilterDropdown({
+  col, allVals, filter, onClose, onChange,
+  anchorRect,
+}: {
+  col: string;
+  allVals: string[];
+  filter: ColFilter;
+  onClose: () => void;
+  onChange: (f: ColFilter) => void;
+  anchorRect: DOMRect;
+}) {
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  const selected = filter.values ?? new Set(allVals);
+  const displayed = search
+    ? allVals.filter(v => v.toLowerCase().includes(search.toLowerCase()))
+    : allVals;
+
+  const toggleVal = (v: string) => {
+    const cur = filter.values ?? new Set(allVals);
+    const next = new Set(cur);
+    if (next.has(v)) next.delete(v); else next.add(v);
+    onChange({ ...filter, values: next.size === allVals.length ? null : next });
+  };
+
+  const allChecked = filter.values === null || filter.values.size === allVals.length;
+
+  const left = Math.min(anchorRect.left, window.innerWidth - 240);
+  const top  = anchorRect.bottom + 4;
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: 'fixed', left, top, zIndex: 9999,
+        width: 230, background: '#10111a', border: '1px solid rgba(255,255,255,.12)',
+        borderRadius: 8, boxShadow: '0 8px 28px rgba(0,0,0,.5)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}
+    >
+      {/* Text filter input */}
+      <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
+        <input
+          type="text"
+          value={filter.text}
+          onChange={e => onChange({ ...filter, text: e.target.value })}
+          placeholder="Textsuche…"
+          autoFocus
+          style={{ ...mono, fontSize: 11, width: '100%', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 5, padding: '4px 8px', color: '#f4efe4', outline: 'none', boxSizing: 'border-box' }}
+        />
+      </div>
+
+      {/* Value list header */}
+      <div style={{ padding: '5px 10px 3px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Werte suchen…"
+          style={{ ...mono, fontSize: 10, flex: 1, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 4, padding: '2px 6px', color: '#9aa7bd', outline: 'none' }}
+        />
+        <button
+          onClick={() => onChange({ ...filter, values: null })}
+          style={{ ...mono, fontSize: 10, color: '#8ab4f8', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0 }}
+        >Alle</button>
+        <button
+          onClick={() => onChange({ ...filter, values: new Set() })}
+          style={{ ...mono, fontSize: 10, color: '#e8736b', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0 }}
+        >Keine</button>
+      </div>
+
+      {/* Checkbox list */}
+      <div style={{ overflowY: 'auto', maxHeight: 220, padding: '2px 0 6px' }}>
+        {displayed.length === 0 ? (
+          <p style={{ ...mono, fontSize: 10, color: '#5f6e87', padding: '8px 12px' }}>Keine Treffer</p>
+        ) : displayed.map(v => (
+          <label
+            key={v}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '3px 12px', cursor: 'pointer' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.04)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(v)}
+              onChange={() => toggleVal(v)}
+              style={{ width: 12, height: 12, cursor: 'pointer', accentColor: '#4fd1c5', flexShrink: 0 }}
+            />
+            <span style={{ ...mono, fontSize: 11, color: '#c4cdd8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v || <em style={{ color: '#5f6e87' }}>(leer)</em>}</span>
+          </label>
+        ))}
+      </div>
+
+      {/* Clear + Done */}
+      <div style={{ padding: '6px 10px', borderTop: '1px solid rgba(255,255,255,.06)', display: 'flex', justifyContent: 'space-between' }}>
+        <button
+          onClick={() => onChange({ text: '', values: null })}
+          style={{ ...mono, fontSize: 10, color: '#e8736b', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        >Filter löschen</button>
+        <button
+          onClick={onClose}
+          style={{ ...mono, fontSize: 10, color: '#4fd1c5', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        >Fertig</button>
+      </div>
+    </div>
+  );
+}
 
 export function DataTable({
-  data,
-  rawColumns,
-  aiColumns = [],
-  excludedRows = new Set(),
-  onExcludeChange,
+  data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange,
 }: DataTableProps) {
   const [globalSearch, setGlobalSearch]   = useState('');
-  const [colFilters,   setColFilters]     = useState<Record<string, string>>({});
+  const [colFilters,   setColFilters]     = useState<Record<string, ColFilter>>({});
   const [sortCol,      setSortCol]        = useState<string | null>(null);
   const [sortAsc,      setSortAsc]        = useState(true);
   const [page,         setPage]           = useState(1);
+  const [openFilter,   setOpenFilter]     = useState<{ col: string; rect: DOMRect } | null>(null);
 
   const allColumns = [...rawColumns, ...aiColumns.map(c => c.name)];
 
@@ -40,15 +154,25 @@ export function DataTable({
     }),
   [data, aiColumns]);
 
+  const uniqueValues = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const col of allColumns) {
+      const set = new Set(extended.map(row => String(row[col] ?? '')));
+      map[col] = [...set].sort((a, b) => a.localeCompare(b, 'de'));
+    }
+    return map;
+  }, [extended, allColumns]);
+
   const filtered = useMemo(() => {
     return extended.filter(row => {
       if (globalSearch) {
         const gs = globalSearch.toLowerCase();
         if (!allColumns.some(c => String(row[c] ?? '').toLowerCase().includes(gs))) return false;
       }
-      for (const [col, val] of Object.entries(colFilters)) {
-        if (!val) continue;
-        if (!String(row[col] ?? '').toLowerCase().includes(val.toLowerCase())) return false;
+      for (const [col, f] of Object.entries(colFilters)) {
+        const cell = String(row[col] ?? '');
+        if (f.text && !cell.toLowerCase().includes(f.text.toLowerCase())) return false;
+        if (f.values !== null && !f.values.has(cell)) return false;
       }
       return true;
     });
@@ -57,7 +181,7 @@ export function DataTable({
   const sorted = useMemo(() => {
     if (!sortCol) return filtered;
     return [...filtered].sort((a, b) => {
-      const cmp = String(a[sortCol] ?? '').localeCompare(String(b[sortCol] ?? ''));
+      const cmp = String(a[sortCol] ?? '').localeCompare(String(b[sortCol] ?? ''), 'de');
       return sortAsc ? cmp : -cmp;
     });
   }, [filtered, sortCol, sortAsc]);
@@ -72,7 +196,7 @@ export function DataTable({
     onExcludeChange(next);
   };
 
-  const allVisibleIncluded = paginated.every(row => !excludedRows.has(row._idx));
+  const allVisibleIncluded = paginated.every(r => !excludedRows.has(r._idx));
   const toggleAll = () => {
     if (!onExcludeChange) return;
     const next = new Set(excludedRows);
@@ -87,29 +211,27 @@ export function DataTable({
     setPage(1);
   };
 
-  const setFilter = (col: string, val: string) => {
-    setColFilters(p => ({ ...p, [col]: val }));
-    setPage(1);
-  };
+  const activeFilters = Object.values(colFilters).filter(f => f.text || f.values !== null).length;
 
-  const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
   const thStyle: React.CSSProperties = {
     ...mono, fontSize: 10, letterSpacing: '.07em', textTransform: 'uppercase',
     padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap',
-    borderBottom: '1px solid rgba(255,255,255,.07)', color: '#9aa7bd', cursor: 'pointer', userSelect: 'none',
+    borderBottom: '1px solid rgba(255,255,255,.07)', color: '#9aa7bd',
+    userSelect: 'none',
   };
   const tdStyle: React.CSSProperties = {
     ...mono, fontSize: 11, padding: '5px 8px',
     borderBottom: '1px solid rgba(255,255,255,.04)', color: '#9aa7bd',
     maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
   };
-  const filterInput: React.CSSProperties = {
-    ...mono, fontSize: 10, width: '100%', minWidth: 50,
-    background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.07)',
-    borderRadius: 4, padding: '2px 5px', color: '#f4efe4', outline: 'none',
-  };
 
   const includedCount = data.length - excludedRows.size;
+
+  const openFilterFor = (col: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setOpenFilter(prev => prev?.col === col ? null : { col, rect });
+  };
 
   return (
     <div style={{ border: '1px solid rgba(255,255,255,.07)', borderRadius: 10, overflow: 'hidden', fontSize: 11 }}>
@@ -120,15 +242,20 @@ export function DataTable({
           type="text"
           value={globalSearch}
           onChange={e => { setGlobalSearch(e.target.value); setPage(1); }}
-          placeholder="Suchen…"
-          style={{ ...mono, fontSize: 11, flex: 1, maxWidth: 200, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 5, padding: '3px 8px', color: '#f4efe4', outline: 'none' }}
+          placeholder="Alle Spalten durchsuchen…"
+          style={{ ...mono, fontSize: 11, flex: 1, maxWidth: 240, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 5, padding: '3px 8px', color: '#f4efe4', outline: 'none' }}
         />
-        {Object.values(colFilters).some(Boolean) && (
-          <button onClick={() => { setColFilters({}); setPage(1); }} style={{ ...mono, fontSize: 10, color: '#e8736b', background: 'none', border: 'none', cursor: 'pointer' }}>Filter löschen ×</button>
+        {activeFilters > 0 && (
+          <button
+            onClick={() => { setColFilters({}); setPage(1); }}
+            style={{ ...mono, fontSize: 10, color: '#e8736b', background: 'rgba(232,115,107,.08)', border: '1px solid rgba(232,115,107,.2)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}
+          >
+            {activeFilters} Filter ×
+          </button>
         )}
         <span style={{ ...mono, fontSize: 10, color: '#5f6e87', marginLeft: 'auto' }}>
           {filtered.length}/{data.length} sichtbar
-          {excludedRows.size > 0 && ` · ${excludedRows.size} ausgeschlossen · ${includedCount} inkl.`}
+          {excludedRows.size > 0 && ` · ${includedCount} inkl.`}
         </span>
       </div>
 
@@ -136,7 +263,6 @@ export function DataTable({
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            {/* Headers */}
             <tr style={{ background: 'rgba(255,255,255,.03)' }}>
               {onExcludeChange && (
                 <th style={{ ...thStyle, width: 28, cursor: 'default' }}>
@@ -144,32 +270,51 @@ export function DataTable({
                 </th>
               )}
               <th style={{ ...thStyle, width: 28, cursor: 'default', color: '#5f6e87' }}>#</th>
-              {rawColumns.map(col => (
-                <th key={col} onClick={() => sort(col)} style={thStyle}>
-                  {col}{sortCol === col ? (sortAsc ? ' ↑' : ' ↓') : ''}
-                </th>
-              ))}
-              {aiColumns.map(col => (
-                <th key={col.name} onClick={() => sort(col.name)} style={{ ...thStyle, color: '#e8b04b', background: 'rgba(232,176,75,.04)' }}>
-                  ✦ {col.name}{sortCol === col.name ? (sortAsc ? ' ↑' : ' ↓') : ''}
-                </th>
-              ))}
-            </tr>
-            {/* Column filter row */}
-            <tr style={{ background: 'rgba(255,255,255,.02)' }}>
-              {onExcludeChange && <td style={{ padding: '3px 8px', borderBottom: '1px solid rgba(255,255,255,.06)' }} />}
-              <td style={{ padding: '3px 8px', borderBottom: '1px solid rgba(255,255,255,.06)' }} />
-              {allColumns.map(col => (
-                <td key={col} style={{ padding: '3px 8px', borderBottom: '1px solid rgba(255,255,255,.06)', background: aiColumns.some(c => c.name === col) ? 'rgba(232,176,75,.02)' : undefined }}>
-                  <input
-                    type="text"
-                    placeholder="▼ Filter"
-                    value={colFilters[col] || ''}
-                    onChange={e => setFilter(col, e.target.value)}
-                    style={filterInput}
-                  />
-                </td>
-              ))}
+              {rawColumns.map(col => {
+                const hasFilter = colFilters[col] && (colFilters[col].text || colFilters[col].values !== null);
+                return (
+                  <th key={col} style={{ ...thStyle, position: 'relative' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ cursor: 'pointer' }} onClick={() => { sort(col); }}>
+                        {col}{sortCol === col ? (sortAsc ? ' ↑' : ' ↓') : ''}
+                      </span>
+                      <button
+                        onClick={e => openFilterFor(col, e)}
+                        title="Filter"
+                        style={{
+                          ...mono, fontSize: 9, padding: '1px 4px', borderRadius: 3, cursor: 'pointer',
+                          background: hasFilter ? 'rgba(79,209,197,.2)' : 'rgba(255,255,255,.06)',
+                          border: hasFilter ? '1px solid rgba(79,209,197,.4)' : '1px solid rgba(255,255,255,.1)',
+                          color: hasFilter ? '#4fd1c5' : '#5f6e87',
+                          lineHeight: 1,
+                        }}
+                      >▼</button>
+                    </div>
+                  </th>
+                );
+              })}
+              {aiColumns.map(col => {
+                const hasFilter = colFilters[col.name] && (colFilters[col.name].text || colFilters[col.name].values !== null);
+                return (
+                  <th key={col.name} style={{ ...thStyle, color: '#e8b04b', background: 'rgba(232,176,75,.04)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ cursor: 'pointer' }} onClick={() => { sort(col.name); }}>
+                        ✦ {col.name}{sortCol === col.name ? (sortAsc ? ' ↑' : ' ↓') : ''}
+                      </span>
+                      <button
+                        onClick={e => openFilterFor(col.name, e)}
+                        style={{
+                          ...mono, fontSize: 9, padding: '1px 4px', borderRadius: 3, cursor: 'pointer',
+                          background: hasFilter ? 'rgba(79,209,197,.2)' : 'rgba(255,255,255,.06)',
+                          border: hasFilter ? '1px solid rgba(79,209,197,.4)' : '1px solid rgba(255,255,255,.1)',
+                          color: hasFilter ? '#4fd1c5' : '#5f6e87',
+                          lineHeight: 1,
+                        }}
+                      >▼</button>
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -227,6 +372,21 @@ export function DataTable({
             ))}
           </div>
         </div>
+      )}
+
+      {/* Filter dropdown portal */}
+      {openFilter && (
+        <FilterDropdown
+          col={openFilter.col}
+          allVals={uniqueValues[openFilter.col] ?? []}
+          filter={colFilters[openFilter.col] ?? { text: '', values: null }}
+          anchorRect={openFilter.rect}
+          onChange={f => {
+            setColFilters(prev => ({ ...prev, [openFilter.col]: f }));
+            setPage(1);
+          }}
+          onClose={() => setOpenFilter(null)}
+        />
       )}
     </div>
   );

@@ -446,79 +446,83 @@ export default function Home() {
 
           </div>
 
-          {/* ── Right: Runs + CSV list ── */}
-          <div style={{ position: 'sticky', top: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-            {/* CSV imports */}
-            {csvRuns.length > 0 && (
-              <div style={{ background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden' }}>
-                <div style={{ padding: '8px 12px', borderBottom: `1px solid ${T.lineS}` }}>
-                  <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.18em', textTransform: 'uppercase', color: T.inkF }}>CSV Imports</span>
-                </div>
-                {csvRuns.slice(0, 5).map(csv => (
-                  <button
-                    key={csv.id}
-                    onClick={() => router.push(`/csv/${csv.id}`)}
-                    style={{ width: '100%', padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', borderBottom: `1px solid ${T.lineS}`, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{csv.filename}</p>
-                      <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(csv.createdAt)}</p>
-                    </div>
-                    <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, flexShrink: 0 }}>{csv.rowCount.toLocaleString('de')} Z</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Backend runs */}
+          {/* ── Right: combined history ── */}
+          <div style={{ position: 'sticky', top: 20 }}>
             <div style={{ background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden' }}>
               <div style={{ padding: '8px 12px', borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.18em', textTransform: 'uppercase', color: T.inkF }}>Letzte Runs</span>
-                <button onClick={() => router.push('/runs')} style={{ fontFamily: T.ffMono, fontSize: 10, color: T.gold, background: 'none', border: 'none', cursor: 'pointer' }}>Alle →</button>
+                <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.18em', textTransform: 'uppercase', color: T.inkF }}>Verlauf</span>
+                <button onClick={() => router.push('/runs')} style={{ fontFamily: T.ffMono, fontSize: 10, color: T.gold, background: 'none', border: 'none', cursor: 'pointer' }}>Alle Runs →</button>
               </div>
+
               {loading ? (
                 <div style={{ padding: '16px', textAlign: 'center', fontFamily: T.ffMono, fontSize: 11, color: T.inkF }}>Lädt…</div>
-              ) : runs.length === 0 ? (
+              ) : (runs.length === 0 && csvRuns.length === 0) ? (
                 <div style={{ padding: '20px 14px', textAlign: 'center' }}>
-                  <p style={{ fontFamily: T.ffBody, fontSize: 13, color: T.inkF }}>Noch keine Runs</p>
+                  <p style={{ fontFamily: T.ffBody, fontSize: 13, color: T.inkF }}>Noch keine Importe</p>
                 </div>
               ) : (
                 <div>
-                  {runs.slice(0, 10).map(run => {
-                    const s = STATUS_PILL[run.status];
-                    const cr = Object.values(run.classification_results)[0];
-                    return (
-                      <div key={run.id} style={{ borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'stretch' }}>
-                        <button
-                          onClick={() => router.push(`/runs/${run.id}`)}
-                          style={{ flex: 1, padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'; }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-                        >
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{run.source}</p>
-                            <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(run.created_at)}</p>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                            {(cr?.keep ?? 0) > 0 && <span style={{ fontFamily: T.ffDisp, fontSize: 15, color: T.teal, fontWeight: 600 }}>{cr!.keep}</span>}
-                            <span className={`pill ${s.cls}`}>{s.label}</span>
-                          </div>
-                        </button>
-                        {run.scraper_config && (
+                  {/* Merge and sort by date */}
+                  {[
+                    ...csvRuns.map(c => ({ kind: 'csv' as const, date: c.createdAt, csv: c })),
+                    ...runs.map(r => ({ kind: 'run' as const, date: r.created_at, run: r })),
+                  ]
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .slice(0, 12)
+                    .map(item => {
+                      if (item.kind === 'csv') {
+                        const { csv } = item;
+                        return (
                           <button
-                            onClick={() => { applyRunConfig(run.scraper_config as Record<string, any>); showToast('Einstellungen geladen', 'success'); }}
-                            title="Einstellungen laden"
-                            style={{ padding: '0 10px', background: 'none', border: 'none', borderLeft: `1px solid ${T.lineS}`, cursor: 'pointer', fontFamily: T.ffMono, fontSize: 12, color: T.inkF, transition: 'color .15s', flexShrink: 0 }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = T.gold; }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = T.inkF; }}
-                          >↩</button>
-                        )}
-                      </div>
-                    );
-                  })}
+                            key={`csv-${csv.id}`}
+                            onClick={() => router.push(`/csv/${csv.id}`)}
+                            style={{ width: '100%', padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', borderBottom: `1px solid ${T.lineS}`, cursor: 'pointer', textAlign: 'left' }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{csv.filename}</p>
+                              <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(csv.createdAt)}</p>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                              <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF }}>{csv.rowCount.toLocaleString('de')} Z</span>
+                              <span style={{ fontFamily: T.ffMono, fontSize: 8, letterSpacing: '.08em', padding: '1px 5px', borderRadius: 3, background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', color: '#6381ff' }}>CSV</span>
+                            </div>
+                          </button>
+                        );
+                      }
+                      const { run } = item;
+                      const s = STATUS_PILL[run.status];
+                      const cr = Object.values(run.classification_results)[0];
+                      return (
+                        <div key={`run-${run.id}`} style={{ borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'stretch' }}>
+                          <button
+                            onClick={() => router.push(`/runs/${run.id}`)}
+                            style={{ flex: 1, padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{run.source}</p>
+                              <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(run.created_at)}</p>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                              {(cr?.keep ?? 0) > 0 && <span style={{ fontFamily: T.ffDisp, fontSize: 15, color: T.teal, fontWeight: 600 }}>{cr!.keep}</span>}
+                              <span className={`pill ${s.cls}`}>{s.label}</span>
+                            </div>
+                          </button>
+                          {run.scraper_config && (
+                            <button
+                              onClick={() => { applyRunConfig(run.scraper_config as Record<string, any>); showToast('Einstellungen geladen', 'success'); }}
+                              title="Einstellungen laden"
+                              style={{ padding: '0 10px', background: 'none', border: 'none', borderLeft: `1px solid ${T.lineS}`, cursor: 'pointer', fontFamily: T.ffMono, fontSize: 12, color: T.inkF, transition: 'color .15s', flexShrink: 0 }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = T.gold; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = T.inkF; }}
+                            >↩</button>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               )}
             </div>
