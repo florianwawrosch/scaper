@@ -419,7 +419,6 @@ export default function Home() {
                         style={{
                           width: '100%',
                           padding: '14px 20px',
-                          borderBottom: '1px solid rgba(255,255,255,.05)',
                           display: 'flex',
                           alignItems: 'center',
                           gap: 12,
