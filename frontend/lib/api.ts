@@ -81,11 +81,20 @@ export const api = {
       return res.json();
     },
 
-    classify: async (runId: string, dfData: unknown[], mapping: Record<string, unknown>, model: string = 'Gemini') => {
+    upload: async (runId: string, formData: FormData) => {
+      const res = await fetch(`${API_BASE}/api/runs/${runId}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Failed to upload file');
+      return res.json();
+    },
+
+    classify: async (runId: string, aiProvider: string, aiModel: string, dfData?: unknown[], mapping?: Record<string, unknown>) => {
       const res = await fetch(`${API_BASE}/api/runs/${runId}/classify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ df_data: dfData, mapping, model }),
+        body: JSON.stringify({ aiProvider, aiModel, df_data: dfData, mapping }),
       });
       if (!res.ok) throw new Error('Failed to classify');
       return res.json();

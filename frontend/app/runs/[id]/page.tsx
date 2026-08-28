@@ -233,7 +233,13 @@ export default function RunDetail() {
 
           {activeTab === 'Review & Filter' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              <ClassificationPanel runId={runId} leadsCount={tableData.length} onClassificationComplete={loadRun} />
+              <ClassificationPanel
+                runId={runId}
+                leadsCount={tableData.length}
+                initialProvider={(run.scraper_config?.ai_provider as string) || 'gemini'}
+                initialModel={(run.scraper_config?.ai_model as string) || 'gemini-2.0-flash'}
+                onClassificationComplete={loadRun}
+              />
               {tableData.length > 0 ? (
                 <DataTable
                   data={tableData}
