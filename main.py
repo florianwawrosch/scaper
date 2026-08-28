@@ -1,6 +1,6 @@
 """FastAPI Backend für Lead Pipeline."""
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -76,6 +76,7 @@ def _run_to_dict(run) -> dict:
         "rating": run.rating,
         "feedback": run.feedback,
         "classification_results": run.classification_results,
+        "scraper_config": run.scraper_config,
     }
 
 
@@ -107,12 +108,55 @@ async def get_run(run_id: str):
     }
 
 
-@app.post("/api/runs")
-async def start_run(req: StartRunRequest):
-    run = create_run(req.source)
-    if req.scraper_config:
-        run.scraper_config = req.scraper_config
+def _do_meta_ads_scrape(run_id: str, cfg: dict):
+    """Background task: call Meta Ads API and save dataset."""
+    from core.meta_ads_scraper import scrape_meta_ads
+    run = load_run(run_id)
+    if not run:
+        return
+    try:
+        token      = cfg.get("meta_ads_token") or os.environ.get("META_ADS_API_TOKEN", "")
+        keywords   = cfg.get("keywords") or []
+        if isinstance(keywords, str):
+            keywords = [k.strip() for k in keywords.splitlines() if k.strip()]
+
+        rows = scrape_meta_ads(
+            access_token=token,
+            search_terms=keywords,
+            ad_reached_countries=cfg.get("countries") or cfg.get("ad_reached_countries") or ["DE", "AT"],
+            ad_active_status=cfg.get("ad_status") or cfg.get("ad_active_status") or "ACTIVE",
+            publisher_platforms=cfg.get("platforms") or cfg.get("publisher_platforms") or ["FACEBOOK", "INSTAGRAM"],
+            languages=cfg.get("languages"),
+            media_type=cfg.get("media_type", "ALL"),
+            search_type=cfg.get("search_type", "KEYWORD_UNORDERED"),
+            ad_delivery_date_min=cfg.get("ad_delivery_date_min"),
+            ad_delivery_date_max=cfg.get("ad_delivery_date_max"),
+            bylines=cfg.get("bylines"),
+            limit=int(cfg.get("limit", 50)),
+        )
+        save_raw_dataset(run_id, rows)
+        save_raw_mapping(run_id, {})
+        run.status = "dataset_ready"
+        run.scraper_config = {**cfg, "scraped_count": len(rows)}
+    except Exception as e:
+        run.status = "failed"
+        run.scraper_config = {**cfg, "error": str(e)}
     save_run(run)
+
+
+@app.post("/api/runs")
+async def start_run(req: StartRunRequest, background_tasks: BackgroundTasks):
+    run = create_run(req.source)
+    cfg = req.scraper_config or {}
+    run.scraper_config = cfg
+
+    if req.source == "meta_ads_library":
+        run.status = "scraping"
+        save_run(run)
+        background_tasks.add_task(_do_meta_ads_scrape, run.id, cfg)
+    else:
+        save_run(run)
+
     return _run_to_dict(run)
 
 
