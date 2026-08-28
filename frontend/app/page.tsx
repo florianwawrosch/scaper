@@ -71,6 +71,7 @@ export default function Home() {
   const dragCounter = useRef(0);
 
   const [runs,           setRuns]           = useState<ScrapeRun[]>([]);
+  const [csvRuns,        setCsvRuns]        = useState<{id:string;filename:string;createdAt:string;rowCount:number}[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [creating,       setCreating]       = useState(false);
   const [tags,           setTags]           = useState<string[]>([]);
@@ -93,6 +94,21 @@ export default function Home() {
     }).catch(() => {}).finally(() => setLoading(false));
     const saved = localStorage.getItem('presets');
     if (saved) setPresets(JSON.parse(saved));
+
+    // Load local CSV imports from localStorage
+    const csvItems: {id:string;filename:string;createdAt:string;rowCount:number}[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('csv_run_csv_')) {
+        try {
+          const val = JSON.parse(localStorage.getItem(key)!);
+          const csvId = key.replace('csv_run_', '');
+          csvItems.push({ id: csvId, filename: val.filename, createdAt: val.createdAt, rowCount: val.data?.length ?? 0 });
+        } catch {}
+      }
+    }
+    csvItems.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    setCsvRuns(csvItems);
   }, []);
 
   const uploadCsv = useCallback((file: File) => {
@@ -342,8 +358,34 @@ export default function Home() {
 
           </div>
 
-          {/* ── Right: Runs list ── */}
-          <div style={{ position: 'sticky', top: 20 }}>
+          {/* ── Right: Runs + CSV list ── */}
+          <div style={{ position: 'sticky', top: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* CSV imports */}
+            {csvRuns.length > 0 && (
+              <div style={{ background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden' }}>
+                <div style={{ padding: '8px 12px', borderBottom: `1px solid ${T.lineS}` }}>
+                  <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.18em', textTransform: 'uppercase', color: T.inkF }}>CSV Imports</span>
+                </div>
+                {csvRuns.slice(0, 5).map(csv => (
+                  <button
+                    key={csv.id}
+                    onClick={() => router.push(`/csv/${csv.id}`)}
+                    style={{ width: '100%', padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', borderBottom: `1px solid ${T.lineS}`, cursor: 'pointer', textAlign: 'left' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{csv.filename}</p>
+                      <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(csv.createdAt)}</p>
+                    </div>
+                    <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, flexShrink: 0 }}>{csv.rowCount.toLocaleString('de')} Z</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Backend runs */}
             <div style={{ background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden' }}>
               <div style={{ padding: '8px 12px', borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.18em', textTransform: 'uppercase', color: T.inkF }}>Letzte Runs</span>

@@ -20,13 +20,14 @@ export interface AnalysisConfig {
 
 interface Props {
   runId: string;
+  resolveRunId?: () => Promise<string>;
   rowCount: number;
   onColumnResult: (name: string, values: string[]) => void;
 }
 
 const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
 
-export function AnalysisPanel({ runId, rowCount, onColumnResult }: Props) {
+export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }: Props) {
   const { showToast } = useToast();
   const storageKey = `analysis_configs_${runId}`;
 
@@ -63,7 +64,9 @@ export function AnalysisPanel({ runId, rowCount, onColumnResult }: Props) {
     if (rowCount === 0)      return showToast('Keine Daten vorhanden', 'warning');
     setRunning(p => ({ ...p, [cfg.id]: true }));
     try {
-      const res = await api.runs.analyze(runId, cfg.provider, cfg.model, cfg.prompt, cfg.name);
+      const rid = runId || (resolveRunId ? await resolveRunId() : '');
+      if (!rid) throw new Error('Kein Backend verbunden. Backend-URL in Einstellungen konfigurieren.');
+      const res = await api.runs.analyze(rid, cfg.provider, cfg.model, cfg.prompt, cfg.name);
       onColumnResult(res.column_name, res.values);
       showToast(`Spalte "${cfg.name}" fertig`, 'success');
     } catch (e) {
