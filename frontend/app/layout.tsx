@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
+import { StatusDashboard } from "./components/StatusDashboard";
 
 export const metadata: Metadata = {
   title: "Lead Pipeline",
@@ -15,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ToastProvider>
           <Header />
           <main className="flex-1">{children}</main>
+          <StatusDashboard />
         </ToastProvider>
       </body>
     </html>
