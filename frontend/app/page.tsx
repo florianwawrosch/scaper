@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type ScrapeRun } from '@/lib/api';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from '@/app/components/Toast';
+import { TagInput } from '@/app/components/TagInput';
 
 const COUNTRY_OPTIONS = [
   { value: 'DE', label: 'DE' },
@@ -23,8 +24,6 @@ const AD_STATUS_OPTIONS = [
   { value: 'INACTIVE', label: 'Inaktiv' },
 ];
 
-type SourceType = 'meta_ads' | 'phantombuster';
-
 const STATUS_PILL: Record<ScrapeRun['status'], { label: string; cls: string }> = {
   draft:         { label: 'Draft',    cls: 'muted' },
   scraping:      { label: 'Scraping', cls: 'warn'  },
@@ -41,9 +40,9 @@ const T = {
   line:    'var(--th-line)',
   lineS:   'var(--th-line-soft)',
   gold:    'var(--th-gold)',
-  goldB:   'var(--th-gold-b)',
   goldD:   'var(--th-gold-d)',
   teal:    'var(--th-teal)',
+  rose:    'var(--th-rose)',
   ink:     'var(--th-ink)',
   inkD:    'var(--th-ink-d)',
   inkF:    'var(--th-ink-f)',
@@ -52,36 +51,19 @@ const T = {
   ffMono:  'var(--ff-mono)',
 };
 
-function ChipGroup({ options, value, onChange }: {
-  options: { value: string; label: string }[];
-  value: string[];
-  onChange: (v: string[]) => void;
-}) {
-  const toggle = (v: string) =>
-    onChange(value.includes(v) ? value.filter(x => x !== v) : [...value, v]);
+function ChipGroup({ options, value, onChange }: { options: { value: string; label: string }[]; value: string[]; onChange: (v: string[]) => void }) {
+  const toggle = (v: string) => onChange(value.includes(v) ? value.filter(x => x !== v) : [...value, v]);
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-      {options.map(o => (
-        <button key={o.value} onClick={() => toggle(o.value)} className={`chip ${value.includes(o.value) ? 'active' : ''}`}>
-          {o.label}
-        </button>
-      ))}
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+      {options.map(o => <button key={o.value} onClick={() => toggle(o.value)} className={`chip ${value.includes(o.value) ? 'active' : ''}`}>{o.label}</button>)}
     </div>
   );
 }
 
-function SingleChip({ options, value, onChange }: {
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
+function SingleChip({ options, value, onChange }: { options: { value: string; label: string }[]; value: string; onChange: (v: string) => void }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-      {options.map(o => (
-        <button key={o.value} onClick={() => onChange(o.value)} className={`chip ${value === o.value ? 'active' : ''}`}>
-          {o.label}
-        </button>
-      ))}
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+      {options.map(o => <button key={o.value} onClick={() => onChange(o.value)} className={`chip ${value === o.value ? 'active' : ''}`}>{o.label}</button>)}
     </div>
   );
 }
@@ -89,21 +71,22 @@ function SingleChip({ options, value, onChange }: {
 export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounter = useRef(0);
 
-  const [runs,       setRuns]       = useState<ScrapeRun[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [creating,   setCreating]   = useState(false);
-  const [source,     setSource]     = useState<SourceType>('meta_ads');
-  const [keywords,   setKeywords]   = useState('');
-  const [countries,  setCountries]  = useState(['DE', 'AT']);
-  const [platforms,  setPlatforms]  = useState(['FACEBOOK', 'INSTAGRAM']);
-  const [adStatus,   setAdStatus]   = useState('ACTIVE');
-  const [csvFile,    setCsvFile]    = useState<File | null>(null);
-  const [dragOver,   setDragOver]   = useState(false);
-  const [presets,    setPresets]    = useState<Record<string, any>>({});
-  const [presetName, setPresetName] = useState('');
-  const [formError,  setFormError]  = useState('');
+  const [runs,        setRuns]        = useState<ScrapeRun[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [creating,    setCreating]    = useState(false);
+  const [tags,        setTags]        = useState<string[]>([]);
+  const [countries,   setCountries]   = useState(['DE', 'AT']);
+  const [platforms,   setPlatforms]   = useState(['FACEBOOK', 'INSTAGRAM']);
+  const [adStatus,    setAdStatus]    = useState('ACTIVE');
+  const [csvFile,     setCsvFile]     = useState<File | null>(null);
+  const [dragOver,    setDragOver]    = useState(false);
+  const [presets,     setPresets]     = useState<Record<string, any>>({});
+  const [presetName,  setPresetName]  = useState('');
+  const [formError,   setFormError]   = useState('');
+  const [uploading,   setUploading]   = useState(false);
 
   useEffect(() => {
     api.runs.list().then(runs => {
@@ -115,10 +98,44 @@ export default function Home() {
     if (saved) setPresets(JSON.parse(saved));
   }, []);
 
+  // Global drag-to-drop listeners
+  const onWindowDragEnter = useCallback((e: DragEvent) => {
+    if (e.dataTransfer?.types.includes('Files')) { dragCounter.current++; setDragOver(true); }
+  }, []);
+  const onWindowDragLeave = useCallback(() => {
+    dragCounter.current--;
+    if (dragCounter.current <= 0) { dragCounter.current = 0; setDragOver(false); }
+  }, []);
+  const onWindowDragOver = useCallback((e: DragEvent) => { e.preventDefault(); }, []);
+  const onWindowDrop = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setDragOver(false);
+    const file = e.dataTransfer?.files[0];
+    if (file && (file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+      setCsvFile(file);
+      setFormError('');
+      uploadCsv(file);
+    } else if (file) {
+      setFormError('Nur CSV/Excel-Dateien (.csv, .xlsx, .xls)');
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('dragenter', onWindowDragEnter);
+    window.addEventListener('dragleave', onWindowDragLeave);
+    window.addEventListener('dragover', onWindowDragOver);
+    window.addEventListener('drop', onWindowDrop);
+    return () => {
+      window.removeEventListener('dragenter', onWindowDragEnter);
+      window.removeEventListener('dragleave', onWindowDragLeave);
+      window.removeEventListener('dragover', onWindowDragOver);
+      window.removeEventListener('drop', onWindowDrop);
+    };
+  }, [onWindowDragEnter, onWindowDragLeave, onWindowDragOver, onWindowDrop]);
+
   const applyRunConfig = (cfg: Record<string, any>) => {
-    if (cfg.source === 'phantombuster') setSource('phantombuster');
-    else setSource('meta_ads');
-    if (cfg.keywords) setKeywords(Array.isArray(cfg.keywords) ? cfg.keywords.join('\n') : cfg.keywords);
+    if (cfg.keywords) setTags(Array.isArray(cfg.keywords) ? cfg.keywords : cfg.keywords.split('\n').filter(Boolean));
     if (cfg.countries) setCountries(cfg.countries);
     if (cfg.platforms) setPlatforms(cfg.platforms);
     if (cfg.ad_status) setAdStatus(cfg.ad_status);
@@ -126,7 +143,7 @@ export default function Home() {
 
   const savePreset = () => {
     if (!presetName.trim()) return;
-    const cfg = { keywords: keywords.split('\n').filter(Boolean), countries, platforms, adStatus };
+    const cfg = { keywords: tags, countries, platforms, adStatus };
     const next = { ...presets, [presetName]: cfg };
     setPresets(next);
     localStorage.setItem('presets', JSON.stringify(next));
@@ -136,7 +153,7 @@ export default function Home() {
   const loadPreset = (name: string) => {
     const p = presets[name];
     if (!p) return;
-    setKeywords(p.keywords?.join('\n') ?? '');
+    setTags(p.keywords ?? []);
     setCountries(p.countries ?? ['DE', 'AT']);
     setPlatforms(p.platforms ?? ['FACEBOOK', 'INSTAGRAM']);
     setAdStatus(p.adStatus ?? 'ACTIVE');
@@ -149,53 +166,38 @@ export default function Home() {
     localStorage.setItem('presets', JSON.stringify(next));
   };
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file && (file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
-      setCsvFile(file);
-      setFormError('');
-    } else {
-      setFormError('Nur CSV/Excel-Dateien erlaubt');
+  const uploadCsv = async (file: File) => {
+    setUploading(true);
+    setFormError('');
+    try {
+      const run = await api.runs.create('csv_import', {});
+      const fd = new FormData();
+      fd.append('file', file);
+      await api.runs.upload(run.id, fd);
+      setRuns(prev => [run, ...prev]);
+      router.push(`/runs/${run.id}`);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'Upload fehlgeschlagen — Backend erreichbar?');
+      setCsvFile(null);
+    } finally {
+      setUploading(false);
     }
   };
 
-  const createRun = async () => {
+  const startScrape = async () => {
     setFormError('');
+    if (tags.length === 0) { setFormError('Mindestens einen Suchbegriff eingeben'); return; }
+    const settings = loadSettings();
+    const token = settings.apiKeys.meta_ads;
+    if (!token) { setFormError('Meta Ads API-Token fehlt — bitte in Einstellungen eintragen'); return; }
     setCreating(true);
     try {
-      if (source === 'meta_ads') {
-        if (!keywords.trim()) {
-          setFormError('Suchbegriffe erforderlich');
-          return;
-        }
-        const settings = loadSettings();
-        const token = settings.apiKeys.meta_ads;
-        if (!token) {
-          setFormError('Meta Ads API-Token fehlt — bitte in den Einstellungen eintragen');
-          return;
-        }
-        const run = await api.runs.create('meta_ads_library', {
-          keywords: keywords.split('\n').filter(Boolean),
-          countries, platforms, ad_status: adStatus,
-          meta_ads_token: token,
-        });
-        setRuns([run, ...runs]);
-        router.push(`/runs/${run.id}`);
-      } else {
-        if (!csvFile) {
-          setFormError('Bitte eine CSV-Datei hochladen');
-          return;
-        }
-        const run = await api.runs.create('phantombuster', {});
-        const fd = new FormData();
-        fd.append('file', csvFile);
-        await api.runs.upload(run.id, fd);
-        setRuns([run, ...runs]);
-        showToast('Datei hochgeladen', 'success');
-        router.push(`/runs/${run.id}`);
-      }
+      const run = await api.runs.create('meta_ads_library', {
+        keywords: tags, countries, platforms, ad_status: adStatus,
+        meta_ads_token: token,
+      });
+      setRuns(prev => [run, ...prev]);
+      router.push(`/runs/${run.id}`);
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Fehler beim Erstellen');
     } finally {
@@ -207,157 +209,112 @@ export default function Home() {
     new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
 
   return (
-    <div style={{ minHeight: '100vh', background: T.bg }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 20px 48px' }}>
+    <div style={{ minHeight: '100vh' }}>
+      <div style={{ maxWidth: 1060, margin: '0 auto', padding: '20px 20px 48px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, alignItems: 'start' }}>
 
-        {/* ===== Main grid ===== */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20, alignItems: 'start' }}>
+          {/* ── Left: Scraper config ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-          {/* Left: Form */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-            {/* Source tabs */}
-            <div style={{ display: 'flex', gap: 0, background: T.panel2, borderRadius: 8, border: `1px solid ${T.lineS}`, overflow: 'hidden' }}>
-              {([
-                { id: 'meta_ads',      label: 'Meta Ads Library', tag: 'SCRAPER' },
-                { id: 'phantombuster', label: 'CSV / Excel',       tag: 'IMPORT'  },
-              ] as const).map(s => {
-                const active = source === s.id;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => setSource(s.id)}
-                    style={{
-                      flex: 1,
-                      padding: '10px 16px',
-                      background: active ? T.panel : 'transparent',
-                      borderRight: `1px solid ${T.lineS}`,
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      transition: 'all .15s',
-                      borderBottom: active ? `2px solid ${T.gold}` : '2px solid transparent',
-                    }}
-                  >
-                    <div style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.18em', color: active ? T.gold : T.inkF, textTransform: 'uppercase', marginBottom: 3 }}>{s.tag}</div>
-                    <div style={{ fontFamily: T.ffBody, fontSize: 13, fontWeight: 500, color: active ? T.ink : T.inkD }}>{s.label}</div>
-                  </button>
-                );
-              })}
-              {/* spacer to fill right side */}
-              <div style={{ flex: 2 }} />
+            {/* Source label + chips (extensible) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontFamily: T.ffMono, fontSize: 10, letterSpacing: '.14em', color: T.inkF, textTransform: 'uppercase', flexShrink: 0 }}>Quelle</span>
+              <div style={{ display: 'flex', background: T.panel2, borderRadius: 6, border: `1px solid ${T.lineS}`, padding: 2, gap: 2 }}>
+                <button style={{ padding: '4px 12px', borderRadius: 4, background: T.panel, border: `1px solid ${T.line}`, fontFamily: T.ffMono, fontSize: 11, color: T.ink, cursor: 'default' }}>
+                  Meta Ads Library
+                </button>
+                <button style={{ padding: '4px 12px', borderRadius: 4, background: 'transparent', border: '1px solid transparent', fontFamily: T.ffMono, fontSize: 11, color: T.inkF, cursor: 'default', opacity: .5 }}>
+                  + weitere bald
+                </button>
+              </div>
             </div>
 
-            {/* Meta Ads config */}
-            {source === 'meta_ads' && (
-              <>
-                <div>
-                  <label style={{ display: 'block', fontFamily: T.ffMono, fontSize: 10, letterSpacing: '.12em', color: T.inkF, textTransform: 'uppercase', marginBottom: 6 }}>
-                    Suchbegriffe <span style={{ color: T.inkF, opacity: .6 }}>· je Zeile ein Begriff</span>
-                  </label>
-                  <textarea
-                    value={keywords}
-                    onChange={e => { setKeywords(e.target.value); setFormError(''); }}
-                    placeholder={"High Ticket Coach\nManifestation\nOnline Business"}
-                    rows={4}
-                    style={{ fontFamily: T.ffMono, fontSize: 12, background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 6, padding: '8px 12px', width: '100%', color: T.ink, outline: 'none', resize: 'vertical', lineHeight: 1.6 }}
-                  />
-                </div>
+            {/* Keywords */}
+            <div>
+              <label style={{ display: 'block', fontFamily: T.ffMono, fontSize: 10, letterSpacing: '.12em', color: T.inkF, textTransform: 'uppercase', marginBottom: 5 }}>
+                Suchbegriffe
+              </label>
+              <TagInput tags={tags} onChange={t => { setTags(t); setFormError(''); }} placeholder="Begriff eingeben, Enter drücken…" />
+            </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                  <div>
-                    <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 6 }}>Länder</p>
-                    <ChipGroup options={COUNTRY_OPTIONS} value={countries} onChange={setCountries} />
-                  </div>
-                  <div>
-                    <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 6 }}>Plattformen</p>
-                    <ChipGroup options={PLATFORM_OPTIONS} value={platforms} onChange={setPlatforms} />
-                  </div>
-                  <div>
-                    <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 6 }}>Ad-Status</p>
-                    <SingleChip options={AD_STATUS_OPTIONS} value={adStatus} onChange={setAdStatus} />
-                  </div>
-                </div>
-
-                {/* Presets */}
-                {Object.keys(presets).length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                    <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, letterSpacing: '.1em', textTransform: 'uppercase', marginRight: 4 }}>Presets:</span>
-                    {Object.keys(presets).map(name => (
-                      <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 0, background: T.goldD, border: `1px solid ${T.line}`, borderRadius: 999, overflow: 'hidden' }}>
-                        <button onClick={() => loadPreset(name)} style={{ fontFamily: T.ffMono, fontSize: 11, color: T.gold, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 10px' }}>{name}</button>
-                        <button onClick={() => deletePreset(name)} style={{ fontSize: 14, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 8px 2px 2px', lineHeight: 1 }}>×</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input type="text" value={presetName} onChange={e => setPresetName(e.target.value)} onKeyDown={e => e.key === 'Enter' && savePreset()} placeholder="Preset speichern…"
-                    style={{ flex: 1, maxWidth: 200, padding: '5px 10px', fontSize: 12, fontFamily: T.ffMono, background: T.panel2, border: `1px solid ${T.lineS}`, borderRadius: 6, color: T.ink, outline: 'none' }} />
-                  <button className="btn-ghost" style={{ padding: '5px 12px', fontSize: 11, whiteSpace: 'nowrap' }} onClick={savePreset}>Speichern</button>
-                </div>
-              </>
-            )}
-
-            {/* CSV upload */}
-            {source === 'phantombuster' && (
-              <div
-                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
-                onClick={() => fileRef.current?.click()}
-                style={{
-                  padding: '20px',
-                  borderRadius: 8,
-                  border: dragOver ? `1.5px dashed ${T.gold}` : csvFile ? `1.5px solid ${T.teal}` : `1.5px dashed ${T.lineS}`,
-                  background: dragOver ? T.goldD : csvFile ? 'rgba(79,209,197,.04)' : 'transparent',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  transition: 'all .2s',
-                }}
-              >
-                {csvFile ? (
-                  <>
-                    <p style={{ fontFamily: T.ffBody, fontSize: 14, color: T.teal, marginBottom: 3 }}>{csvFile.name}</p>
-                    <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF }}>
-                      {(csvFile.size / 1024).toFixed(1)} KB · Klicken zum Ersetzen
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p style={{ fontFamily: T.ffBody, fontSize: 14, color: T.inkD, marginBottom: 3 }}>CSV oder Excel hierher ziehen</p>
-                    <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF }}>oder klicken · .csv, .xlsx, .xls</p>
-                  </>
-                )}
+            {/* Parameters */}
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <div>
+                <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Länder</p>
+                <ChipGroup options={COUNTRY_OPTIONS} value={countries} onChange={setCountries} />
               </div>
-            )}
-            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) { setCsvFile(f); setFormError(''); } }} />
+              <div>
+                <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Plattformen</p>
+                <ChipGroup options={PLATFORM_OPTIONS} value={platforms} onChange={setPlatforms} />
+              </div>
+              <div>
+                <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Status</p>
+                <SingleChip options={AD_STATUS_OPTIONS} value={adStatus} onChange={setAdStatus} />
+              </div>
+            </div>
+
+            {/* Presets */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              {Object.keys(presets).length > 0 && (
+                <>
+                  <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, letterSpacing: '.1em', textTransform: 'uppercase' }}>Presets:</span>
+                  {Object.keys(presets).map(name => (
+                    <span key={name} style={{ display: 'inline-flex', alignItems: 'center', background: T.goldD, border: `1px solid ${T.line}`, borderRadius: 4, overflow: 'hidden' }}>
+                      <button onClick={() => loadPreset(name)} style={{ fontFamily: T.ffMono, fontSize: 11, color: T.gold, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 8px' }}>{name}</button>
+                      <button onClick={() => deletePreset(name)} style={{ fontSize: 13, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', lineHeight: 1 }}>×</button>
+                    </span>
+                  ))}
+                  <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF }}>·</span>
+                </>
+              )}
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                <input type="text" value={presetName} onChange={e => setPresetName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && savePreset()}
+                  placeholder="Preset speichern…"
+                  style={{ width: 150, padding: '3px 8px', fontSize: 11, fontFamily: T.ffMono, borderRadius: 5, border: `1px solid ${T.lineS}`, background: T.panel2, color: T.ink, outline: 'none' }} />
+                <button className="btn-ghost" style={{ padding: '3px 10px', fontSize: 11 }} onClick={savePreset}>+</button>
+              </div>
+            </div>
 
             {/* Inline error */}
             {formError && (
-              <div style={{ fontFamily: T.ffMono, fontSize: 11, color: '#e8736b', background: 'rgba(232,115,107,.08)', border: '1px solid rgba(232,115,107,.2)', borderRadius: 6, padding: '8px 12px' }}>
+              <p style={{ fontFamily: T.ffMono, fontSize: 11, color: '#e8736b', background: 'rgba(232,115,107,.08)', border: '1px solid rgba(232,115,107,.2)', borderRadius: 5, padding: '6px 10px' }}>
                 ⚠ {formError}
-              </div>
+              </p>
             )}
 
             {/* CTA */}
-            <button className="btn-primary" onClick={createRun} disabled={creating} style={{ padding: '9px 20px', fontSize: 13 }}>
-              {creating ? 'Wird gestartet…' : source === 'meta_ads' ? '→ Scraping starten' : '→ Datei importieren'}
+            <button className="btn-primary" onClick={startScrape} disabled={creating || uploading}>
+              {creating ? 'Startet…' : '→ Scraping starten'}
             </button>
+
+            {/* CSV hint */}
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, border: `1px dashed ${T.lineS}`, cursor: 'pointer', transition: 'border-color .15s' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = T.gold)}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = T.lineS)}
+            >
+              <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF }}>
+                {uploading ? 'Lädt…' : csvFile ? `✓ ${csvFile.name}` : '↓ Oder CSV / Excel importieren — Datei hier ablegen oder klicken'}
+              </span>
+            </div>
+            <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) { setCsvFile(f); uploadCsv(f); } }} />
+
           </div>
 
-          {/* Right: Recent Runs */}
+          {/* ── Right: Runs list ── */}
           <div style={{ position: 'sticky', top: 20 }}>
-            <div style={{ background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ padding: '10px 14px', borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '8px 12px', borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.18em', textTransform: 'uppercase', color: T.inkF }}>Letzte Runs</span>
                 <button onClick={() => router.push('/runs')} style={{ fontFamily: T.ffMono, fontSize: 10, color: T.gold, background: 'none', border: 'none', cursor: 'pointer' }}>Alle →</button>
               </div>
               {loading ? (
-                <div style={{ padding: '20px', textAlign: 'center', fontFamily: T.ffMono, fontSize: 11, color: T.inkF }}>Lädt…</div>
+                <div style={{ padding: '16px', textAlign: 'center', fontFamily: T.ffMono, fontSize: 11, color: T.inkF }}>Lädt…</div>
               ) : runs.length === 0 ? (
-                <div style={{ padding: '24px 16px', textAlign: 'center' }}>
+                <div style={{ padding: '20px 14px', textAlign: 'center' }}>
                   <p style={{ fontFamily: T.ffBody, fontSize: 13, color: T.inkF }}>Noch keine Runs</p>
                 </div>
               ) : (
@@ -369,16 +326,16 @@ export default function Home() {
                       <div key={run.id} style={{ borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'stretch' }}>
                         <button
                           onClick={() => router.push(`/runs/${run.id}`)}
-                          style={{ flex: 1, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                          style={{ flex: 1, padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
                           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'; }}
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
                         >
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{run.source}</p>
-                            <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF, marginTop: 1 }}>{fmt(run.created_at)}</p>
+                            <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{run.source}</p>
+                            <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(run.created_at)}</p>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                            {(cr?.keep ?? 0) > 0 && <span style={{ fontFamily: T.ffDisp, fontSize: 16, color: T.teal, fontWeight: 600 }}>{cr!.keep}</span>}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                            {(cr?.keep ?? 0) > 0 && <span style={{ fontFamily: T.ffDisp, fontSize: 15, color: T.teal, fontWeight: 600 }}>{cr!.keep}</span>}
                             <span className={`pill ${s.cls}`}>{s.label}</span>
                           </div>
                         </button>
@@ -386,7 +343,7 @@ export default function Home() {
                           <button
                             onClick={() => { applyRunConfig(run.scraper_config as Record<string, any>); showToast('Einstellungen geladen', 'success'); }}
                             title="Einstellungen laden"
-                            style={{ padding: '0 12px', background: 'none', border: 'none', borderLeft: `1px solid ${T.lineS}`, cursor: 'pointer', fontFamily: T.ffMono, fontSize: 13, color: T.inkF, transition: 'color .15s', flexShrink: 0 }}
+                            style={{ padding: '0 10px', background: 'none', border: 'none', borderLeft: `1px solid ${T.lineS}`, cursor: 'pointer', fontFamily: T.ffMono, fontSize: 12, color: T.inkF, transition: 'color .15s', flexShrink: 0 }}
                             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = T.gold; }}
                             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = T.inkF; }}
                           >↩</button>
@@ -398,8 +355,26 @@ export default function Home() {
               )}
             </div>
           </div>
+
         </div>
       </div>
+
+      {/* ── Full-page drag overlay ── */}
+      {dragOver && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9990,
+          background: 'rgba(7,7,10,.85)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 16,
+          border: `2px dashed ${T.gold}`,
+          pointerEvents: 'none',
+        }}>
+          <div style={{ fontSize: 48 }}>↓</div>
+          <p style={{ fontFamily: T.ffDisp, fontSize: 28, fontWeight: 600, color: T.ink }}>CSV oder Excel loslassen</p>
+          <p style={{ fontFamily: T.ffMono, fontSize: 12, color: T.inkD }}>Datei ablegen zum Importieren</p>
+        </div>
+      )}
     </div>
   );
 }
