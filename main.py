@@ -87,6 +87,19 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/config/providers")
+async def provider_config():
+    """Report which provider API keys are configured server-side (booleans only)."""
+    return {
+        "gemini":    bool(os.environ.get("GEMINI_API_KEY")),
+        "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "openai":    bool(os.environ.get("OPENAI_API_KEY")),
+        "meta_ads":  bool(os.environ.get("META_ADS_API_TOKEN")),
+        "hunter_io": bool(os.environ.get("HUNTER_IO_API_KEY")),
+        "findymail": bool(os.environ.get("FINDYMAIL_API_KEY")),
+    }
+
+
 @app.get("/api/runs")
 async def get_runs():
     runs = list_runs()

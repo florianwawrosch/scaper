@@ -39,10 +39,17 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
   const [apiKeys,   setApiKeys]   = useState<Record<string, string>>({});
   const [keysReady, setKeysReady] = useState(false);
 
+  const [backendKeys, setBackendKeys] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     const s = loadSettings();
     setApiKeys(s.apiKeys as Record<string, string>);
-    setKeysReady(true);
+    // Also check which keys the backend has as env vars
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/config/providers`, { signal: AbortSignal.timeout(4000) })
+      .then(r => r.ok ? r.json() : {})
+      .then(setBackendKeys)
+      .catch(() => {})
+      .finally(() => setKeysReady(true));
   }, []);
 
   useEffect(() => {
@@ -52,9 +59,9 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
     } catch {}
   }, [storageKey]);
 
-  // Only show providers where a key is configured (localStorage or NEXT_PUBLIC_* env var)
+  // Only show providers with a key: frontend (localStorage / NEXT_PUBLIC_*) or backend env var
   const PROVIDERS = (ALL_PROVIDERS as readonly { id: string; label: string; models: readonly string[] }[])
-    .filter(p => !!apiKeys[p.id]);
+    .filter(p => !!apiKeys[p.id] || !!backendKeys[p.id]);
   const missingCount = ALL_PROVIDERS.length - PROVIDERS.length;
 
   const persist = (next: AnalysisConfig[]) => {
