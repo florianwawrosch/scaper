@@ -216,15 +216,20 @@ export default function Home() {
           {/* ── Left: Scraper config ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-            {/* Source label + chips (extensible) */}
+            {/* Source label + chips */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontFamily: T.ffMono, fontSize: 10, letterSpacing: '.14em', color: T.inkF, textTransform: 'uppercase', flexShrink: 0 }}>Quelle</span>
               <div style={{ display: 'flex', background: T.panel2, borderRadius: 6, border: `1px solid ${T.lineS}`, padding: 2, gap: 2 }}>
                 <button style={{ padding: '4px 12px', borderRadius: 4, background: T.panel, border: `1px solid ${T.line}`, fontFamily: T.ffMono, fontSize: 11, color: T.ink, cursor: 'default' }}>
                   Meta Ads Library
                 </button>
-                <button style={{ padding: '4px 12px', borderRadius: 4, background: 'transparent', border: '1px solid transparent', fontFamily: T.ffMono, fontSize: 11, color: T.inkF, cursor: 'default', opacity: .5 }}>
-                  + weitere bald
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{ padding: '4px 12px', borderRadius: 4, background: 'transparent', border: '1px solid transparent', fontFamily: T.ffMono, fontSize: 11, color: T.inkF, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, transition: 'all .12s' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = T.gold; e.currentTarget.style.background = T.goldD; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = T.inkF; e.currentTarget.style.background = 'transparent'; }}
+                >
+                  {csvFile ? `✓ ${csvFile.name.slice(0, 18)}…` : '↑ CSV / Excel'}
                 </button>
               </div>
             </div>
@@ -288,31 +293,6 @@ export default function Home() {
               {creating ? 'Startet…' : '→ Scraping starten'}
             </button>
 
-            {/* CSV drop zone */}
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                gap: 4, padding: '12px 16px', borderRadius: 6,
-                border: `1px dashed ${csvFile ? T.gold : T.lineS}`,
-                background: csvFile ? T.goldD : 'transparent',
-                cursor: 'pointer', transition: 'all .15s', textAlign: 'center',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = T.gold; e.currentTarget.style.background = T.goldD; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = csvFile ? T.gold : T.lineS; e.currentTarget.style.background = csvFile ? T.goldD : 'transparent'; }}
-            >
-              {uploading ? (
-                <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF }}>Lädt…</span>
-              ) : csvFile ? (
-                <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.gold }}>✓ {csvFile.name}</span>
-              ) : (
-                <>
-                  <span style={{ fontSize: 16, color: T.inkF, lineHeight: 1 }}>↑</span>
-                  <span style={{ fontFamily: T.ffMono, fontSize: 11, fontWeight: 500, color: T.inkD }}>CSV / Excel importieren</span>
-                  <span style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF }}>Klicken oder Datei hierher ziehen</span>
-                </>
-              )}
-            </div>
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) { setCsvFile(f); uploadCsv(f); } }} />
 
