@@ -38,7 +38,15 @@ export default function Home() {
           api.sources.list(),
         ]);
         setRuns(runsData);
-        setSources(sourcesData);
+        // Convert sources array to record object
+        const sourcesRecord = sourcesData.reduce(
+          (acc, source) => ({
+            ...acc,
+            [source.key]: { ...source, name: source.label },
+          }),
+          {} as Record<string, Source & { name: string }>
+        );
+        setSources(sourcesRecord);
 
         // Load presets from localStorage
         const saved = localStorage.getItem('presets');

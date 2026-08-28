@@ -13,6 +13,7 @@ export interface ScrapeRun {
 export interface Source {
   key: string;
   label: string;
+  name?: string;
   description: string;
   config_schema: Record<string, unknown>;
 }
