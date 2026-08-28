@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { api, type ScrapeRun } from '@/lib/api';
 import { DataTable } from '@/app/components/DataTable';
 import { ExportPanel } from '@/app/components/ExportPanel';
+import { EnrichmentPanel } from '@/app/components/EnrichmentPanel';
 import type { ExportRow } from '@/lib/export';
 
 const TABS = ['Scraping', 'Review & Filter', 'Enrichment', 'Export'] as const;
@@ -235,30 +236,10 @@ export default function RunDetail() {
           )}
 
           {activeTab === 'Enrichment' && (
-            <div className="space-y-3">
-              <div className="bg-panel-2 border border-line-soft rounded p-4">
-                <h3 className="font-mono text-xs tracking-wider text-ink-faint mb-3 font-medium">
-                  Enrichment
-                </h3>
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-ink-dim">Contact Info</span>
-                    <span className="text-warn font-mono">pending</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-ink-dim">Company Details</span>
-                    <span className="text-warn font-mono">pending</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-ink-dim">Email Validation</span>
-                    <span className="text-warn font-mono">pending</span>
-                  </div>
-                </div>
-              </div>
-              <button className="w-full h-8 bg-gradient-to-r from-gold to-gold-dim text-noir rounded hover:from-gold-bright hover:to-gold transition-colors text-xs font-medium font-semibold">
-                Enrichment starten
-              </button>
-            </div>
+            <EnrichmentPanel
+              runId={runId}
+              leadsCount={classificationResult?.keep || 0}
+            />
           )}
 
           {activeTab === 'Export' && (
