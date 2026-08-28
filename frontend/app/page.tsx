@@ -69,19 +69,20 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
 
-  const [runs,        setRuns]        = useState<ScrapeRun[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [creating,    setCreating]    = useState(false);
-  const [tags,        setTags]        = useState<string[]>([]);
-  const [countries,   setCountries]   = useState(['DE', 'AT', 'CH']);
-  const [platforms,   setPlatforms]   = useState(['FACEBOOK', 'INSTAGRAM']);
-  const [adStatus,    setAdStatus]    = useState('ACTIVE');
-  const [csvFile,     setCsvFile]     = useState<File | null>(null);
-  const [dragOver,    setDragOver]    = useState(false);
-  const [presets,     setPresets]     = useState<Record<string, any>>({});
-  const [presetName,  setPresetName]  = useState('');
-  const [formError,   setFormError]   = useState('');
-  const [uploading,   setUploading]   = useState(false);
+  const [runs,           setRuns]           = useState<ScrapeRun[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [creating,       setCreating]       = useState(false);
+  const [tags,           setTags]           = useState<string[]>([]);
+  const [country,        setCountry]        = useState('DE');
+  const [platforms,      setPlatforms]      = useState(['FACEBOOK', 'INSTAGRAM']);
+  const [adStatus,       setAdStatus]       = useState('ACTIVE');
+  const [csvFile,        setCsvFile]        = useState<File | null>(null);
+  const [dragOver,       setDragOver]       = useState(false);
+  const [presets,        setPresets]        = useState<Record<string, any>>({});
+  const [presetName,     setPresetName]     = useState('');
+  const [showPresets,    setShowPresets]    = useState(false);
+  const [formError,      setFormError]      = useState('');
+  const [uploading,      setUploading]      = useState(false);
 
   useEffect(() => {
     api.runs.list().then(runs => {
@@ -131,15 +132,18 @@ export default function Home() {
 
   const applyRunConfig = (cfg: Record<string, any>) => {
     if (cfg.keywords) setTags(Array.isArray(cfg.keywords) ? cfg.keywords : cfg.keywords.split('\n').filter(Boolean));
-    if (cfg.countries) setCountries(cfg.countries);
+    if (cfg.countries) {
+      const c = Array.isArray(cfg.countries) ? cfg.countries[0] : cfg.countries;
+      setCountry(c ?? 'DE');
+    }
     if (cfg.platforms) setPlatforms(cfg.platforms);
     if (cfg.ad_status) setAdStatus(cfg.ad_status);
   };
 
   const savePreset = () => {
     if (!presetName.trim()) return;
-    const cfg = { keywords: tags, countries, platforms, adStatus };
-    const next = { ...presets, [presetName]: cfg };
+    const cfg = { keywords: tags, country, platforms, adStatus, savedAt: new Date().toISOString() };
+    const next = { ...presets, [presetName.trim()]: cfg };
     setPresets(next);
     localStorage.setItem('presets', JSON.stringify(next));
     setPresetName('');
@@ -149,9 +153,10 @@ export default function Home() {
     const p = presets[name];
     if (!p) return;
     setTags(p.keywords ?? []);
-    setCountries(p.countries ?? ['DE', 'AT']);
+    setCountry(p.country ?? p.countries?.[0] ?? 'DE');
     setPlatforms(p.platforms ?? ['FACEBOOK', 'INSTAGRAM']);
     setAdStatus(p.adStatus ?? 'ACTIVE');
+    setShowPresets(false);
   };
 
   const deletePreset = (name: string) => {
@@ -188,7 +193,10 @@ export default function Home() {
     setCreating(true);
     try {
       const run = await api.runs.create('meta_ads_library', {
-        keywords: tags, countries, platforms, ad_status: adStatus,
+        keywords: tags,
+        countries: country === 'ALL' ? ['ALL'] : [country],
+        platforms,
+        ad_status: adStatus,
         meta_ads_token: token,
       });
       setRuns(prev => [run, ...prev]);
@@ -233,29 +241,30 @@ export default function Home() {
             {/* ② Filter-Box — Preset-Header rechts oben, Keywords + Filter + Save darin */}
             <div style={{ background: T.panel2, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
-              {/* Box-Header: Presets links laden, Speichern rechts */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderBottom: `1px solid ${T.lineS}`, flexWrap: 'wrap' }}>
-                <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, flexShrink: 0 }}>Preset</span>
-                <div style={{ display: 'flex', gap: 5, flex: 1, flexWrap: 'wrap' }}>
-                  {Object.keys(presets).length === 0 ? (
-                    <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, opacity: .4 }}>Keine gespeichert</span>
-                  ) : (
-                    Object.keys(presets).map(name => (
-                      <span key={name} style={{ display: 'inline-flex', alignItems: 'center', background: T.goldD, border: `1px solid ${T.line}`, borderRadius: 4, overflow: 'hidden' }}>
-                        <button onClick={() => loadPreset(name)} style={{ fontFamily: T.ffMono, fontSize: 11, color: T.gold, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 8px' }}>{name}</button>
-                        <button onClick={() => deletePreset(name)} style={{ fontSize: 13, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', lineHeight: 1 }}>×</button>
-                      </span>
-                    ))
-                  )}
-                </div>
-                {/* Speichern rechts oben */}
-                <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexShrink: 0 }}>
-                  <input type="text" value={presetName} onChange={e => setPresetName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && savePreset()}
-                    placeholder="Name…"
-                    style={{ width: 110, padding: '2px 7px', fontSize: 11, fontFamily: T.ffMono, borderRadius: 4, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none' }} />
-                  <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: 11 }} onClick={savePreset}>+ Speichern</button>
-                </div>
+              {/* Box-Header: Filter label + Saved searches + Save input */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderBottom: `1px solid ${T.lineS}` }}>
+                <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, flexShrink: 0 }}>Filter</span>
+                <button
+                  onClick={() => setShowPresets(true)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    fontFamily: T.ffMono, fontSize: 11, padding: '2px 8px', borderRadius: 4,
+                    background: Object.keys(presets).length > 0 ? T.goldD : 'transparent',
+                    border: `1px solid ${Object.keys(presets).length > 0 ? T.line : T.lineS}`,
+                    color: Object.keys(presets).length > 0 ? T.gold : T.inkF,
+                    cursor: 'pointer', transition: 'all .12s',
+                  }}
+                >
+                  <span>▤</span>
+                  <span>Gespeicherte Suchen{Object.keys(presets).length > 0 ? ` (${Object.keys(presets).length})` : ''}</span>
+                </button>
+                <div style={{ flex: 1 }} />
+                {/* Save input right-aligned */}
+                <input type="text" value={presetName} onChange={e => setPresetName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && savePreset()}
+                  placeholder="Suche benennen…"
+                  style={{ width: 130, padding: '2px 7px', fontSize: 11, fontFamily: T.ffMono, borderRadius: 4, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none' }} />
+                <button className="btn-ghost" style={{ padding: '2px 8px', fontSize: 11, flexShrink: 0 }} onClick={savePreset}>+ Speichern</button>
               </div>
 
               <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -268,7 +277,7 @@ export default function Home() {
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <div>
                   <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Länder</p>
-                  <CountrySelect value={countries} onChange={setCountries} />
+                  <CountrySelect value={country} onChange={setCountry} />
                 </div>
                 <div>
                   <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Plattformen</p>
@@ -353,6 +362,68 @@ export default function Home() {
 
         </div>
       </div>
+
+      {/* ── Saved Searches Modal ── */}
+      {showPresets && (
+        <div
+          onClick={() => setShowPresets(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 9980, background: 'rgba(7,7,10,.7)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 12, boxShadow: '0 16px 48px rgba(0,0,0,.5)', width: '100%', maxWidth: 540, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: `1px solid ${T.lineS}` }}>
+              <p style={{ fontFamily: T.ffMono, fontSize: 12, fontWeight: 600, color: T.ink }}>Gespeicherte Suchen</p>
+              <button onClick={() => setShowPresets(false)} style={{ fontFamily: T.ffMono, fontSize: 16, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '8px 0' }}>
+              {Object.keys(presets).length === 0 ? (
+                <p style={{ padding: '24px 18px', textAlign: 'center', fontFamily: T.ffMono, fontSize: 12, color: T.inkF }}>
+                  Noch keine Suchen gespeichert.<br />
+                  <span style={{ fontSize: 11, opacity: .6 }}>Filter setzen, benennen und "Speichern" klicken.</span>
+                </p>
+              ) : (
+                Object.entries(presets).map(([name, p]) => {
+                  const kws: string[] = p.keywords ?? [];
+                  const plats: string[] = p.platforms ?? [];
+                  const c: string = p.country ?? p.countries?.[0] ?? '—';
+                  const savedAt = p.savedAt ? new Date(p.savedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+                  return (
+                    <div key={name} style={{ padding: '12px 18px', borderBottom: `1px solid ${T.lineS}` }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                        <div>
+                          <p style={{ fontFamily: T.ffMono, fontSize: 13, fontWeight: 600, color: T.ink }}>{name}</p>
+                          {savedAt && <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF, marginTop: 1 }}>gespeichert am {savedAt}</p>}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <button
+                            onClick={() => loadPreset(name)}
+                            style={{ fontFamily: T.ffMono, fontSize: 11, padding: '4px 14px', borderRadius: 5, background: T.gold, border: 'none', color: '#07070a', fontWeight: 600, cursor: 'pointer' }}
+                          >Laden</button>
+                          <button
+                            onClick={() => deletePreset(name)}
+                            style={{ fontFamily: T.ffMono, fontSize: 13, padding: '4px 8px', borderRadius: 5, background: 'transparent', border: `1px solid ${T.lineS}`, color: T.inkF, cursor: 'pointer' }}
+                          >×</button>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        <span style={{ fontFamily: T.ffMono, fontSize: 10, padding: '2px 7px', borderRadius: 3, background: T.panel2, border: `1px solid ${T.lineS}`, color: T.inkD }}>{c === 'ALL' ? 'Alle Länder' : c}</span>
+                        {plats.map(pl => <span key={pl} style={{ fontFamily: T.ffMono, fontSize: 10, padding: '2px 7px', borderRadius: 3, background: T.panel2, border: `1px solid ${T.lineS}`, color: T.inkD }}>{pl}</span>)}
+                        {p.adStatus && <span style={{ fontFamily: T.ffMono, fontSize: 10, padding: '2px 7px', borderRadius: 3, background: T.panel2, border: `1px solid ${T.lineS}`, color: T.inkD }}>Status: {p.adStatus}</span>}
+                        {kws.slice(0, 4).map((kw: string) => (
+                          <span key={kw} style={{ fontFamily: T.ffMono, fontSize: 10, padding: '2px 7px', borderRadius: 3, background: T.goldD, border: `1px solid ${T.line}`, color: T.gold }}>🔍 {kw}</span>
+                        ))}
+                        {kws.length > 4 && <span style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF }}>+{kws.length - 4} weitere</span>}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Full-page drag overlay ── */}
       {dragOver && (

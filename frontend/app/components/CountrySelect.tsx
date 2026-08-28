@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 
 const ALL_COUNTRIES = [
+  { code: 'ALL', name: 'Alle Länder' },
   { code: 'DE', name: 'Deutschland' },
   { code: 'AT', name: 'Österreich' },
   { code: 'CH', name: 'Schweiz' },
@@ -55,8 +56,8 @@ const ALL_COUNTRIES = [
 ];
 
 interface Props {
-  value: string[];
-  onChange: (v: string[]) => void;
+  value: string;
+  onChange: (v: string) => void;
 }
 
 export function CountrySelect({ value, onChange }: Props) {
@@ -77,16 +78,8 @@ export function CountrySelect({ value, onChange }: Props) {
     c.code.toLowerCase().includes(search.toLowerCase())
   );
 
-  const toggle = (code: string) => {
-    if (value.includes(code)) onChange(value.filter(v => v !== code));
-    else onChange([...value, code]);
-  };
-
-  const label = value.length === 0
-    ? 'Kein Land'
-    : value.length <= 5
-    ? value.join(', ')
-    : `${value.slice(0, 4).join(', ')} +${value.length - 4}`;
+  const selected = ALL_COUNTRIES.find(c => c.code === value);
+  const label = selected ? (value === 'ALL' ? 'Alle Länder' : `${value} – ${selected.name}`) : value;
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -110,7 +103,7 @@ export function CountrySelect({ value, onChange }: Props) {
           position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 50,
           background: 'var(--th-panel)', border: '1px solid var(--th-line)',
           borderRadius: 7, boxShadow: '0 8px 24px rgba(0,0,0,.35)',
-          width: 220, overflow: 'hidden',
+          width: 240, overflow: 'hidden',
         }}>
           <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--th-line-soft)' }}>
             <input
@@ -125,27 +118,32 @@ export function CountrySelect({ value, onChange }: Props) {
               }}
             />
           </div>
-          <div style={{ maxHeight: 220, overflowY: 'auto', padding: '4px 0' }}>
+          <div style={{ maxHeight: 240, overflowY: 'auto', padding: '4px 0' }}>
             {filtered.map(c => {
-              const checked = value.includes(c.code);
+              const active = value === c.code;
+              const isAll  = c.code === 'ALL';
               return (
-                <label key={c.code} style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '5px 10px', cursor: 'pointer',
-                  background: checked ? 'var(--th-gold-d)' : 'transparent',
-                  transition: 'background .1s',
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggle(c.code)}
-                    style={{ accentColor: 'var(--th-gold)', width: 13, height: 13, flexShrink: 0 }}
-                  />
-                  <span style={{ fontFamily: 'var(--ff-mono)', fontSize: 11, color: checked ? 'var(--th-gold)' : 'var(--th-ink-d)' }}>
-                    <strong style={{ color: checked ? 'var(--th-gold)' : 'var(--th-ink)' }}>{c.code}</strong>
-                    {' '}{c.name}
+                <button
+                  key={c.code}
+                  onClick={() => { onChange(c.code); setOpen(false); setSearch(''); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                    padding: isAll ? '7px 12px 7px 12px' : '5px 12px',
+                    background: active ? 'var(--th-gold-d)' : 'transparent',
+                    border: 'none', cursor: 'pointer', transition: 'background .1s',
+                    borderBottom: isAll ? '1px solid var(--th-line-soft)' : 'none',
+                  }}
+                >
+                  {active && <span style={{ color: 'var(--th-gold)', fontSize: 10, flexShrink: 0 }}>●</span>}
+                  {!active && <span style={{ color: 'var(--th-ink-f)', fontSize: 10, flexShrink: 0 }}>○</span>}
+                  <span style={{ fontFamily: 'var(--ff-mono)', fontSize: 11, color: active ? 'var(--th-gold)' : 'var(--th-ink-d)' }}>
+                    {isAll ? (
+                      <strong style={{ color: active ? 'var(--th-gold)' : 'var(--th-ink)' }}>Alle Länder</strong>
+                    ) : (
+                      <><strong style={{ color: active ? 'var(--th-gold)' : 'var(--th-ink)' }}>{c.code}</strong>{' '}{c.name}</>
+                    )}
                   </span>
-                </label>
+                </button>
               );
             })}
             {filtered.length === 0 && (
@@ -154,16 +152,6 @@ export function CountrySelect({ value, onChange }: Props) {
               </p>
             )}
           </div>
-          {value.length > 0 && (
-            <div style={{ borderTop: '1px solid var(--th-line-soft)', padding: '5px 10px' }}>
-              <button
-                onClick={() => onChange([])}
-                style={{ fontFamily: 'var(--ff-mono)', fontSize: 10, color: 'var(--th-ink-f)', background: 'none', border: 'none', cursor: 'pointer' }}
-              >
-                Alle abwählen
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>
