@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, type ScrapeRun } from '@/lib/api';
+import { api, API_URL, type ScrapeRun } from '@/lib/api';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from '@/app/components/Toast';
 import { TagInput } from '@/app/components/TagInput';
@@ -178,7 +178,8 @@ export default function Home() {
       setRuns(prev => [run, ...prev]);
       router.push(`/runs/${run.id}`);
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : 'Upload fehlgeschlagen — Backend erreichbar?');
+      const msg = e instanceof Error ? e.message : 'Unbekannter Fehler';
+      setFormError(`Upload fehlgeschlagen (${msg}). Backend-URL: ${API_URL} — läuft das Backend?`);
       setCsvFile(null);
     } finally {
       setUploading(false);
@@ -240,7 +241,7 @@ export default function Home() {
             </div>
 
             {/* ② Filter-Box — Preset-Header rechts oben, Keywords + Filter + Save darin */}
-            <div style={{ background: T.panel2, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: T.panel2, border: `1px solid ${T.lineS}`, borderRadius: 8, display: 'flex', flexDirection: 'column' }}>
 
               {/* Box-Header: Filter label + Saved searches + Save input */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderBottom: `1px solid ${T.lineS}` }}>

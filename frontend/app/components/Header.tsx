@@ -3,9 +3,9 @@
 import { useRouter, usePathname } from 'next/navigation';
 
 const NAV = [
-  { href: '/',         label: 'Dashboard' },
+  { href: '/',         label: 'Suche' },
   { href: '/runs',     label: 'Runs' },
-  { href: '/settings', label: 'Settings' },
+  { href: '/settings', label: 'Einstellungen' },
 ];
 
 export function Header() {
