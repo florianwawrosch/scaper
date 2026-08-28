@@ -3,44 +3,40 @@
 import { useState, useEffect } from 'react';
 import { loadSettings, saveSettings } from '@/lib/settings';
 
-const SECTIONS = [
+interface Service { key: string; label: string; hint: string; desc: string }
+interface Group   { key: string; label: string; desc: string; services: Service[] }
+
+const GROUPS: Group[] = [
   {
     key: 'ai',
-    label: 'KI & Analyse',
-    icon: '◈',
+    label: 'KI-Modelle',
+    desc: 'Für KI-Analyse und Lead-Bewertung',
     services: [
-      { key: 'gemini',    label: 'Google Gemini',    hint: 'AIzaSy…',        desc: 'Analysiert und filtert Leads mit KI. Key unter aistudio.google.com.' },
-      { key: 'anthropic', label: 'Anthropic Claude',  hint: 'sk-ant-api03-…', desc: 'Alternatives KI-Modell. Key unter console.anthropic.com.' },
-      { key: 'openai',    label: 'OpenAI',            hint: 'sk-proj-…',      desc: 'GPT-Modelle für Analyse. Key unter platform.openai.com/api-keys.' },
+      { key: 'gemini',    label: 'Google Gemini',   hint: 'AIzaSy…',        desc: 'Key unter aistudio.google.com' },
+      { key: 'anthropic', label: 'Anthropic Claude', hint: 'sk-ant-api03-…', desc: 'Key unter console.anthropic.com' },
+      { key: 'openai',    label: 'OpenAI',           hint: 'sk-proj-…',      desc: 'Key unter platform.openai.com/api-keys' },
     ],
   },
   {
     key: 'enrichment',
     label: 'Data Enrichment',
-    icon: '⊕',
+    desc: 'E-Mail-Adressen und Kontaktdaten anreichern',
     services: [
-      { key: 'hunter_io',  label: 'Hunter.io',  hint: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', desc: 'E-Mail-Adressen zu Unternehmen finden. Key unter hunter.io/api-keys.' },
-      { key: 'findymail',  label: 'FindyMail',  hint: 'Bearer eyJ…',                     desc: 'E-Mail-Verifikation. Bearer Token unter app.findymail.com/settings.' },
+      { key: 'hunter_io', label: 'Hunter.io',  hint: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', desc: 'Key unter hunter.io/api-keys' },
+      { key: 'findymail', label: 'FindyMail',  hint: 'Bearer eyJ…',                     desc: 'Bearer Token unter app.findymail.com/settings' },
     ],
   },
   {
     key: 'scraping',
     label: 'Scraping',
-    icon: '⊗',
+    desc: 'Zugangsdaten für externe Datenquellen',
     services: [
-      { key: 'meta_ads', label: 'Meta Ads Library', hint: 'EAAxx…', desc: 'User-Access-Token mit ads_read-Permission. Erstellen unter developers.facebook.com/tools/explorer.' },
+      { key: 'meta_ads', label: 'Meta Ads Library', hint: 'EAAxx…', desc: 'User-Access-Token mit ads_read. Erstellen unter developers.facebook.com/tools/explorer' },
     ],
   },
-  {
-    key: 'design',
-    label: 'Design',
-    icon: '◐',
-    services: [],
-  },
-] as const;
+];
 
-type SectionKey = typeof SECTIONS[number]['key'];
-type ServiceEntry = { key: string; label: string; hint: string; desc: string };
+type NavKey = 'integrations' | 'design';
 
 function maskKey(key: string): string {
   if (key.length <= 8) return '••••••••';
@@ -69,7 +65,7 @@ const T = {
 export default function Settings() {
   const [keys,       setKeys]       = useState<Record<string, string>>({});
   const [theme,      setTheme]      = useState<'noir' | 'classic'>('noir');
-  const [section,    setSection]    = useState<SectionKey>('ai');
+  const [nav,        setNav]        = useState<NavKey>('integrations');
   const [connecting, setConnecting] = useState<string | null>(null);
   const [input,      setInput]      = useState('');
   const [show,       setShow]       = useState<Record<string, boolean>>({});
@@ -107,39 +103,34 @@ export default function Settings() {
     persist(keys, t);
   };
 
-  const currentSection = SECTIONS.find(s => s.key === section)!;
+  const totalConnected = GROUPS.flatMap(g => g.services).filter(s => keys[s.key]).length;
+
+  const NAV: { key: NavKey; label: string; badge?: number }[] = [
+    { key: 'integrations', label: 'Integrationen', badge: totalConnected || undefined },
+    { key: 'design',       label: 'Design' },
+  ];
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex' }}>
 
       {/* ── Sidebar ── */}
-      <div style={{
-        width: 200, flexShrink: 0, borderRight: `1px solid ${T.lineS}`,
-        padding: '32px 0', display: 'flex', flexDirection: 'column', gap: 2,
-      }}>
+      <div style={{ width: 200, flexShrink: 0, borderRight: `1px solid ${T.lineS}`, padding: '32px 0', display: 'flex', flexDirection: 'column', gap: 2 }}>
         <p style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.2em', textTransform: 'uppercase', color: T.inkF, padding: '0 20px', marginBottom: 10 }}>
           Einstellungen
         </p>
-        {SECTIONS.map(s => {
-          const connectedCount = s.services.filter(sv => keys[sv.key]).length;
-          const active = section === s.key;
+        {NAV.map(n => {
+          const active = nav === n.key;
           return (
-            <button
-              key={s.key}
-              type="button"
-              onClick={() => setSection(s.key)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 20px', background: active ? T.goldD : 'transparent',
-                border: 'none', borderLeft: `2px solid ${active ? T.gold : 'transparent'}`,
-                cursor: 'pointer', textAlign: 'left', transition: 'all .12s',
-              }}
-            >
-              <span style={{ fontFamily: T.mono, fontSize: 14, color: active ? T.gold : T.inkF, lineHeight: 1 }}>{s.icon}</span>
-              <span style={{ fontFamily: T.mono, fontSize: 12, color: active ? T.gold : T.inkD, flex: 1 }}>{s.label}</span>
-              {connectedCount > 0 && (
+            <button key={n.key} type="button" onClick={() => setNav(n.key)} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 20px', background: active ? T.goldD : 'transparent',
+              border: 'none', borderLeft: `2px solid ${active ? T.gold : 'transparent'}`,
+              cursor: 'pointer', textAlign: 'left', transition: 'all .12s',
+            }}>
+              <span style={{ fontFamily: T.mono, fontSize: 12, color: active ? T.gold : T.inkD, flex: 1 }}>{n.label}</span>
+              {n.badge && (
                 <span style={{ fontFamily: T.mono, fontSize: 9, background: T.tealD, color: T.teal, border: `1px solid ${T.tealB}`, borderRadius: 10, padding: '1px 6px' }}>
-                  {connectedCount}
+                  {n.badge}
                 </span>
               )}
             </button>
@@ -148,26 +139,129 @@ export default function Settings() {
       </div>
 
       {/* ── Content ── */}
-      <div style={{ flex: 1, padding: '32px 40px', maxWidth: 620 }}>
+      <div style={{ flex: 1, padding: '32px 40px', maxWidth: 680 }}>
 
-        <div style={{ marginBottom: 28 }}>
-          <p style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.2em', textTransform: 'uppercase', color: T.inkF, marginBottom: 6 }}>
-            {currentSection.icon} {currentSection.label}
-          </p>
-          <h1 style={{ fontFamily: T.disp, fontSize: 22, fontWeight: 700, color: T.ink }}>
-            {section === 'ai'         && <><em style={{ color: T.gold }}>KI-Modelle</em> & Analyse</>}
-            {section === 'enrichment' && <>Data <em style={{ color: T.gold }}>Enrichment</em></>}
-            {section === 'scraping'   && <><em style={{ color: T.gold }}>Scraping</em> Tools</>}
-            {section === 'design'     && <>App <em style={{ color: T.gold }}>Design</em></>}
-          </h1>
-        </div>
+        {/* ── Integrationen ── */}
+        {nav === 'integrations' && (
+          <>
+            <div style={{ marginBottom: 28 }}>
+              <h1 style={{ fontFamily: T.disp, fontSize: 22, fontWeight: 700, color: T.ink }}>
+                API <em style={{ color: T.gold }}>Integrationen</em>
+              </h1>
+              <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
+                Alle Keys werden ausschließlich lokal in deinem Browser gespeichert.
+              </p>
+            </div>
 
-        {/* ── Design section ── */}
-        {section === 'design' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, lineHeight: 1.6 }}>
-              Wähle das Farbschema der App. Die Einstellung wird lokal gespeichert.
-            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+              {GROUPS.map((group, gi) => (
+                <div key={group.key}>
+                  {/* Group header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <p style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: T.inkF }}>
+                      {group.label}
+                    </p>
+                    <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, opacity: .6 }}>{group.desc}</p>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {group.services.map((svc: Service) => {
+                      const connected   = !!keys[svc.key];
+                      const isConnecting = connecting === svc.key;
+
+                      return (
+                        <div key={svc.key} style={{
+                          background: T.panel2,
+                          border: `1px solid ${connected ? T.tealB : T.lineS}`,
+                          borderRadius: 8, overflow: 'hidden',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px' }}>
+                            {/* Status dot */}
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: connected ? T.teal : T.lineS }} />
+
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: T.ink }}>{svc.label}</p>
+                              <p style={{ fontFamily: T.body, fontSize: 11, color: T.inkF, marginTop: 1 }}>{svc.desc}</p>
+                            </div>
+
+                            {connected ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                <span style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF, letterSpacing: '.06em' }}>
+                                  {show[svc.key] ? keys[svc.key] : maskKey(keys[svc.key])}
+                                </span>
+                                <button type="button" onClick={() => setShow(p => ({ ...p, [svc.key]: !p[svc.key] }))}
+                                  style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer' }}>
+                                  {show[svc.key] ? '●' : '○'}
+                                </button>
+                                <button type="button" onClick={() => disconnect(svc.key)}
+                                  style={{ fontSize: 15, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>
+                                  ×
+                                </button>
+                              </div>
+                            ) : (
+                              <button type="button"
+                                onClick={() => { setConnecting(isConnecting ? null : svc.key); setInput(''); }}
+                                style={{
+                                  fontFamily: T.mono, fontSize: 11, padding: '4px 12px', borderRadius: 5,
+                                  background: isConnecting ? T.goldD : 'transparent',
+                                  border: `1px solid ${isConnecting ? T.gold : T.lineS}`,
+                                  color: isConnecting ? T.gold : T.inkD,
+                                  cursor: 'pointer', transition: 'all .12s', flexShrink: 0,
+                                }}>
+                                {isConnecting ? 'Abbrechen' : '+ API Key'}
+                              </button>
+                            )}
+                          </div>
+
+                          {isConnecting && (
+                            <div style={{ display: 'flex', gap: 8, padding: '0 16px 12px', alignItems: 'center' }}>
+                              <input autoFocus type="password" value={input}
+                                onChange={e => setInput(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && connect(svc.key)}
+                                placeholder={svc.hint}
+                                style={{
+                                  flex: 1, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 5,
+                                  padding: '7px 11px', fontFamily: T.mono, fontSize: 12, color: T.ink, outline: 'none',
+                                }}
+                              />
+                              <button type="button" onClick={() => connect(svc.key)} disabled={!input.trim()}
+                                style={{
+                                  fontFamily: T.mono, fontSize: 12, padding: '7px 16px', borderRadius: 5,
+                                  background: input.trim() ? T.gold : T.panel, border: `1px solid ${T.line}`,
+                                  color: input.trim() ? '#07070a' : T.inkF,
+                                  cursor: input.trim() ? 'pointer' : 'default',
+                                  fontWeight: 600, transition: 'all .12s', flexShrink: 0,
+                                }}>
+                                Speichern
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Divider between groups */}
+                  {gi < GROUPS.length - 1 && (
+                    <div style={{ height: 1, background: T.lineS, marginTop: 24 }} />
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* ── Design ── */}
+        {nav === 'design' && (
+          <>
+            <div style={{ marginBottom: 28 }}>
+              <h1 style={{ fontFamily: T.disp, fontSize: 22, fontWeight: 700, color: T.ink }}>
+                App <em style={{ color: T.gold }}>Design</em>
+              </h1>
+              <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4 }}>
+                Farbschema der App. Wird lokal gespeichert.
+              </p>
+            </div>
             <div style={{ display: 'flex', gap: 10 }}>
               {(['noir', 'classic'] as const).map(t => (
                 <button key={t} type="button" onClick={() => applyTheme(t)} style={{
@@ -180,105 +274,7 @@ export default function Settings() {
                 }}>{t}</button>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* ── Service sections ── */}
-        {currentSection.services.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, lineHeight: 1.6, marginBottom: 4 }}>
-              API Keys werden ausschließlich lokal in deinem Browser gespeichert.
-            </p>
-            {currentSection.services.map((svc: ServiceEntry) => {
-              const connected = !!keys[svc.key];
-              const isConnecting = connecting === svc.key;
-
-              return (
-                <div key={svc.key} style={{
-                  background: T.panel2, border: `1px solid ${connected ? T.tealB : T.lineS}`,
-                  borderRadius: 8, overflow: 'hidden',
-                }}>
-                  {/* Service header */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <p style={{ fontFamily: T.mono, fontSize: 13, fontWeight: 600, color: T.ink }}>{svc.label}</p>
-                        {connected && (
-                          <span style={{ fontFamily: T.mono, fontSize: 9, background: T.tealD, color: T.teal, border: `1px solid ${T.tealB}`, borderRadius: 10, padding: '1px 6px' }}>
-                            verbunden
-                          </span>
-                        )}
-                      </div>
-                      <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, marginTop: 2, lineHeight: 1.5 }}>{svc.desc}</p>
-                    </div>
-                    {connected ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                        <span style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF, letterSpacing: '.06em' }}>
-                          {show[svc.key] ? keys[svc.key] : maskKey(keys[svc.key])}
-                        </span>
-                        <button type="button" onClick={() => setShow(p => ({ ...p, [svc.key]: !p[svc.key] }))}
-                          style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer' }}>
-                          {show[svc.key] ? '●' : '○'}
-                        </button>
-                        <button type="button" onClick={() => disconnect(svc.key)}
-                          style={{ fontFamily: T.mono, fontSize: 13, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer' }}>
-                          ×
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => { setConnecting(isConnecting ? null : svc.key); setInput(''); }}
-                        style={{
-                          fontFamily: T.mono, fontSize: 11, padding: '5px 14px', borderRadius: 5,
-                          background: isConnecting ? T.goldD : 'transparent',
-                          border: `1px solid ${isConnecting ? T.gold : T.lineS}`,
-                          color: isConnecting ? T.gold : T.inkD,
-                          cursor: 'pointer', transition: 'all .12s', flexShrink: 0,
-                        }}
-                      >
-                        {isConnecting ? 'Abbrechen' : '+ API Key hinzufügen'}
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Inline key input */}
-                  {isConnecting && (
-                    <div style={{ display: 'flex', gap: 8, padding: '0 16px 14px', alignItems: 'center' }}>
-                      <input
-                        autoFocus
-                        type="password"
-                        value={input}
-                        onChange={e => setInput(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && connect(svc.key)}
-                        placeholder={svc.hint}
-                        style={{
-                          flex: 1, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 5,
-                          padding: '7px 11px', fontFamily: T.mono, fontSize: 12,
-                          color: T.ink, outline: 'none',
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => connect(svc.key)}
-                        disabled={!input.trim()}
-                        style={{
-                          fontFamily: T.mono, fontSize: 12, padding: '7px 16px', borderRadius: 5,
-                          background: input.trim() ? T.gold : T.panel,
-                          border: `1px solid ${T.line}`,
-                          color: input.trim() ? '#07070a' : T.inkF,
-                          cursor: input.trim() ? 'pointer' : 'default',
-                          fontWeight: 600, transition: 'all .12s', flexShrink: 0,
-                        }}
-                      >
-                        Speichern
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          </>
         )}
 
       </div>
