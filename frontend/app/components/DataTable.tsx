@@ -213,6 +213,23 @@ export function DataTable({
 
   const activeFilters = Object.values(colFilters).filter(f => f.text || f.values !== null).length;
 
+  const exportCsv = () => {
+    const rows = sorted.filter(row => !excludedRows.has(row._idx));
+    const cols = allColumns;
+    const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const header = cols.map(esc).join(',');
+    const lines = rows.map(row => cols.map(c => esc(String(row[c] ?? ''))).join(','));
+    const csv = '﻿' + [header, ...lines].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `export_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const thStyle: React.CSSProperties = {
     ...mono, fontSize: 10, letterSpacing: '.07em', textTransform: 'uppercase',
     padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap',
@@ -257,6 +274,12 @@ export function DataTable({
           {filtered.length}/{data.length} sichtbar
           {excludedRows.size > 0 && ` · ${includedCount} ausgewählt`}
         </span>
+        <button
+          onClick={exportCsv}
+          disabled={sorted.length === 0}
+          title="Als CSV exportieren"
+          style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(79,209,197,.3)', background: 'rgba(79,209,197,.06)', color: '#4fd1c5', opacity: sorted.length === 0 ? 0.4 : 1 }}
+        >↓ CSV</button>
       </div>
 
       {/* Table */}
