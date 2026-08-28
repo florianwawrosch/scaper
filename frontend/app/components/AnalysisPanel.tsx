@@ -34,13 +34,15 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
   const router = useRouter();
   const storageKey = `analysis_configs_${runId}`;
 
-  const [configs, setConfigs] = useState<AnalysisConfig[]>([]);
-  const [running, setRunning] = useState<Record<string, boolean>>({});
+  const [configs,  setConfigs]  = useState<AnalysisConfig[]>([]);
+  const [running,  setRunning]  = useState<Record<string, boolean>>({});
+  const [apiKeys,  setApiKeys]  = useState<Record<string, string>>({});
 
-  // Only providers with a configured API key
-  const settings = loadSettings();
-  const PROVIDERS = ALL_PROVIDERS.filter(p => !!settings.apiKeys[p.id as keyof typeof settings.apiKeys]);
-  const missingCount = ALL_PROVIDERS.length - PROVIDERS.length;
+  useEffect(() => {
+    // Load settings client-side (localStorage not available on server)
+    const s = loadSettings();
+    setApiKeys(s.apiKeys as Record<string, string>);
+  }, []);
 
   useEffect(() => {
     try {
@@ -48,6 +50,10 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
       if (saved) setConfigs(JSON.parse(saved));
     } catch {}
   }, [storageKey]);
+
+  // Only providers with a configured API key
+  const PROVIDERS = ALL_PROVIDERS.filter(p => !!apiKeys[p.id]);
+  const missingCount = ALL_PROVIDERS.length - PROVIDERS.length;
 
   const persist = (next: AnalysisConfig[]) => {
     setConfigs(next);
@@ -75,8 +81,8 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
     setRunning(p => ({ ...p, [cfg.id]: true }));
     try {
       const rid = runId || (resolveRunId ? await resolveRunId() : '');
-      if (!rid) throw new Error('Kein Backend verbunden. Backend-URL in Einstellungen konfigurieren.');
-      const apiKey = settings.apiKeys[cfg.provider as keyof typeof settings.apiKeys] || undefined;
+      if (!rid) throw new Error('Kein Backend verbunden — URL in den Einstellungen konfigurieren.');
+      const apiKey = apiKeys[cfg.provider] || undefined;
       const res = await api.runs.analyze(rid, cfg.provider, cfg.model, cfg.prompt, cfg.name, apiKey);
       onColumnResult(res.column_name, res.values);
       showToast(`Spalte "${cfg.name}" fertig`, 'success');
