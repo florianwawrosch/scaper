@@ -527,3 +527,11 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   color: var(--th-gold);
   margin-bottom: 8px;
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}

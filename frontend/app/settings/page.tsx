@@ -1,26 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useToast } from '@/app/components/Toast';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { loadSettings, saveSettings } from '@/lib/settings';
 
 const KEY_FIELDS = [
-  { key: 'gemini',    label: 'Google Gemini',   hint: 'AIzaSy…',       group: 'AI'         },
-  { key: 'anthropic', label: 'Anthropic Claude', hint: 'sk-ant-…',      group: 'AI'         },
-  { key: 'openai',    label: 'OpenAI',           hint: 'sk-…',          group: 'AI'         },
-  { key: 'hunter_io', label: 'Hunter.io',        hint: 'xxxxxxxx…',     group: 'Enrichment' },
-  { key: 'findymail', label: 'FindyMail',        hint: 'Bearer token…', group: 'Enrichment' },
-  { key: 'meta_ads',  label: 'Meta Ads Library', hint: 'EAAxx…',        group: 'Scraping'   },
+  { key: 'gemini',    label: 'Gemini',   hint: 'AIzaSy…',   group: 'AI'  },
+  { key: 'anthropic', label: 'Claude',   hint: 'sk-ant-…',  group: 'AI'  },
+  { key: 'openai',    label: 'OpenAI',   hint: 'sk-…',      group: 'AI'  },
+  { key: 'hunter_io', label: 'Hunter',   hint: 'xxxxxxxx…', group: 'Enrich' },
+  { key: 'findymail', label: 'FindyMail',hint: 'Bearer…',   group: 'Enrich' },
+  { key: 'meta_ads',  label: 'Meta Ads', hint: 'EAAxx…',    group: 'Scrape' },
 ] as const;
 
+type SaveState = 'idle' | 'saving' | 'saved';
+
 export default function Settings() {
-  const { showToast } = useToast();
-  const [saving, setSaving]   = useState(false);
-  const [show,   setShow]     = useState<Record<string, boolean>>({});
-  const [keys,   setKeys]     = useState<Record<string, string>>({
+  const [keys, setKeys]   = useState<Record<string, string>>({
     gemini: '', anthropic: '', openai: '', hunter_io: '', findymail: '', meta_ads: '',
   });
-  const [theme,  setTheme]    = useState<'noir' | 'classic'>('noir');
+  const [theme, setTheme] = useState<'noir' | 'classic'>('noir');
+  const [show,  setShow]  = useState<Record<string, boolean>>({});
+  const [save,  setSave]  = useState<SaveState>('idle');
+  const timer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     const s = loadSettings();
@@ -28,161 +29,163 @@ export default function Settings() {
     setTheme(s.theme ?? 'noir');
   }, []);
 
+  const persist = useCallback((nextKeys: Record<string, string>, nextTheme: 'noir' | 'classic') => {
+    clearTimeout(timer.current);
+    setSave('saving');
+    timer.current = setTimeout(() => {
+      const current = loadSettings();
+      saveSettings({ ...current, apiKeys: nextKeys as any, theme: nextTheme });
+      setSave('saved');
+      setTimeout(() => setSave('idle'), 1800);
+    }, 500);
+  }, []);
+
+  const updateKey = (key: string, val: string) => {
+    const next = { ...keys, [key]: val };
+    setKeys(next);
+    persist(next, theme);
+  };
+
   const applyTheme = (t: 'noir' | 'classic') => {
     setTheme(t);
-    if (t === 'classic') {
-      document.documentElement.dataset.theme = 'classic';
-    } else {
-      delete document.documentElement.dataset.theme;
-    }
-    const current = loadSettings();
-    saveSettings({ ...current, theme: t });
+    if (t === 'classic') document.documentElement.dataset.theme = 'classic';
+    else delete document.documentElement.dataset.theme;
+    persist(keys, t);
   };
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      const current = loadSettings();
-      saveSettings({ ...current, apiKeys: keys as any, theme });
-      showToast('Gespeichert', 'success');
-    } catch {
-      showToast('Fehler', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const filledKeys = KEY_FIELDS.filter(f => keys[f.key]?.length > 0).length;
+  const groups = ['AI', 'Enrich', 'Scrape'] as const;
 
   return (
-    <div style={{ minHeight: '100vh' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '48px 32px 80px' }}>
+    <div style={{ minHeight: '100vh', padding: '40px 32px 80px', maxWidth: 640, margin: '0 auto' }}>
 
-        {/* Title */}
-        <div style={{ marginBottom: 48 }}>
-          <div className="sec-head" style={{ marginBottom: 0 }}>
-            <span className="idx">CONFIG</span>
-            <h1 style={{ fontSize: 'clamp(24px, 3vw, 38px)' }}><em style={{ color: '#f5cc77' }}>API Keys</em></h1>
-            <div className="rule" />
-          </div>
-          <p style={{ fontFamily: "'Spline Sans', sans-serif", fontSize: 14, color: '#5f6e87', marginTop: 16 }}>
-            Nur lokal im Browser gespeichert. Nie an externe Server übertragen.
-            Die KI-Auswahl erfolgt pro Run.
-          </p>
-        </div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+        <span style={{ fontFamily: 'var(--ff-mono)', fontSize: 11, letterSpacing: '.15em', textTransform: 'uppercase', color: 'var(--th-ink-f)' }}>
+          Settings
+        </span>
+        <SaveIndicator state={save} />
+      </div>
 
-        {/* Theme toggle */}
-        <div style={{ marginBottom: 32 }}>
-          <div className="sec-head">
-            <span className="idx">DESIGN</span>
-            <h2 style={{ fontSize: 18 }}>Design</h2>
-            <div className="rule" />
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            {([
-              { id: 'noir',    label: 'Noir',    sub: 'Cormorant · Inter · JetBrains Mono' },
-              { id: 'classic', label: 'Classic', sub: 'Fraunces · Spline Sans' },
-            ] as const).map(t => (
-              <button
-                key={t.id}
-                onClick={() => applyTheme(t.id)}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: 8,
-                  border: theme === t.id ? '1px solid rgba(201,163,95,.5)' : '1px solid rgba(255,255,255,.07)',
-                  background: theme === t.id ? 'rgba(201,163,95,.07)' : 'transparent',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all .15s',
-                }}
-              >
-                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 13, fontWeight: 500, color: theme === t.id ? 'var(--th-gold)' : 'var(--th-ink)', marginBottom: 2 }}>{t.label}</p>
-                <p style={{ fontFamily: 'var(--ff-mono)', fontSize: 10, color: 'var(--th-ink-f)' }}>{t.sub}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 32, alignItems: 'start' }}>
-
-          {/* Sidebar */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-            {/* Key status dots */}
-            <div style={{ background: '#0f1828', border: '1px solid rgba(255,255,255,.07)', borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 9, letterSpacing: '.2em', textTransform: 'uppercase', color: '#5f6e87', marginBottom: 4 }}>
-                {filledKeys} / {KEY_FIELDS.length} konfiguriert
-              </p>
-              {KEY_FIELDS.map(f => (
-                <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: keys[f.key] ? '#4fd1c5' : 'rgba(95,110,135,.35)', flexShrink: 0 }} />
-                  <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: keys[f.key] ? '#9aa7bd' : '#5f6e87', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.label}</span>
-                </div>
-              ))}
-            </div>
-
-            <button className="btn-primary" onClick={save} disabled={saving} style={{ maxWidth: '100%' }}>
-              {saving ? 'Speichert…' : 'Speichern'}
+      {/* Design toggle */}
+      <Section label="Design">
+        <div style={{ display: 'flex', gap: 6 }}>
+          {(['noir', 'classic'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => applyTheme(t)}
+              style={{
+                fontFamily: 'var(--ff-mono)',
+                fontSize: 11,
+                padding: '4px 12px',
+                borderRadius: 4,
+                border: `1px solid ${theme === t ? 'var(--th-gold)' : 'var(--th-line)'}`,
+                background: theme === t ? 'var(--th-gold-d)' : 'transparent',
+                color: theme === t ? 'var(--th-gold)' : 'var(--th-ink-f)',
+                cursor: 'pointer',
+                textTransform: 'capitalize',
+                transition: 'all .12s',
+              }}
+            >
+              {t}
             </button>
-          </div>
+          ))}
+        </div>
+      </Section>
 
-          {/* Content */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
-            {(['AI', 'Enrichment', 'Scraping'] as const).map(group => {
-              const fields = KEY_FIELDS.filter(f => f.group === group);
+      {/* API Keys */}
+      {groups.map(group => {
+        const fields = KEY_FIELDS.filter(f => f.group === group);
+        return (
+          <Section key={group} label={group}>
+            {fields.map(({ key, label, hint }) => {
+              const val    = keys[key] || '';
+              const filled = val.length > 0;
               return (
-                <div key={group}>
-                  <div className="sec-head">
-                    <span className="idx">{group.toUpperCase()}</span>
-                    <h2 style={{ fontSize: 18 }}>{group}</h2>
-                    <div className="rule" />
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {fields.map(({ key, label, hint }) => {
-                      const val    = keys[key] || '';
-                      const filled = val.length > 0;
-                      return (
-                        <div
-                          key={key}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px',
-                            borderRadius: 12,
-                            border: filled ? '1px solid rgba(79,209,197,.2)' : '1px solid rgba(255,255,255,.07)',
-                            background: filled ? 'rgba(79,209,197,.04)' : 'rgba(255,255,255,.02)',
-                            transition: 'all .15s',
-                          }}
-                        >
-                          <div style={{ width: 130, flexShrink: 0 }}>
-                            <p style={{ fontFamily: "'Spline Sans', sans-serif", fontSize: 13, fontWeight: 500, color: '#f4efe4' }}>{label}</p>
-                          </div>
-                          <div style={{ flex: 1, position: 'relative' }}>
-                            <input
-                              type={show[key] ? 'text' : 'password'}
-                              value={val}
-                              onChange={e => setKeys(p => ({ ...p, [key]: e.target.value }))}
-                              placeholder={hint}
-                              style={{ width: '100%', background: 'transparent', border: 'none', padding: 0, fontSize: 13, fontFamily: "'Spline Sans Mono', monospace", color: '#f4efe4', outline: 'none', boxShadow: 'none' }}
-                            />
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                            {filled && <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#4fd1c5' }}>✓</span>}
-                            <button onClick={() => setShow(p => ({ ...p, [key]: !p[key] }))} style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#5f6e87', width: 16 }}>
-                              {show[key] ? '●' : '○'}
-                            </button>
-                            {filled && (
-                              <button onClick={() => setKeys(p => ({ ...p, [key]: '' }))} style={{ fontSize: 16, color: '#5f6e87', lineHeight: 1 }}>×</button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                <div
+                  key={key}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '72px 1fr auto',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '7px 0',
+                    borderBottom: '1px solid var(--th-line-soft)',
+                  }}
+                >
+                  <span style={{ fontFamily: 'var(--ff-mono)', fontSize: 11, color: 'var(--th-ink-d)' }}>{label}</span>
+                  <input
+                    type={show[key] ? 'text' : 'password'}
+                    value={val}
+                    onChange={e => updateKey(key, e.target.value)}
+                    placeholder={hint}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      outline: 'none',
+                      fontFamily: 'var(--ff-mono)',
+                      fontSize: 12,
+                      color: filled ? 'var(--th-ink)' : 'var(--th-ink-f)',
+                      width: '100%',
+                      padding: 0,
+                    }}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {filled && (
+                      <span style={{ fontFamily: 'var(--ff-mono)', fontSize: 10, color: 'var(--th-teal, #4fd1c5)' }}>✓</span>
+                    )}
+                    <button
+                      onClick={() => setShow(p => ({ ...p, [key]: !p[key] }))}
+                      style={{ fontFamily: 'var(--ff-mono)', fontSize: 11, color: 'var(--th-ink-f)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: 0 }}
+                    >
+                      {show[key] ? '●' : '○'}
+                    </button>
+                    {filled && (
+                      <button
+                        onClick={() => updateKey(key, '')}
+                        style={{ fontFamily: 'var(--ff-mono)', fontSize: 13, color: 'var(--th-ink-f)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: 0 }}
+                      >×</button>
+                    )}
                   </div>
                 </div>
               );
             })}
-          </div>
-        </div>
-      </div>
+          </Section>
+        );
+      })}
     </div>
+  );
+}
+
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <p style={{ fontFamily: 'var(--ff-mono)', fontSize: 9, letterSpacing: '.2em', textTransform: 'uppercase', color: 'var(--th-ink-f)', marginBottom: 10 }}>
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function SaveIndicator({ state }: { state: SaveState }) {
+  if (state === 'idle') return null;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--ff-mono)', fontSize: 11, color: state === 'saved' ? 'var(--th-teal, #4fd1c5)' : 'var(--th-ink-f)' }}>
+      {state === 'saving' ? (
+        <>
+          <svg width="12" height="12" viewBox="0 0 12 12" style={{ animation: 'spin .8s linear infinite' }}>
+            <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="20 8" />
+          </svg>
+          Speichert…
+        </>
+      ) : (
+        <>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2.5 6.5L5 9l4.5-5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Gespeichert
+        </>
+      )}
+    </span>
   );
 }
