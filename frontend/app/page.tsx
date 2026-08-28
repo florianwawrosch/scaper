@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
+import { saveCsvText } from '@/lib/csvStorage';
 import { api, API_URL, type ScrapeRun } from '@/lib/api';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from '@/app/components/Toast';
@@ -142,33 +143,35 @@ export default function Home() {
     setUploading(true);
     setFormError('');
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const rawText = e.target?.result as string;
       Papa.parse<Record<string, string>>(rawText, {
         header: true,
         skipEmptyLines: true,
-        complete: (results) => {
-          setUploading(false);
+        complete: async (results) => {
           if (!results.data || results.data.length === 0) {
+            setUploading(false);
             setFormError('CSV enthält keine Zeilen.');
             setCsvFile(null);
             return;
           }
           const id = `csv_${Date.now()}`;
           try {
-            // Store raw CSV text (compact) instead of parsed JSON (3-5x larger due to repeated keys)
+            // Save raw CSV text in IndexedDB (no size limit) and lightweight metadata in localStorage
+            await saveCsvText(id, rawText);
             localStorage.setItem(`csv_run_${id}`, JSON.stringify({
-              csv: rawText,
               fields: results.meta.fields ?? [],
               filename: file.name,
               createdAt: new Date().toISOString(),
               rowCount: results.data.length,
             }));
-          } catch {
-            setFormError('Datei zu groß für lokalen Speicher (>5 MB). Bitte kleinere Datei verwenden.');
+          } catch (err) {
+            setUploading(false);
+            setFormError('Datei konnte nicht gespeichert werden. Bitte Browser-Speicher prüfen.');
             setCsvFile(null);
             return;
           }
+          setUploading(false);
           router.push(`/csv/${id}`);
         },
         error: (err: Error) => {

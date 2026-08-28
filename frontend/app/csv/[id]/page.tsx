@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Papa from 'papaparse';
+import { loadCsvText } from '@/lib/csvStorage';
 import { api } from '@/lib/api';
 import { DataTable } from '@/app/components/DataTable';
 import { AnalysisPanel } from '@/app/components/AnalysisPanel';
@@ -15,14 +16,15 @@ interface CsvRun {
   backendRunId?: string;
 }
 
-interface StoredCsvRun {
-  csv?: string;           // new format: raw CSV text
-  data?: Record<string, string>[]; // old format: parsed data
+interface StoredCsvMeta {
   fields: string[];
   filename: string;
   createdAt: string;
   rowCount?: number;
   backendRunId?: string;
+  // legacy: old format stored data/csv inline in localStorage
+  data?: Record<string, string>[];
+  csv?: string;
 }
 
 const T = {
@@ -54,43 +56,45 @@ export default function CsvViewer() {
   const [uploadingToBackend, setUploadingToBackend] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(`csv_run_${id}`);
-      if (!raw) { setError('Datei nicht gefunden. Bitte erneut hochladen.'); return; }
-      const stored: StoredCsvRun = JSON.parse(raw);
-      if (stored.backendRunId) setBackendRunId(stored.backendRunId);
+    const load = async () => {
+      try {
+        const raw = localStorage.getItem(`csv_run_${id}`);
+        if (!raw) { setError('Datei nicht gefunden. Bitte erneut hochladen.'); return; }
+        const meta: StoredCsvMeta = JSON.parse(raw);
+        if (meta.backendRunId) setBackendRunId(meta.backendRunId);
 
-      if (stored.csv) {
-        // New format: parse raw CSV text
-        Papa.parse<Record<string, string>>(stored.csv, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            setRun({
+        const parseText = (text: string) => {
+          Papa.parse<Record<string, string>>(text, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => setRun({
               data: results.data,
-              fields: stored.fields,
-              filename: stored.filename,
-              createdAt: stored.createdAt,
-              backendRunId: stored.backendRunId,
-            });
-          },
-          error: () => setError('CSV konnte nicht gelesen werden.'),
-        });
-      } else if (stored.data) {
-        // Old format: data already parsed
-        setRun({
-          data: stored.data,
-          fields: stored.fields,
-          filename: stored.filename,
-          createdAt: stored.createdAt,
-          backendRunId: stored.backendRunId,
-        });
-      } else {
-        setError('Ungültiges Dateiformat. Bitte erneut hochladen.');
+              fields: meta.fields,
+              filename: meta.filename,
+              createdAt: meta.createdAt,
+              backendRunId: meta.backendRunId,
+            }),
+            error: () => setError('CSV konnte nicht gelesen werden.'),
+          });
+        };
+
+        if (meta.data) {
+          // Legacy format A: parsed data inline in localStorage
+          setRun({ data: meta.data, fields: meta.fields, filename: meta.filename, createdAt: meta.createdAt, backendRunId: meta.backendRunId });
+        } else if (meta.csv) {
+          // Legacy format B: raw CSV text inline in localStorage
+          parseText(meta.csv);
+        } else {
+          // Current format: raw CSV text in IndexedDB
+          const csvText = await loadCsvText(id);
+          if (!csvText) { setError('Datei nicht gefunden. Bitte erneut hochladen.'); return; }
+          parseText(csvText);
+        }
+      } catch {
+        setError('Fehler beim Laden der Datei.');
       }
-    } catch {
-      setError('Fehler beim Laden der Datei.');
-    }
+    };
+    load();
   }, [id]);
 
   const resolveBackendRunId = useCallback(async (): Promise<string> => {
@@ -104,8 +108,14 @@ export default function CsvViewer() {
       for (const f of run.fields) mapping[f] = f;
       await api.runs.saveDataset(r.id, run.data, mapping);
 
-      const updated: CsvRun = { ...run, backendRunId: r.id };
-      localStorage.setItem(`csv_run_${id}`, JSON.stringify(updated));
+      // Update metadata with backendRunId (keep existing stored format)
+      try {
+        const raw = localStorage.getItem(`csv_run_${id}`);
+        if (raw) {
+          const meta = JSON.parse(raw);
+          localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...meta, backendRunId: r.id }));
+        }
+      } catch {}
       setBackendRunId(r.id);
       return r.id;
     } finally {

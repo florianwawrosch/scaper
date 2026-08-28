@@ -4,18 +4,36 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type ScrapeRun } from '@/lib/api';
 
-const STATUS_PILL: Record<ScrapeRun['status'], { label: string; cls: string }> = {
-  draft:         { label: 'Draft',    cls: 'muted' },
-  scraping:      { label: 'Scraping', cls: 'warn'  },
-  dataset_ready: { label: 'Bereit',   cls: 'good'  },
-  in_progress:   { label: 'Aktiv',    cls: 'warn'  },
-  completed:     { label: 'Fertig',   cls: 'good'  },
-  failed:        { label: 'Fehler',   cls: 'bad'   },
+const T = {
+  bg:    'var(--th-bg)',
+  panel: 'var(--th-panel)',
+  panel2:'var(--th-panel2)',
+  line:  'var(--th-line)',
+  lineS: 'var(--th-line-soft)',
+  gold:  'var(--th-gold)',
+  goldD: 'var(--th-gold-d)',
+  ink:   'var(--th-ink)',
+  inkD:  'var(--th-ink-d)',
+  inkF:  'var(--th-ink-f)',
+  teal:  'var(--th-teal)',
+  mono:  'var(--ff-mono)',
+  disp:  'var(--ff-disp)',
 };
 
-const FILTERS = ['all', 'draft', 'dataset_ready', 'completed', 'failed'] as const;
+const STATUS: Record<ScrapeRun['status'], { label: string; color: string; bg: string; border: string }> = {
+  draft:         { label: 'Draft',    color: '#9aa7bd', bg: 'rgba(154,167,189,.08)', border: 'rgba(154,167,189,.2)'  },
+  scraping:      { label: 'Scraping', color: '#e8b04b', bg: 'rgba(232,176,75,.08)',  border: 'rgba(232,176,75,.25)' },
+  dataset_ready: { label: 'Bereit',   color: '#4fd1c5', bg: 'rgba(79,209,197,.08)',  border: 'rgba(79,209,197,.25)' },
+  in_progress:   { label: 'Aktiv',    color: '#e8b04b', bg: 'rgba(232,176,75,.08)',  border: 'rgba(232,176,75,.25)' },
+  completed:     { label: 'Fertig',   color: '#4fd1c5', bg: 'rgba(79,209,197,.08)',  border: 'rgba(79,209,197,.25)' },
+  failed:        { label: 'Fehler',   color: '#e8736b', bg: 'rgba(232,115,107,.08)', border: 'rgba(232,115,107,.25)'},
+};
+
+const FILTERS = ['all', 'dataset_ready', 'completed', 'failed'] as const;
 type Filter = typeof FILTERS[number];
-const FILTER_LABELS: Record<Filter, string> = { all: 'Alle', draft: 'Draft', dataset_ready: 'Bereit', completed: 'Fertig', failed: 'Fehler' };
+const FILTER_LABELS: Record<Filter, string> = {
+  all: 'Alle', dataset_ready: 'Bereit', completed: 'Fertig', failed: 'Fehler',
+};
 
 export default function RunsList() {
   const router = useRouter();
@@ -36,117 +54,133 @@ export default function RunsList() {
   const fmt = (d: string) =>
     new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-  const totalKeep   = runs.reduce((s, r) => s + (Object.values(r.classification_results)[0]?.keep ?? 0), 0);
-  const totalReject = runs.reduce((s, r) => s + (Object.values(r.classification_results)[0]?.reject ?? 0), 0);
+  const rowStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: '110px 1fr 140px 60px 60px 60px 28px',
+    alignItems: 'center',
+    gap: 0,
+    padding: '0 14px',
+    cursor: 'pointer',
+    transition: 'background .1s',
+    borderBottom: `1px solid ${T.lineS}`,
+  };
+
+  const cellStyle: React.CSSProperties = {
+    fontFamily: T.mono, fontSize: 11, color: T.inkF, padding: '10px 6px',
+  };
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '48px 32px 80px' }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 24px 80px' }}>
 
         {/* Header */}
-        <div style={{ marginBottom: 40 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
           <button
             onClick={() => router.push('/')}
-            style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, letterSpacing: '.1em', color: '#5f6e87', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 20, display: 'block' }}
-          >
-            ← Dashboard
-          </button>
-          <div className="sec-head" style={{ marginBottom: 0 }}>
-            <span className="idx">HISTORY</span>
-            <h1 style={{ fontSize: 'clamp(24px, 3vw, 38px)' }}>Alle <em style={{ color: '#f5cc77' }}>Runs</em></h1>
-            <div className="rule" />
-          </div>
+            style={{ fontFamily: T.mono, fontSize: 11, padding: '5px 11px', borderRadius: 5, background: 'transparent', border: `1px solid ${T.lineS}`, color: T.inkD, cursor: 'pointer', flexShrink: 0 }}
+          >← Import</button>
+          <h1 style={{ fontFamily: T.disp, fontSize: 20, fontWeight: 700, color: T.ink }}>
+            Scrape <em style={{ color: T.gold }}>Verlauf</em>
+          </h1>
         </div>
 
-        {/* KPI Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 36 }}>
-          {[
-            { label: 'Total',       value: runs.length,                                                                   cls: '',     bar: 'muted' },
-            { label: 'Fertig',      value: runs.filter(r => r.status === 'completed').length,                             cls: 'teal', bar: 'teal'  },
-            { label: 'Leads Keep',  value: totalKeep.toLocaleString('de'),                                                cls: 'gold', bar: ''      },
-            { label: 'Fehler',      value: runs.filter(r => r.status === 'failed').length,                                cls: 'rose', bar: 'rose'  },
-          ].map(({ label, value, cls, bar }) => (
-            <div key={label} className="kpi">
-              <div className={`bar-accent ${bar}`} />
-              <div className="klbl">{label}</div>
-              <div className={`kval ${cls}`}>{value}</div>
-            </div>
-          ))}
+        {/* Filter chips + counts */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          {FILTERS.map(f => {
+            const count = f === 'all' ? runs.length : runs.filter(r => r.status === f).length;
+            const active = filter === f;
+            return (
+              <button
+                key={f}
+                onClick={() => { setFilter(f); setPage(1); }}
+                style={{
+                  fontFamily: T.mono, fontSize: 10, padding: '4px 10px', borderRadius: 20,
+                  border: active ? `1px solid rgba(232,176,75,.4)` : `1px solid ${T.lineS}`,
+                  background: active ? 'rgba(232,176,75,.08)' : 'transparent',
+                  color: active ? T.gold : T.inkF,
+                  cursor: 'pointer', letterSpacing: '.04em',
+                }}
+              >
+                {FILTER_LABELS[f]}
+                <span style={{ marginLeft: 5, opacity: .6 }}>{count}</span>
+              </button>
+            );
+          })}
+          <span style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, marginLeft: 'auto' }}>
+            {filtered.length} Einträge
+          </span>
         </div>
 
-        {/* Filter chips */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
-          {FILTERS.map(f => (
-            <button
-              key={f}
-              onClick={() => { setFilter(f); setPage(1); }}
-              className={`chip ${filter === f ? 'active' : ''}`}
-            >
-              {FILTER_LABELS[f]}
-              {f !== 'all' && (
-                <span style={{ marginLeft: 6, opacity: .55 }}>{runs.filter(r => r.status === f).length}</span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Table */}
+        {/* Content */}
         {loading ? (
-          <div style={{ padding: '48px', textAlign: 'center', background: '#0f1828', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14 }}>
-            <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#5f6e87', letterSpacing: '.1em' }}>Lädt…</p>
+          <div style={{ padding: 40, textAlign: 'center', border: `1px solid ${T.lineS}`, borderRadius: 10 }}>
+            <p style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF }}>Lädt…</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div style={{ padding: '56px', textAlign: 'center', background: '#0f1828', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14 }}>
-            <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 22, color: '#5f6e87', marginBottom: 8 }}>Keine Runs</p>
-            <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.06em' }}>Filter anpassen oder neuen Run starten.</p>
+          <div style={{ padding: '48px 24px', textAlign: 'center', border: `1px solid ${T.lineS}`, borderRadius: 10 }}>
+            <p style={{ fontFamily: T.disp, fontSize: 18, color: T.inkF, marginBottom: 6 }}>Keine Runs</p>
+            <p style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF, opacity: .6 }}>Filter anpassen oder neuen Run starten.</p>
           </div>
         ) : (
-          <div style={{ background: '#0f1828', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14, overflow: 'hidden' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Status</th>
-                  <th>Quelle</th>
-                  <th>Erstellt</th>
-                  <th className="r">Keep</th>
-                  <th className="r">Reject</th>
-                  <th className="r">Unklar</th>
-                  <th style={{ width: 40 }} />
-                </tr>
-              </thead>
-              <tbody>
-                {paginated.map(run => {
-                  const s  = STATUS_PILL[run.status];
-                  const cr = Object.values(run.classification_results)[0];
-                  return (
-                    <tr key={run.id} onClick={() => router.push(`/runs/${run.id}`)}>
-                      <td><span className={`pill ${s.cls}`}>{s.label}</span></td>
-                      <td className="mono">{run.source}</td>
-                      <td style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#5f6e87' }}>{fmt(run.created_at)}</td>
-                      <td className="r" style={{ color: '#4fd1c5', fontFamily: "'Spline Sans Mono', monospace", fontWeight: 600, fontSize: 15 }}>
-                        {cr?.keep ?? '—'}
-                      </td>
-                      <td className="r" style={{ color: '#e8736b', fontFamily: "'Spline Sans Mono', monospace", fontSize: 13 }}>
-                        {cr?.reject ?? '—'}
-                      </td>
-                      <td className="r" style={{ color: '#e8b04b', fontFamily: "'Spline Sans Mono', monospace", fontSize: 13 }}>
-                        {cr?.unklar ?? '—'}
-                      </td>
-                      <td className="r" style={{ color: '#5f6e87' }}>→</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div style={{ border: `1px solid ${T.lineS}`, borderRadius: 10, overflow: 'hidden' }}>
 
+            {/* Table header */}
+            <div style={{ ...rowStyle, cursor: 'default', background: 'rgba(255,255,255,.02)', borderBottom: `1px solid ${T.line}` }}>
+              {['Status', 'Quelle / Keywords', 'Erstellt', 'Keep', 'Drop', 'Offen', ''].map((h, i) => (
+                <div key={i} style={{ ...cellStyle, color: T.inkF, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', textAlign: i >= 3 ? 'right' : 'left' }}>
+                  {h}
+                </div>
+              ))}
+            </div>
+
+            {/* Rows */}
+            {paginated.map(run => {
+              const s  = STATUS[run.status];
+              const cr = Object.values(run.classification_results)[0];
+              const keywords = (run.scraper_config as any)?.keywords;
+              const kw = Array.isArray(keywords) ? keywords.slice(0, 3).join(', ') : (typeof keywords === 'string' ? keywords : run.source);
+              return (
+                <div
+                  key={run.id}
+                  style={rowStyle}
+                  onClick={() => router.push(`/runs/${run.id}`)}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                >
+                  <div style={{ ...cellStyle }}>
+                    <span style={{
+                      fontFamily: T.mono, fontSize: 9, letterSpacing: '.07em',
+                      padding: '2px 8px', borderRadius: 10,
+                      background: s.bg, border: `1px solid ${s.border}`, color: s.color,
+                    }}>{s.label}</span>
+                  </div>
+                  <div style={{ ...cellStyle, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {kw}
+                  </div>
+                  <div style={{ ...cellStyle, color: T.inkF }}>{fmt(run.created_at)}</div>
+                  <div style={{ ...cellStyle, color: '#4fd1c5', fontWeight: 600, fontSize: 13, textAlign: 'right' }}>{cr?.keep ?? '—'}</div>
+                  <div style={{ ...cellStyle, color: '#e8736b', textAlign: 'right' }}>{cr?.reject ?? '—'}</div>
+                  <div style={{ ...cellStyle, color: '#e8b04b', textAlign: 'right' }}>{cr?.unklar ?? '—'}</div>
+                  <div style={{ ...cellStyle, color: T.inkF, textAlign: 'right' }}>→</div>
+                </div>
+              );
+            })}
+
+            {/* Pagination */}
             {totalPages > 1 && (
-              <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,.12)' }}>
-                <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.04em' }}>
-                  {filtered.length} Einträge · Seite {page} / {totalPages}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderTop: `1px solid ${T.lineS}`, background: 'rgba(255,255,255,.01)' }}>
+                <span style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF }}>
+                  Seite {page} / {totalPages}
                 </span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn-ghost" style={{ padding: '5px 12px', fontSize: 11 }} onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>← Zurück</button>
-                  <button className="btn-ghost" style={{ padding: '5px 12px', fontSize: 11 }} onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Weiter →</button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[['←', -1], ['→', 1]].map(([lbl, dir]) => (
+                    <button
+                      key={lbl as string}
+                      onClick={() => setPage(p => Math.min(totalPages, Math.max(1, p + (dir as number))))}
+                      disabled={dir === -1 ? page === 1 : page === totalPages}
+                      style={{ fontFamily: T.mono, fontSize: 11, padding: '3px 10px', border: `1px solid ${T.lineS}`, borderRadius: 5, background: 'none', color: T.inkD, cursor: 'pointer' }}
+                    >{lbl}</button>
+                  ))}
                 </div>
               </div>
             )}
