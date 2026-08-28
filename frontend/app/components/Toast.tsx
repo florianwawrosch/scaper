@@ -63,30 +63,32 @@ function ToastContainer({
   toasts: Toast[];
   removeToast: (id: string) => void;
 }) {
-  return (
-    <div className="fixed bottom-4 right-4 space-y-2 z-50">
-      {toasts.map((toast) => {
-        const colors = {
-          success: 'bg-good/10 border-good/35 text-good',
-          error: 'bg-bad/10 border-bad/35 text-bad',
-          warning: 'bg-warn/10 border-warn/35 text-warn',
-          info: 'bg-gold/10 border-gold/35 text-gold',
-        };
+  const palette: Record<ToastType, { bg: string; border: string; color: string }> = {
+    success: { bg: 'rgba(79,209,197,.1)',  border: 'rgba(79,209,197,.35)',  color: '#4fd1c5' },
+    error:   { bg: 'rgba(232,115,107,.1)', border: 'rgba(232,115,107,.35)', color: '#e8736b' },
+    warning: { bg: 'rgba(232,176,75,.1)',  border: 'rgba(232,176,75,.35)',  color: '#e8b04b' },
+    info:    { bg: 'rgba(232,176,75,.1)',  border: 'rgba(232,176,75,.35)',  color: '#e8b04b' },
+  };
 
+  return (
+    <div style={{ position: 'fixed', bottom: 16, right: 16, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 50 }}>
+      {toasts.map((toast) => {
+        const { bg, border, color } = palette[toast.type];
         return (
           <div
             key={toast.id}
-            className={`border rounded px-3 py-2 text-xs font-mono max-w-xs animate-in fade-in slide-in-from-bottom-2 ${colors[toast.type]}`}
+            style={{
+              fontFamily: "'Spline Sans Mono', monospace",
+              fontSize: 12, padding: '8px 12px', borderRadius: 7,
+              background: bg, border: `1px solid ${border}`, color,
+              maxWidth: 320, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            }}
           >
-            <div className="flex items-center justify-between gap-2">
-              <span>{toast.message}</span>
-              <button
-                onClick={() => removeToast(toast.id)}
-                className="text-xs opacity-60 hover:opacity-100"
-              >
-                ✕
-              </button>
-            </div>
+            <span>{toast.message}</span>
+            <button
+              onClick={() => removeToast(toast.id)}
+              style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, background: 'none', border: 'none', color, opacity: 0.6, cursor: 'pointer', padding: 0, lineHeight: 1 }}
+            >✕</button>
           </div>
         );
       })}

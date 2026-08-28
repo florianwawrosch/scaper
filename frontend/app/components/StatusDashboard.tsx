@@ -22,25 +22,25 @@ export function StatusDashboard() {
     return () => clearInterval(t);
   }, []);
 
-  const dot = backendOnline === null
-    ? 'bg-warn animate-pulse'
-    : backendOnline
-    ? 'bg-good'
-    : 'bg-bad';
-
-  const label = backendOnline === null ? '…' : backendOnline ? 'Online' : 'Offline';
-
+  const dotColor = backendOnline === null ? '#e8b04b' : backendOnline ? '#4fd1c5' : '#e8736b';
+  const label    = backendOnline === null ? '…' : backendOnline ? 'Online' : 'Offline';
   const ai = getAiConfig();
 
   return (
-    <div className="fixed bottom-4 left-4 z-40 bg-panel border border-line rounded-lg px-3 py-2 flex items-center gap-3 text-xs font-mono">
-      <div className="flex items-center gap-1.5">
-        <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-        <span className="text-ink-faint tracking-wider">{label}</span>
+    <div style={{
+      position: 'fixed', bottom: 16, left: 16, zIndex: 40,
+      background: 'var(--th-panel)', border: '1px solid var(--th-line)',
+      borderRadius: 8, padding: '6px 12px',
+      display: 'flex', alignItems: 'center', gap: 10,
+      fontFamily: "'Spline Sans Mono', monospace", fontSize: 11,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, display: 'inline-block' }} />
+        <span style={{ color: 'var(--th-ink-f)', letterSpacing: '.06em' }}>{label}</span>
       </div>
-      <span className="text-line">|</span>
-      <span className="text-ink-faint tracking-wider">
-        {ai.provider} <span className="text-gold">·</span> {ai.model.split('-').slice(0, 2).join('-')}
+      <span style={{ color: 'var(--th-line)' }}>|</span>
+      <span style={{ color: 'var(--th-ink-f)', letterSpacing: '.06em' }}>
+        {ai.provider} <span style={{ color: 'var(--th-gold)' }}>·</span> {ai.model.split('-').slice(0, 2).join('-')}
       </span>
     </div>
   );

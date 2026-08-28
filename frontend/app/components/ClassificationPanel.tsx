@@ -52,10 +52,17 @@ export function ClassificationPanel({ runId, leadsCount, initialProvider = 'gemi
     }
   };
 
+  const card: React.CSSProperties = {
+    background: 'var(--th-panel)',
+    border: '1px solid var(--th-line)',
+    borderRadius: 10,
+    padding: '16px 18px',
+  };
+
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div>
-        <h5 style={{ marginBottom: 4 }}>KI-Klassifizierung</h5>
+        <h5 style={{ marginBottom: 4, fontFamily: 'var(--ff-disp)', fontSize: 16, color: 'var(--th-ink)', fontWeight: 700 }}>KI-Klassifizierung</h5>
         <p style={{ fontFamily: "'Spline Sans', sans-serif", fontSize: 13, color: '#5f6e87' }}>
           Wähle Provider und Modell für diesen Run.
         </p>
@@ -141,10 +148,15 @@ export function ClassificationPanel({ runId, leadsCount, initialProvider = 'gemi
 
       {/* CTA */}
       <button
-        className="btn-primary"
         onClick={start}
         disabled={classifying || leadsCount === 0}
-        style={{ opacity: leadsCount === 0 ? 0.4 : 1 }}
+        style={{
+          fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, fontWeight: 600,
+          letterSpacing: '.06em', padding: '10px 0', borderRadius: 7, cursor: 'pointer',
+          border: '1px solid rgba(232,176,75,.35)', background: 'rgba(232,176,75,.1)',
+          color: '#e8b04b', width: '100%',
+          opacity: classifying || leadsCount === 0 ? 0.4 : 1,
+        }}
       >
         {classifying ? `Läuft… ${progress}%` : `▶ Klassifizierung starten (${leadsCount} Leads)`}
       </button>
