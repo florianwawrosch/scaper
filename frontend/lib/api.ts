@@ -99,6 +99,16 @@ export const api = {
       if (!res.ok) throw new Error('Failed to classify');
       return res.json();
     },
+
+    analyze: async (runId: string, aiProvider: string, aiModel: string, prompt: string, columnName: string) => {
+      const res = await fetch(`${API_BASE}/api/runs/${runId}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aiProvider, aiModel, prompt, column_name: columnName }),
+      });
+      if (!res.ok) throw new Error('Failed to analyze');
+      return res.json() as Promise<{ column_name: string; values: string[] }>;
+    },
   },
 
   sources: {

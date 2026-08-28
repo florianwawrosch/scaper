@@ -50,6 +50,13 @@ class ClassifyRequest(BaseModel):
     mapping: Optional[dict] = None
 
 
+class AnalyzeRequest(BaseModel):
+    aiProvider: str = "gemini"
+    aiModel: str = "gemini-2.0-flash"
+    prompt: str
+    column_name: str = "KI Analyse"
+
+
 class EnrichRequest(BaseModel):
     provider: str = "hunter_io"
     apiKey: Optional[str] = None
@@ -302,6 +309,59 @@ def _classify_openai(leads, criteria, model_name: str):
             results.append(ClassificationResult(decision="unklar", matched_rule=None, reason=f"Fehler: {e}"))
 
     return results
+
+
+def _call_ai_single(provider: str, model_name: str, prompt: str) -> str:
+    try:
+        if provider == "gemini":
+            import google.generativeai as genai
+            genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+            model = genai.GenerativeModel(model_name)
+            resp = model.generate_content(prompt)
+            return resp.text.strip()
+        elif provider == "anthropic":
+            import anthropic
+            client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+            msg = client.messages.create(
+                model=model_name, max_tokens=256,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return msg.content[0].text.strip()
+        elif provider == "openai":
+            import openai
+            client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+            resp = client.chat.completions.create(
+                model=model_name, max_tokens=256,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return resp.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Fehler: {e}"
+    return "—"
+
+
+@app.post("/api/runs/{run_id}/analyze")
+async def analyze_run(run_id: str, req: AnalyzeRequest):
+    run = load_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    df_data = load_raw_dataset(run_id) or []
+    if not df_data:
+        raise HTTPException(status_code=400, detail="No dataset found for this run")
+
+    provider = req.aiProvider.lower()
+    values = []
+    for row in df_data:
+        row_text = "\n".join(
+            f"{k}: {v}" for k, v in row.items()
+            if v and str(v).strip() and k != "_idx"
+        )
+        full_prompt = f"{req.prompt}\n\nDaten:\n{row_text}\n\nAntworte nur kurz und direkt."
+        value = _call_ai_single(provider, req.aiModel, full_prompt)
+        values.append(value)
+
+    return {"column_name": req.column_name, "values": values}
 
 
 @app.post("/api/runs/{run_id}/enrich")

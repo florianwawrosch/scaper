@@ -22,12 +22,6 @@ const AD_STATUS_OPTIONS = [
   { value: 'INACTIVE', label: 'Inaktiv'  },
 ];
 
-const AI_PROVIDERS = [
-  { id: 'gemini',    label: 'Gemini',  models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
-  { id: 'anthropic', label: 'Claude',  models: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'] },
-  { id: 'openai',    label: 'GPT',     models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
-] as const;
-
 type SourceType = 'meta_ads' | 'phantombuster';
 
 const STATUS_PILL: Record<ScrapeRun['status'], { label: string; cls: string }> = {
@@ -88,12 +82,8 @@ export default function Home() {
   const [adStatus,    setAdStatus]    = useState('ACTIVE');
   const [csvFile,     setCsvFile]     = useState<File | null>(null);
   const [dragOver,    setDragOver]    = useState(false);
-  const [aiProvider,  setAiProvider]  = useState<string>('gemini');
-  const [aiModel,     setAiModel]     = useState('gemini-2.0-flash');
   const [presets,     setPresets]     = useState<Record<string, any>>({});
-  const [presetName,  setPresetName]  = useState('');
-
-  const currentProvider = AI_PROVIDERS.find(p => p.id === aiProvider)!;
+  const [presetName,  setPresetName]  = useState('');;
 
   useEffect(() => {
     api.runs.list().then(runs => {
@@ -115,10 +105,6 @@ export default function Home() {
     if (cfg.countries) setCountries(cfg.countries);
     if (cfg.platforms) setPlatforms(cfg.platforms);
     if (cfg.ad_status) setAdStatus(cfg.ad_status);
-    if (cfg.ai_provider) setAiProvider(cfg.ai_provider);
-    if (cfg.ai_model) {
-      setAiModel(cfg.ai_model);
-    }
   };
 
   const savePreset = () => {
@@ -167,16 +153,13 @@ export default function Home() {
         const run = await api.runs.create('meta_ads_library', {
           keywords: keywords.split('\n').filter(Boolean),
           countries, platforms, ad_status: adStatus,
-          ai_provider: aiProvider, ai_model: aiModel,
         });
         setRuns([run, ...runs]);
         showToast('Run erstellt', 'success');
         router.push(`/runs/${run.id}`);
       } else {
         if (!csvFile) { showToast('Bitte eine CSV-Datei hochladen', 'warning'); return; }
-        const run = await api.runs.create('phantombuster', {
-          ai_provider: aiProvider, ai_model: aiModel,
-        });
+        const run = await api.runs.create('phantombuster', {});
         const fd = new FormData();
         fd.append('file', csvFile);
         await api.runs.upload(run.id, fd);
@@ -199,7 +182,7 @@ export default function Home() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '48px 32px 80px' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 28px 60px' }}>
 
         {/* ===== Ticket ===== */}
         <div className="ticket">
@@ -221,7 +204,7 @@ export default function Home() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 32, alignItems: 'start' }}>
 
           {/* Left: Form */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
             {/* 01 — Datenquelle */}
             <section>
@@ -241,22 +224,21 @@ export default function Home() {
                       key={s.id}
                       onClick={() => setSource(s.id)}
                       style={{
-                        padding: '22px 24px',
-                        borderRadius: 14,
+                        padding: '14px 16px',
+                        borderRadius: 10,
                         border: active ? '1px solid rgba(232,176,75,.5)' : '1px solid rgba(255,255,255,.07)',
                         background: active ? 'rgba(232,176,75,.07)' : 'rgba(255,255,255,.02)',
                         textAlign: 'left',
                         cursor: 'pointer',
                         transition: 'all .15s',
-                        boxShadow: active ? '0 0 32px -6px rgba(232,176,75,.2)' : 'none',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                         <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 9, letterSpacing: '.2em', color: active ? '#e8b04b' : '#5f6e87', textTransform: 'uppercase' }}>{s.tag}</span>
-                        {active && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e8b04b' }} />}
+                        {active && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#e8b04b' }} />}
                       </div>
-                      <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 20, fontWeight: 600, color: active ? '#f5cc77' : '#f4efe4', marginBottom: 6 }}>{s.label}</p>
-                      <p style={{ fontFamily: "'Spline Sans', sans-serif", fontSize: 13, color: '#5f6e87', lineHeight: 1.5 }}>{s.sub}</p>
+                      <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 16, fontWeight: 600, color: active ? '#f5cc77' : '#f4efe4', marginBottom: 3 }}>{s.label}</p>
+                      <p style={{ fontFamily: "'Spline Sans', sans-serif", fontSize: 12, color: '#5f6e87' }}>{s.sub}</p>
                     </button>
                   );
                 })}
@@ -277,9 +259,9 @@ export default function Home() {
                     value={keywords}
                     onChange={e => setKeywords(e.target.value)}
                     placeholder={"High Ticket Coach\nManifestation\nOnline Business\nPersonal Branding"}
-                    rows={6}
-                    style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 13, color: '#f4efe4', background: '#0f1828', border: '1px solid rgba(232,176,75,.18)', borderRadius: 10, padding: '14px 18px', width: '100%', outline: 'none', resize: 'vertical', lineHeight: 1.7 }}
-                    onFocus={e => { e.target.style.borderColor = 'rgba(232,176,75,.5)'; e.target.style.boxShadow = '0 0 0 3px rgba(232,176,75,.06)'; }}
+                    rows={5}
+                    style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#f4efe4', background: '#0f1828', border: '1px solid rgba(232,176,75,.18)', borderRadius: 8, padding: '10px 14px', width: '100%', outline: 'none', resize: 'vertical', lineHeight: 1.6 }}
+                    onFocus={e => { e.target.style.borderColor = 'rgba(232,176,75,.5)'; e.target.style.boxShadow = '0 0 0 2px rgba(232,176,75,.06)'; }}
                     onBlur={e => { e.target.style.borderColor = 'rgba(232,176,75,.18)'; e.target.style.boxShadow = 'none'; }}
                   />
                 </section>
@@ -290,17 +272,17 @@ export default function Home() {
                     <h2>Parameter</h2>
                     <div className="rule" />
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <div>
-                      <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, letterSpacing: '.18em', textTransform: 'uppercase', color: '#5f6e87', marginBottom: 12 }}>Länder</p>
+                      <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 9, letterSpacing: '.16em', textTransform: 'uppercase', color: '#5f6e87', marginBottom: 7 }}>Länder</p>
                       <ChipGroup options={COUNTRY_OPTIONS} value={countries} onChange={setCountries} />
                     </div>
                     <div>
-                      <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, letterSpacing: '.18em', textTransform: 'uppercase', color: '#5f6e87', marginBottom: 12 }}>Plattformen</p>
+                      <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 9, letterSpacing: '.16em', textTransform: 'uppercase', color: '#5f6e87', marginBottom: 7 }}>Plattformen</p>
                       <ChipGroup options={PLATFORM_OPTIONS} value={platforms} onChange={setPlatforms} />
                     </div>
                     <div>
-                      <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, letterSpacing: '.18em', textTransform: 'uppercase', color: '#5f6e87', marginBottom: 12 }}>Ad-Status</p>
+                      <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 9, letterSpacing: '.16em', textTransform: 'uppercase', color: '#5f6e87', marginBottom: 7 }}>Ad-Status</p>
                       <SingleChip options={AD_STATUS_OPTIONS} value={adStatus} onChange={setAdStatus} />
                     </div>
                   </div>
@@ -347,8 +329,8 @@ export default function Home() {
                   onDrop={handleDrop}
                   onClick={() => fileRef.current?.click()}
                   style={{
-                    padding: '48px 32px',
-                    borderRadius: 14,
+                    padding: '28px 24px',
+                    borderRadius: 10,
                     border: dragOver ? '1.5px dashed rgba(232,176,75,.7)' : csvFile ? '1.5px solid rgba(79,209,197,.4)' : '1.5px dashed rgba(255,255,255,.12)',
                     background: dragOver ? 'rgba(232,176,75,.04)' : csvFile ? 'rgba(79,209,197,.04)' : 'rgba(255,255,255,.01)',
                     textAlign: 'center',
@@ -358,15 +340,15 @@ export default function Home() {
                 >
                   {csvFile ? (
                     <div>
-                      <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 20, color: '#4fd1c5', marginBottom: 8 }}>{csvFile.name}</p>
-                      <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.06em' }}>
+                      <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 17, color: '#4fd1c5', marginBottom: 5 }}>{csvFile.name}</p>
+                      <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, color: '#5f6e87', letterSpacing: '.06em' }}>
                         {(csvFile.size / 1024).toFixed(1)} KB · Klicken zum Ersetzen
                       </p>
                     </div>
                   ) : (
                     <div>
-                      <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 22, color: '#f4efe4', marginBottom: 10 }}>CSV oder Excel hierher ziehen</p>
-                      <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.06em' }}>oder klicken zum Auswählen · .csv, .xlsx, .xls</p>
+                      <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 18, color: '#f4efe4', marginBottom: 6 }}>CSV oder Excel hierher ziehen</p>
+                      <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.06em' }}>oder klicken · .csv, .xlsx, .xls</p>
                     </div>
                   )}
                 </div>
@@ -374,66 +356,6 @@ export default function Home() {
                   onChange={e => { const f = e.target.files?.[0]; if (f) setCsvFile(f); }} />
               </section>
             )}
-
-            {/* AI Model — always shown, per run */}
-            <section>
-              <div className="sec-head">
-                <span className="idx">KI</span>
-                <h2>AI <em style={{ color: '#f5cc77' }}>Klassifizierung</em></h2>
-                <div className="rule" />
-                <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.06em', whiteSpace: 'nowrap' }}>für diesen Run</span>
-              </div>
-
-              {/* Provider row */}
-              <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-                {AI_PROVIDERS.map(p => {
-                  const active = aiProvider === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => { setAiProvider(p.id); setAiModel(p.models[0]); }}
-                      style={{
-                        flex: 1,
-                        padding: '12px 16px',
-                        borderRadius: 10,
-                        border: active ? '1px solid rgba(232,176,75,.4)' : '1px solid rgba(255,255,255,.07)',
-                        background: active ? 'rgba(232,176,75,.06)' : 'rgba(255,255,255,.02)',
-                        fontFamily: "'Fraunces', Georgia, serif",
-                        fontSize: 16,
-                        fontWeight: 600,
-                        color: active ? '#f5cc77' : '#9aa7bd',
-                        cursor: 'pointer',
-                        transition: 'all .15s',
-                      }}
-                    >{p.label}</button>
-                  );
-                })}
-              </div>
-
-              {/* Model row */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {currentProvider.models.map((m, mi) => {
-                  const active = aiModel === m;
-                  return (
-                    <button
-                      key={m}
-                      onClick={() => setAiModel(m)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 14,
-                        padding: '12px 18px', borderRadius: 8,
-                        border: active ? '1px solid rgba(232,176,75,.3)' : '1px solid rgba(255,255,255,.05)',
-                        background: active ? 'rgba(232,176,75,.05)' : 'transparent',
-                        textAlign: 'left', cursor: 'pointer', transition: 'all .12s',
-                      }}
-                    >
-                      <div style={{ width: 10, height: 10, borderRadius: '50%', border: active ? '2px solid #e8b04b' : '2px solid rgba(95,110,135,.4)', background: active ? '#e8b04b' : 'transparent', flexShrink: 0, transition: 'all .12s' }} />
-                      <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: active ? '#f4efe4' : '#5f6e87', flex: 1 }}>{m}</span>
-                      {mi === 0 && <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 9, letterSpacing: '.12em', color: '#e8b04b', opacity: .65 }}>EMPFOHLEN</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
 
             {/* CTA */}
             <button className="btn-primary" onClick={createRun} disabled={creating}>

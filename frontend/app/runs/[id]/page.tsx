@@ -6,7 +6,7 @@ import { api, type ScrapeRun } from '@/lib/api';
 import { DataTable } from '@/app/components/DataTable';
 import { ExportPanel } from '@/app/components/ExportPanel';
 import { EnrichmentPanel } from '@/app/components/EnrichmentPanel';
-import { ClassificationPanel } from '@/app/components/ClassificationPanel';
+import { AnalysisPanel } from '@/app/components/AnalysisPanel';
 
 const TABS = ['Scraping', 'Review & Filter', 'Enrichment', 'Export'] as const;
 type Tab = typeof TABS[number];
@@ -33,6 +33,8 @@ export default function RunDetail() {
   const [feedback,     setFeedback]     = useState('');
   const [savingRating, setSavingRating] = useState(false);
   const [tableData,    setTableData]    = useState<any[]>([]);
+  const [aiColumns,    setAiColumns]    = useState<{ name: string; values: string[] }[]>([]);
+  const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
 
   const loadRun = useCallback(async () => {
     try {
@@ -107,7 +109,13 @@ export default function RunDetail() {
             </div>
             <div className="m">
               <span className="k">Datensätze</span>
-              <span className="v">{tableData.length > 0 ? tableData.length.toLocaleString('de') : '—'}</span>
+              <span className="v">
+                {tableData.length > 0
+                  ? excludedRows.size > 0
+                    ? `${(tableData.length - excludedRows.size).toLocaleString('de')} / ${tableData.length.toLocaleString('de')}`
+                    : tableData.length.toLocaleString('de')
+                  : '—'}
+              </span>
             </div>
             <div className="m">
               <span className="k">Rating</span>
@@ -232,24 +240,33 @@ export default function RunDetail() {
           )}
 
           {activeTab === 'Review & Filter' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              <ClassificationPanel
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <AnalysisPanel
                 runId={runId}
-                leadsCount={tableData.length}
-                initialProvider={(run.scraper_config?.ai_provider as string) || 'gemini'}
-                initialModel={(run.scraper_config?.ai_model as string) || 'gemini-2.0-flash'}
-                onClassificationComplete={loadRun}
+                rowCount={tableData.length}
+                onColumnResult={(name, values) => {
+                  setAiColumns(prev => {
+                    const existing = prev.findIndex(c => c.name === name);
+                    if (existing >= 0) {
+                      const next = [...prev];
+                      next[existing] = { name, values };
+                      return next;
+                    }
+                    return [...prev, { name, values }];
+                  });
+                }}
               />
               {tableData.length > 0 ? (
                 <DataTable
                   data={tableData}
-                  columns={Object.keys(tableData[0]).slice(0, 6)}
-                  onMarkKeep={id => console.log('Keep:', id)}
-                  onMarkReject={id => console.log('Reject:', id)}
+                  rawColumns={Object.keys(tableData[0]).slice(0, 8)}
+                  aiColumns={aiColumns}
+                  excludedRows={excludedRows}
+                  onExcludeChange={setExcludedRows}
                 />
               ) : (
-                <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
-                  <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 20, color: '#5f6e87', marginBottom: 8 }}>Kein Dataset</p>
+                <div className="card" style={{ textAlign: 'center', padding: '40px 24px' }}>
+                  <p style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 18, color: '#5f6e87', marginBottom: 6 }}>Kein Dataset</p>
                   <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11, color: '#5f6e87', letterSpacing: '.04em' }}>Lade Daten hoch oder starte ein Scraping.</p>
                 </div>
               )}
@@ -263,16 +280,19 @@ export default function RunDetail() {
           {activeTab === 'Export' && (
             <ExportPanel
               runId={runId}
-              leads={tableData.slice(0, 100).map((item, i) => ({
-                id:        item.id || `lead-${i}`,
-                name:      item.name || item.company || '—',
-                email:     item.email || item.contact || undefined,
-                phone:     item.phone || undefined,
-                company:   item.company || undefined,
-                status:    'KEEP' as const,
-                reason:    undefined,
-                createdAt: run.created_at,
-              }))}
+              leads={tableData
+                .filter((_, i) => !excludedRows.has(i))
+                .slice(0, 500)
+                .map((item, i) => ({
+                  id:        item.id || `lead-${i}`,
+                  name:      item.name || item.company || '—',
+                  email:     item.email || item.contact || undefined,
+                  phone:     item.phone || undefined,
+                  company:   item.company || undefined,
+                  status:    'KEEP' as const,
+                  reason:    undefined,
+                  createdAt: run.created_at,
+                }))}
             />
           )}
         </div>
