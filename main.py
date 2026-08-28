@@ -93,12 +93,12 @@ async def health():
 async def provider_config():
     """Report which provider API keys are configured server-side (booleans only)."""
     return {
-        "gemini":    bool(os.environ.get("GEMINI_API_KEY")),
+        "gemini":    bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")),
         "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "openai":    bool(os.environ.get("OPENAI_API_KEY")),
-        "meta_ads":  bool(os.environ.get("META_ADS_API_TOKEN")),
-        "hunter_io": bool(os.environ.get("HUNTER_IO_API_KEY")),
-        "findymail": bool(os.environ.get("FINDYMAIL_API_KEY")),
+        "meta_ads":  bool(os.environ.get("META_ADS_API_TOKEN") or os.environ.get("META_ADS_TOKEN")),
+        "hunter_io": bool(os.environ.get("HUNTER_IO_API_KEY") or os.environ.get("HUNTER_IO_KEY")),
+        "findymail": bool(os.environ.get("FINDYMAIL_API_KEY") or os.environ.get("FINDYMAIL_KEY")),
     }
 
 
@@ -132,7 +132,7 @@ def _do_meta_ads_scrape(run_id: str, cfg: dict):
     if not run:
         return
     try:
-        token      = cfg.get("meta_ads_token") or os.environ.get("META_ADS_API_TOKEN", "")
+        token      = cfg.get("meta_ads_token") or os.environ.get("META_ADS_API_TOKEN") or os.environ.get("META_ADS_TOKEN", "")
         keywords   = cfg.get("keywords") or []
         if isinstance(keywords, str):
             keywords = [k.strip() for k in keywords.splitlines() if k.strip()]
@@ -376,7 +376,7 @@ def _call_ai_single(provider: str, model_name: str, prompt: str, api_key: str = 
     try:
         if provider == "gemini":
             import google.generativeai as genai
-            key = api_key or os.environ.get("GEMINI_API_KEY", "")
+            key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY", "")
             if not key:
                 return "Fehler: GEMINI_API_KEY fehlt"
             genai.configure(api_key=key)
@@ -448,9 +448,11 @@ async def enrich(run_id: str, req: EnrichRequest):
         kept = df_data
 
     enriched = []
-    api_key = req.apiKey or os.environ.get(
-        "HUNTER_IO_API_KEY" if req.provider == "hunter_io" else "FINDYMAIL_API_KEY"
-    )
+    if req.provider == "hunter_io":
+        env_key = os.environ.get("HUNTER_IO_API_KEY") or os.environ.get("HUNTER_IO_KEY")
+    else:
+        env_key = os.environ.get("FINDYMAIL_API_KEY") or os.environ.get("FINDYMAIL_KEY")
+    api_key = req.apiKey or env_key
     if not api_key:
         raise HTTPException(status_code=400, detail=f"Kein API-Key für {req.provider} — bitte in den Einstellungen eintragen.")
 

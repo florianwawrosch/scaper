@@ -3,6 +3,7 @@ import "./globals.css";
 import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { KeySync } from "./components/KeySync";
 
 export const metadata: Metadata = {
   title: "Lead Pipeline",
@@ -14,6 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="de" className="h-full">
       <body className="h-full antialiased flex flex-col">
         <ThemeProvider />
+        <KeySync />
         <ToastProvider>
           <Header />
           <main className="flex-1">{children}</main>

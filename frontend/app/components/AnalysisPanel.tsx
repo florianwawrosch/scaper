@@ -42,14 +42,17 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
   const [backendKeys, setBackendKeys] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const s = loadSettings();
-    setApiKeys(s.apiKeys as Record<string, string>);
+    const readKeys = () => setApiKeys(loadSettings().apiKeys as Record<string, string>);
+    readKeys();
+    // Re-read when server-side env keys were synced into localStorage
+    window.addEventListener('keys-synced', readKeys);
     // Also check which keys the backend has as env vars
     fetch(`${getApiBase()}/api/config/providers`, { signal: AbortSignal.timeout(4000) })
       .then(r => r.ok ? r.json() : {})
       .then(setBackendKeys)
       .catch(() => {})
       .finally(() => setKeysReady(true));
+    return () => window.removeEventListener('keys-synced', readKeys);
   }, []);
 
   useEffect(() => {

@@ -75,6 +75,34 @@ export function saveSettings(settings: AppSettings): void {
   }
 }
 
+/**
+ * Fetch keys the server holds as env vars (any naming variant, no NEXT_PUBLIC_
+ * needed) and fill them into localStorage — only where no key is set locally,
+ * so user-entered keys always win. Returns true if anything was added.
+ */
+export async function syncServerKeys(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  try {
+    const res = await fetch('/api/keys', { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return false;
+    const serverKeys: Record<string, string> = await res.json();
+    if (!serverKeys || typeof serverKeys !== 'object') return false;
+
+    const current = loadSettings();
+    let changed = false;
+    for (const k of Object.keys(current.apiKeys) as (keyof AppSettings['apiKeys'])[]) {
+      if (!current.apiKeys[k] && serverKeys[k]) {
+        current.apiKeys[k] = serverKeys[k];
+        changed = true;
+      }
+    }
+    if (changed) saveSettings(current);
+    return changed;
+  } catch {
+    return false;
+  }
+}
+
 export function getApiKey(provider: string): string {
   const settings = loadSettings();
   const key = settings.apiKeys[provider as keyof typeof settings.apiKeys];
