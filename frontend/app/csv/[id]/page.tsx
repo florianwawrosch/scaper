@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import Papa from 'papaparse';
 import { api } from '@/lib/api';
 import { DataTable } from '@/app/components/DataTable';
 import { AnalysisPanel } from '@/app/components/AnalysisPanel';
@@ -11,6 +12,16 @@ interface CsvRun {
   fields: string[];
   filename: string;
   createdAt: string;
+  backendRunId?: string;
+}
+
+interface StoredCsvRun {
+  csv?: string;           // new format: raw CSV text
+  data?: Record<string, string>[]; // old format: parsed data
+  fields: string[];
+  filename: string;
+  createdAt: string;
+  rowCount?: number;
   backendRunId?: string;
 }
 
@@ -46,9 +57,37 @@ export default function CsvViewer() {
     try {
       const raw = localStorage.getItem(`csv_run_${id}`);
       if (!raw) { setError('Datei nicht gefunden. Bitte erneut hochladen.'); return; }
-      const parsed: CsvRun = JSON.parse(raw);
-      setRun(parsed);
-      if (parsed.backendRunId) setBackendRunId(parsed.backendRunId);
+      const stored: StoredCsvRun = JSON.parse(raw);
+      if (stored.backendRunId) setBackendRunId(stored.backendRunId);
+
+      if (stored.csv) {
+        // New format: parse raw CSV text
+        Papa.parse<Record<string, string>>(stored.csv, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            setRun({
+              data: results.data,
+              fields: stored.fields,
+              filename: stored.filename,
+              createdAt: stored.createdAt,
+              backendRunId: stored.backendRunId,
+            });
+          },
+          error: () => setError('CSV konnte nicht gelesen werden.'),
+        });
+      } else if (stored.data) {
+        // Old format: data already parsed
+        setRun({
+          data: stored.data,
+          fields: stored.fields,
+          filename: stored.filename,
+          createdAt: stored.createdAt,
+          backendRunId: stored.backendRunId,
+        });
+      } else {
+        setError('Ungültiges Dateiformat. Bitte erneut hochladen.');
+      }
     } catch {
       setError('Fehler beim Laden der Datei.');
     }

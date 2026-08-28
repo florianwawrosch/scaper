@@ -130,7 +130,7 @@ export default function Home() {
         try {
           const val = JSON.parse(localStorage.getItem(key)!);
           const csvId = key.replace('csv_run_', '');
-          csvItems.push({ id: csvId, filename: val.filename, createdAt: val.createdAt, rowCount: val.data?.length ?? 0 });
+          csvItems.push({ id: csvId, filename: val.filename, createdAt: val.createdAt, rowCount: val.rowCount ?? val.data?.length ?? 0 });
         } catch {}
       }
     }
@@ -141,37 +141,49 @@ export default function Home() {
   const uploadCsv = useCallback((file: File) => {
     setUploading(true);
     setFormError('');
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        setUploading(false);
-        if (!results.data || results.data.length === 0) {
-          setFormError('CSV enthält keine Zeilen.');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const rawText = e.target?.result as string;
+      Papa.parse<Record<string, string>>(rawText, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          setUploading(false);
+          if (!results.data || results.data.length === 0) {
+            setFormError('CSV enthält keine Zeilen.');
+            setCsvFile(null);
+            return;
+          }
+          const id = `csv_${Date.now()}`;
+          try {
+            // Store raw CSV text (compact) instead of parsed JSON (3-5x larger due to repeated keys)
+            localStorage.setItem(`csv_run_${id}`, JSON.stringify({
+              csv: rawText,
+              fields: results.meta.fields ?? [],
+              filename: file.name,
+              createdAt: new Date().toISOString(),
+              rowCount: results.data.length,
+            }));
+          } catch {
+            setFormError('Datei zu groß für lokalen Speicher (>5 MB). Bitte kleinere Datei verwenden.');
+            setCsvFile(null);
+            return;
+          }
+          router.push(`/csv/${id}`);
+        },
+        error: (err: Error) => {
+          setUploading(false);
+          setFormError(`CSV konnte nicht gelesen werden: ${err.message}`);
           setCsvFile(null);
-          return;
-        }
-        const id = `csv_${Date.now()}`;
-        try {
-          localStorage.setItem(`csv_run_${id}`, JSON.stringify({
-            data: results.data,
-            fields: results.meta.fields ?? [],
-            filename: file.name,
-            createdAt: new Date().toISOString(),
-          }));
-        } catch {
-          setFormError('Datei zu groß für lokalen Speicher.');
-          setCsvFile(null);
-          return;
-        }
-        router.push(`/csv/${id}`);
-      },
-      error: (err: Error) => {
-        setUploading(false);
-        setFormError(`CSV konnte nicht gelesen werden: ${err.message}`);
-        setCsvFile(null);
-      },
-    });
+        },
+      });
+    };
+    reader.onerror = () => {
+      setUploading(false);
+      setFormError('Datei konnte nicht gelesen werden.');
+      setCsvFile(null);
+    };
+    reader.readAsText(file, 'UTF-8');
   }, [router]);
 
   // Global drag-to-drop listeners
