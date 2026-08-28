@@ -6,6 +6,7 @@ import { api, type ScrapeRun } from '@/lib/api';
 import { DataTable } from '@/app/components/DataTable';
 import { ExportPanel } from '@/app/components/ExportPanel';
 import { EnrichmentPanel } from '@/app/components/EnrichmentPanel';
+import { ClassificationPanel } from '@/app/components/ClassificationPanel';
 import type { ExportRow } from '@/lib/export';
 
 const TABS = ['Scraping', 'Review & Filter', 'Enrichment', 'Export'] as const;
@@ -210,22 +211,14 @@ export default function RunDetail() {
 
           {activeTab === 'Review & Filter' && (
             <div className="space-y-3">
-              <div className="bg-panel-3 rounded p-3">
-                <div className="grid grid-cols-3 gap-3 text-center text-xs mb-4">
-                  <div>
-                    <p className="text-ink-faint mb-1">Behalten</p>
-                    <p className="text-good font-mono font-semibold">{classificationResult?.keep || 0}</p>
-                  </div>
-                  <div>
-                    <p className="text-ink-faint mb-1">Ablehnen</p>
-                    <p className="text-bad font-mono font-semibold">{classificationResult?.reject || 0}</p>
-                  </div>
-                  <div>
-                    <p className="text-ink-faint mb-1">Unklar</p>
-                    <p className="text-warn font-mono font-semibold">{classificationResult?.unklar || 0}</p>
-                  </div>
-                </div>
-              </div>
+              <ClassificationPanel
+                runId={runId}
+                leadsCount={tableData.length}
+                onClassificationComplete={() => {
+                  // Reload run data
+                  window.location.reload();
+                }}
+              />
               <DataTable
                 data={tableData}
                 columns={['name', 'contact', 'budget', 'status']}
