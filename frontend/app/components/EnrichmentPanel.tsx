@@ -8,6 +8,11 @@ interface Props {
   runId: string;
   leadsCount: number;
   onEnrichmentComplete?: () => void;
+  /** For CSV imports: pick which columns hold name + company */
+  availableColumns?: string[];
+  resolveRunId?: () => Promise<string>;
+  /** Called with the enriched email values so the caller can add a table column */
+  onEmailColumn?: (values: { email: string }[]) => void;
 }
 
 type ProviderStatus = 'idle' | 'running' | 'done' | 'error';
@@ -30,41 +35,61 @@ const T = {
   inkF:   'var(--th-ink-f)',
 };
 
-export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete }: Props) {
+export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, availableColumns, resolveRunId, onEmailColumn }: Props) {
   const { showToast } = useToast();
   const [running, setRunning] = useState(false);
   const [selected, setSelected] = useState<string>('hunter_io');
   const [status, setStatus] = useState<Record<string, ProviderStatus>>({});
   const [result, setResult] = useState<{ enriched: number; total: number } | null>(null);
+  const [nameCol,    setNameCol]    = useState('');
+  const [companyCol, setCompanyCol] = useState('');
+
+  const needsMapping = !!availableColumns?.length;
 
   const start = async () => {
     const apiKey = getApiKey(selected as any);
     if (!apiKey) {
-      showToast(`Kein API-Key für ${selected} konfiguriert`, 'warning');
+      showToast(`Kein API-Key für ${selected} konfiguriert — Einstellungen prüfen`, 'warning');
       return;
     }
     if (leadsCount === 0) return showToast('Keine Leads zum Enrichment', 'warning');
+    if (needsMapping && (!nameCol || !companyCol)) {
+      return showToast('Bitte Name- und Firmen-Spalte auswählen', 'warning');
+    }
 
     setRunning(true);
     setStatus(p => ({ ...p, [selected]: 'running' }));
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/runs/${runId}/enrich`, {
+      const rid = runId || (resolveRunId ? await resolveRunId() : '');
+      if (!rid) throw new Error('Kein Backend verbunden');
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/runs/${rid}/enrich`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: selected, apiKey }),
+        body: JSON.stringify({
+          provider: selected,
+          apiKey,
+          ...(needsMapping && { nameColumn: nameCol, companyColumn: companyCol }),
+        }),
       });
 
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        let msg = await res.text();
+        try { msg = JSON.parse(msg).detail ?? msg; } catch {}
+        throw new Error(msg);
+      }
 
       const data = await res.json();
       setResult({ enriched: data.enriched, total: data.total });
       setStatus(p => ({ ...p, [selected]: 'done' }));
       showToast(`${data.enriched} von ${data.total} Leads enriched`, 'success');
+      if (data.error) showToast(`Teilweise Fehler: ${data.error}`, 'warning', 6000);
+      onEmailColumn?.(data.results ?? []);
       onEnrichmentComplete?.();
     } catch (e) {
       setStatus(p => ({ ...p, [selected]: 'error' }));
-      showToast(e instanceof Error ? e.message : 'Fehler', 'error');
+      showToast(e instanceof Error ? e.message : 'Fehler', 'error', 8000);
     } finally {
       setRunning(false);
     }
@@ -118,6 +143,29 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete }: Pro
             })}
           </div>
         </div>
+
+        {/* Column mapping (CSV imports) */}
+        {needsMapping && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <p style={{ ...mono, fontSize: 9, letterSpacing: '.1em', color: T.inkF, textTransform: 'uppercase' }}>Spalten-Zuordnung</p>
+            {[
+              { label: 'Name',  value: nameCol,    set: setNameCol },
+              { label: 'Firma / Domain', value: companyCol, set: setCompanyCol },
+            ].map(({ label, value, set }) => (
+              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ ...mono, fontSize: 10, color: T.inkD, width: 90, flexShrink: 0 }}>{label}</span>
+                <select
+                  value={value}
+                  onChange={e => set(e.target.value)}
+                  style={{ ...mono, flex: 1, fontSize: 11, background: 'rgba(255,255,255,.04)', border: `1px solid ${T.line}`, borderRadius: 5, color: T.inkD, padding: '5px 8px', outline: 'none' }}
+                >
+                  <option value="">— wählen —</option>
+                  {availableColumns!.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Result */}
         {result && (

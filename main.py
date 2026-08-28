@@ -62,6 +62,8 @@ class AnalyzeRequest(BaseModel):
 class EnrichRequest(BaseModel):
     provider: str = "hunter_io"
     apiKey: Optional[str] = None
+    nameColumn: Optional[str] = None     # column holding the person name (default "name")
+    companyColumn: Optional[str] = None  # column holding company/domain (default "company")
 
 
 class SavePresetRequest(BaseModel):
@@ -449,32 +451,63 @@ async def enrich(run_id: str, req: EnrichRequest):
     api_key = req.apiKey or os.environ.get(
         "HUNTER_IO_API_KEY" if req.provider == "hunter_io" else "FINDYMAIL_API_KEY"
     )
+    if not api_key:
+        raise HTTPException(status_code=400, detail=f"Kein API-Key für {req.provider} — bitte in den Einstellungen eintragen.")
+
+    name_col    = req.nameColumn or "name"
+    company_col = req.companyColumn or "company"
+
+    first_error = None
+    skipped_empty = 0
 
     for item in kept[:50]:  # limit for safety
-        name = item.get("name", "")
-        company = item.get("company", "")
+        name = str(item.get(name_col, "") or "")
+        company = str(item.get(company_col, "") or "")
         email = None
 
-        if api_key and name and company:
+        if name and company:
             try:
                 if req.provider == "hunter_io":
                     email = _enrich_hunter(name, company, api_key)
                 elif req.provider == "findymail":
                     email = _enrich_findymail(name, company, api_key)
-            except Exception:
-                pass
+            except Exception as e:
+                if first_error is None:
+                    first_error = str(e)
+        else:
+            skipped_empty += 1
 
         enriched.append({**item, "email": email or "", "enriched": bool(email)})
 
+    n_ok = len([e for e in enriched if e["enriched"]])
+    # If nothing succeeded and there was an API error, surface it
+    if n_ok == 0 and first_error:
+        raise HTTPException(status_code=502, detail=f"{req.provider} API-Fehler: {first_error}")
+
     return {
-        "enriched": len([e for e in enriched if e["enriched"]]),
+        "enriched": n_ok,
         "total": len(enriched),
+        "skipped_empty": skipped_empty,
+        "error": first_error,
         "results": enriched,
     }
 
 
+def _api_error_detail(e) -> str:
+    import urllib.error
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            body = json.loads(e.read().decode())
+            msg = body.get("errors", [{}])[0].get("details") or body.get("message") or body.get("error") or str(body)[:150]
+        except Exception:
+            msg = ""
+        return f"HTTP {e.code}: {msg}" if msg else f"HTTP {e.code}"
+    return str(e)
+
+
 def _enrich_hunter(name: str, company: str, api_key: str) -> Optional[str]:
     import urllib.request
+    import urllib.error
     import urllib.parse
     parts = name.strip().split()
     first = parts[0] if parts else ""
@@ -484,13 +517,21 @@ def _enrich_hunter(name: str, company: str, api_key: str) -> Optional[str]:
         "company": company, "api_key": api_key,
     })
     url = f"https://api.hunter.io/v2/email-finder?{params}"
-    with urllib.request.urlopen(url, timeout=5) as resp:
-        data = json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(url, timeout=8) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None  # no email found for this person — not an error
+        raise RuntimeError(f"Hunter.io {_api_error_detail(e)}")
+    except Exception as e:
+        raise RuntimeError(f"Hunter.io: {e}")
     return data.get("data", {}).get("email")
 
 
 def _enrich_findymail(name: str, company: str, api_key: str) -> Optional[str]:
     import urllib.request
+    import urllib.error
     parts = name.strip().split()
     first = parts[0] if parts else ""
     last = parts[-1] if len(parts) > 1 else ""
@@ -500,8 +541,15 @@ def _enrich_findymail(name: str, company: str, api_key: str) -> Optional[str]:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     })
-    with urllib.request.urlopen(req_obj, timeout=5) as resp:
-        data = json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req_obj, timeout=8) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise RuntimeError(f"FindyMail {_api_error_detail(e)}")
+    except Exception as e:
+        raise RuntimeError(f"FindyMail: {e}")
     return data.get("email")
 
 

@@ -7,6 +7,7 @@ import { loadCsvText } from '@/lib/csvStorage';
 import { api } from '@/lib/api';
 import { DataTable } from '@/app/components/DataTable';
 import { AnalysisPanel } from '@/app/components/AnalysisPanel';
+import { EnrichmentPanel } from '@/app/components/EnrichmentPanel';
 
 interface CsvRun {
   data: Record<string, string>[];
@@ -196,6 +197,25 @@ export default function CsvViewer() {
                     return next;
                   }
                   return [...prev, { name, values }];
+                });
+              }}
+            />
+
+            <EnrichmentPanel
+              runId={backendRunId ?? ''}
+              resolveRunId={resolveBackendRunId}
+              leadsCount={run.data.length}
+              availableColumns={run.fields}
+              onEmailColumn={(results) => {
+                const values = results.map(r => r.email ?? '');
+                setAiColumns(prev => {
+                  const idx = prev.findIndex(c => c.name === 'E-Mail (enriched)');
+                  if (idx >= 0) {
+                    const next = [...prev];
+                    next[idx] = { name: 'E-Mail (enriched)', values };
+                    return next;
+                  }
+                  return [...prev, { name: 'E-Mail (enriched)', values }];
                 });
               }}
             />
