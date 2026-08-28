@@ -173,12 +173,15 @@ export default function RunDetail() {
         </div>
 
         {/* Error banner */}
-        {run.status === 'failed' && !!run.scraper_config?.error && (
-          <div style={{ ...card, marginBottom: 16, borderColor: 'rgba(232,115,107,.3)', background: 'rgba(232,115,107,.06)' }}>
-            <p style={{ fontFamily: T.mono, fontSize: 10, letterSpacing: '.15em', textTransform: 'uppercase', color: '#e8736b', marginBottom: 6 }}>Fehler</p>
-            <p style={{ fontFamily: T.mono, fontSize: 12, color: T.inkD, lineHeight: 1.6 }}>
-              {String(run.scraper_config.error)}
-            </p>
+        {run.status === 'failed' && (
+          <div style={{ marginBottom: 16, padding: '16px 18px', borderRadius: 10, border: '1px solid rgba(232,115,107,.4)', background: 'rgba(232,115,107,.08)', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <span style={{ fontSize: 20, lineHeight: 1.2, flexShrink: 0 }}>⚠</span>
+            <div>
+              <p style={{ fontFamily: T.mono, fontSize: 10, letterSpacing: '.15em', textTransform: 'uppercase', color: '#e8736b', marginBottom: 6, fontWeight: 600 }}>Scraping fehlgeschlagen</p>
+              <p style={{ fontFamily: T.mono, fontSize: 13, color: '#f4efe4', lineHeight: 1.65, wordBreak: 'break-word' }}>
+                {run.scraper_config?.error ? String(run.scraper_config.error) : 'Unbekannter Fehler — bitte API-Token in den Einstellungen prüfen.'}
+              </p>
+            </div>
           </div>
         )}
 
