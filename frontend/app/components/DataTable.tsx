@@ -255,7 +255,7 @@ export function DataTable({
         )}
         <span style={{ ...mono, fontSize: 10, color: '#5f6e87', marginLeft: 'auto' }}>
           {filtered.length}/{data.length} sichtbar
-          {excludedRows.size > 0 && ` · ${includedCount} inkl.`}
+          {excludedRows.size > 0 && ` · ${includedCount} ausgewählt`}
         </span>
       </div>
 
