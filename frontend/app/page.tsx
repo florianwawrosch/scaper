@@ -214,9 +214,9 @@ export default function Home() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, alignItems: 'start' }}>
 
           {/* ── Left: Scraper config ── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-            {/* Source row */}
+            {/* ① Source row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontFamily: T.ffMono, fontSize: 10, letterSpacing: '.14em', color: T.inkF, textTransform: 'uppercase', flexShrink: 0 }}>Quelle</span>
               <div style={{ display: 'flex', background: T.panel2, borderRadius: 6, border: `1px solid ${T.lineS}`, padding: 2, gap: 2 }}>
@@ -235,7 +235,22 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Keywords */}
+            {/* ② Presets — ganz oben, direkt unter Quelle */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minHeight: 28 }}>
+              <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, flexShrink: 0 }}>Presets</span>
+              {Object.keys(presets).length === 0 ? (
+                <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, opacity: .5 }}>Keine gespeichert</span>
+              ) : (
+                Object.keys(presets).map(name => (
+                  <span key={name} style={{ display: 'inline-flex', alignItems: 'center', background: T.goldD, border: `1px solid ${T.line}`, borderRadius: 4, overflow: 'hidden' }}>
+                    <button onClick={() => loadPreset(name)} style={{ fontFamily: T.ffMono, fontSize: 11, color: T.gold, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 8px' }}>{name}</button>
+                    <button onClick={() => deletePreset(name)} style={{ fontSize: 13, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', lineHeight: 1 }}>×</button>
+                  </span>
+                ))
+              )}
+            </div>
+
+            {/* ③ Keywords */}
             <div>
               <label style={{ display: 'block', fontFamily: T.ffMono, fontSize: 10, letterSpacing: '.12em', color: T.inkF, textTransform: 'uppercase', marginBottom: 5 }}>
                 Suchbegriffe
@@ -243,42 +258,30 @@ export default function Home() {
               <TagInput tags={tags} onChange={t => { setTags(t); setFormError(''); }} placeholder="Begriff eingeben, Enter drücken…" />
             </div>
 
-            {/* Parameters */}
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-              <div>
-                <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Länder</p>
-                <ChipGroup options={COUNTRY_OPTIONS} value={countries} onChange={setCountries} />
+            {/* ④ Filter-Box — visuell abgegrenzt, Preset-Save darin */}
+            <div style={{ background: T.panel2, border: `1px solid ${T.lineS}`, borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Länder</p>
+                  <ChipGroup options={COUNTRY_OPTIONS} value={countries} onChange={setCountries} />
+                </div>
+                <div>
+                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Plattformen</p>
+                  <ChipGroup options={PLATFORM_OPTIONS} value={platforms} onChange={setPlatforms} />
+                </div>
+                <div>
+                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Status</p>
+                  <SingleChip options={AD_STATUS_OPTIONS} value={adStatus} onChange={setAdStatus} />
+                </div>
               </div>
-              <div>
-                <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Plattformen</p>
-                <ChipGroup options={PLATFORM_OPTIONS} value={platforms} onChange={setPlatforms} />
-              </div>
-              <div>
-                <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Status</p>
-                <SingleChip options={AD_STATUS_OPTIONS} value={adStatus} onChange={setAdStatus} />
-              </div>
-            </div>
-
-            {/* Presets */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-              {Object.keys(presets).length > 0 && (
-                <>
-                  <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, letterSpacing: '.1em', textTransform: 'uppercase' }}>Presets:</span>
-                  {Object.keys(presets).map(name => (
-                    <span key={name} style={{ display: 'inline-flex', alignItems: 'center', background: T.goldD, border: `1px solid ${T.line}`, borderRadius: 4, overflow: 'hidden' }}>
-                      <button onClick={() => loadPreset(name)} style={{ fontFamily: T.ffMono, fontSize: 11, color: T.gold, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 8px' }}>{name}</button>
-                      <button onClick={() => deletePreset(name)} style={{ fontSize: 13, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', lineHeight: 1 }}>×</button>
-                    </span>
-                  ))}
-                  <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF }}>·</span>
-                </>
-              )}
-              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+              {/* Preset speichern — inside filter box, visually linked */}
+              <div style={{ borderTop: `1px solid ${T.lineS}`, paddingTop: 10, display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, letterSpacing: '.1em', textTransform: 'uppercase', flexShrink: 0 }}>Als Preset speichern</span>
                 <input type="text" value={presetName} onChange={e => setPresetName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && savePreset()}
-                  placeholder="Preset speichern…"
-                  style={{ width: 150, padding: '3px 8px', fontSize: 11, fontFamily: T.ffMono, borderRadius: 5, border: `1px solid ${T.lineS}`, background: T.panel2, color: T.ink, outline: 'none' }} />
-                <button className="btn-ghost" style={{ padding: '3px 10px', fontSize: 11 }} onClick={savePreset}>+</button>
+                  placeholder="Name…"
+                  style={{ flex: 1, maxWidth: 160, padding: '3px 8px', fontSize: 11, fontFamily: T.ffMono, borderRadius: 5, border: `1px solid ${T.lineS}`, background: T.panel, color: T.ink, outline: 'none' }} />
+                <button className="btn-ghost" style={{ padding: '3px 10px', fontSize: 11, flexShrink: 0 }} onClick={savePreset}>+ Speichern</button>
               </div>
             </div>
 
