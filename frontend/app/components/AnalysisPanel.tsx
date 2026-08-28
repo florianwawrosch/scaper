@@ -52,7 +52,7 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
   }, [storageKey]);
 
   // Show all providers; frontend key overrides backend env var, error surfaces naturally if neither has it
-  const PROVIDERS = ALL_PROVIDERS;
+  const PROVIDERS = ALL_PROVIDERS as readonly { id: string; label: string; models: readonly string[] }[];
   const missingCount = 0;
 
   const persist = (next: AnalysisConfig[]) => {
