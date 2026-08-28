@@ -3,7 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 
 const NAV = [
-  { href: '/',         label: 'Suche' },
+  { href: '/',         label: 'Import' },
   { href: '/runs',     label: 'Runs' },
   { href: '/settings', label: 'Einstellungen' },
 ];
