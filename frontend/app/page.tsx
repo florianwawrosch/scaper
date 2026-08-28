@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
-import { saveCsvText } from '@/lib/csvStorage';
+import { saveCsvText, deleteCsvText } from '@/lib/csvStorage';
 import { api, API_URL, type ScrapeRun } from '@/lib/api';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from '@/app/components/Toast';
@@ -138,6 +138,17 @@ export default function Home() {
     csvItems.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     setCsvRuns(csvItems);
   }, []);
+
+  const deleteCsvImport = async (csvId: string) => {
+    try {
+      localStorage.removeItem(`csv_run_${csvId}`);
+      await deleteCsvText(csvId);
+      setCsvRuns(prev => prev.filter(c => c.id !== csvId));
+      showToast('Import gelöscht', 'success');
+    } catch {
+      showToast('Löschen fehlgeschlagen', 'error');
+    }
+  };
 
   const uploadCsv = useCallback((file: File) => {
     setUploading(true);
@@ -488,22 +499,30 @@ export default function Home() {
                       if (item.kind === 'csv') {
                         const { csv } = item;
                         return (
-                          <button
-                            key={`csv-${csv.id}`}
-                            onClick={() => router.push(`/csv/${csv.id}`)}
-                            style={{ width: '100%', padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', borderBottom: `1px solid ${T.lineS}`, cursor: 'pointer', textAlign: 'left' }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'; }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-                          >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{csv.filename}</p>
-                              <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(csv.createdAt)}</p>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                              <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF }}>{csv.rowCount.toLocaleString('de')} Z</span>
-                              <span style={{ fontFamily: T.ffMono, fontSize: 8, letterSpacing: '.08em', padding: '1px 5px', borderRadius: 3, background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', color: '#6381ff' }}>CSV</span>
-                            </div>
-                          </button>
+                          <div key={`csv-${csv.id}`} style={{ borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'stretch' }}>
+                            <button
+                              onClick={() => router.push(`/csv/${csv.id}`)}
+                              style={{ flex: 1, padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', minWidth: 0 }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+                            >
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{csv.filename}</p>
+                                <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(csv.createdAt)}</p>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                                <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF }}>{csv.rowCount.toLocaleString('de')} Z</span>
+                                <span style={{ fontFamily: T.ffMono, fontSize: 8, letterSpacing: '.08em', padding: '1px 5px', borderRadius: 3, background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', color: '#6381ff' }}>CSV</span>
+                              </div>
+                            </button>
+                            <button
+                              onClick={() => deleteCsvImport(csv.id)}
+                              title="Import löschen"
+                              style={{ padding: '0 10px', background: 'none', border: 'none', borderLeft: `1px solid ${T.lineS}`, cursor: 'pointer', fontFamily: T.ffMono, fontSize: 13, color: T.inkF, transition: 'color .15s', flexShrink: 0 }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#e8736b'; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = T.inkF; }}
+                            >×</button>
+                          </div>
                         );
                       }
                       const { run } = item;
