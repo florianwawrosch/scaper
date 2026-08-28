@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { api, type ScrapeRun } from '@/lib/api';
+import { DataTable } from '@/app/components/DataTable';
 
 const TABS = ['Scraping', 'Review & Filter', 'Enrichment', 'Export'] as const;
 type Tab = typeof TABS[number];
@@ -19,6 +20,7 @@ export default function RunDetail() {
   const [rating, setRating] = useState<number>(0);
   const [feedback, setFeedback] = useState('');
   const [savingRating, setSavingRating] = useState(false);
+  const [tableData, setTableData] = useState<any[]>([]);
 
   useEffect(() => {
     const loadRun = async () => {
@@ -27,6 +29,16 @@ export default function RunDetail() {
         setRun(data);
         setRating(data.rating || 0);
         setFeedback(data.feedback || '');
+
+        // Generate mock table data
+        const mockData = Array.from({ length: 25 }, (_, i) => ({
+          id: `lead-${i + 1}`,
+          name: `Company ${i + 1}`,
+          contact: `contact${i + 1}@example.com`,
+          budget: `€${(Math.random() * 100000 + 10000).toFixed(0)}`,
+          status: ['Active', 'Leads', 'Qualified'][Math.floor(Math.random() * 3)],
+        }));
+        setTableData(mockData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load run');
       } finally {
@@ -195,21 +207,8 @@ export default function RunDetail() {
 
           {activeTab === 'Review & Filter' && (
             <div className="space-y-3">
-              <div className="bg-panel-2 border border-line-soft rounded p-4">
-                <h3 className="font-mono text-xs tracking-wider text-ink-faint mb-3 font-medium">
-                  Filter
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <button className="h-8 bg-good/10 border border-good/35 text-good rounded text-xs font-medium hover:bg-good/20 transition-colors">
-                    Behalten
-                  </button>
-                  <button className="h-8 bg-bad/10 border border-bad/35 text-bad rounded text-xs font-medium hover:bg-bad/20 transition-colors">
-                    Ablehnen
-                  </button>
-                </div>
-              </div>
               <div className="bg-panel-3 rounded p-3">
-                <div className="grid grid-cols-3 gap-3 text-center text-xs">
+                <div className="grid grid-cols-3 gap-3 text-center text-xs mb-4">
                   <div>
                     <p className="text-ink-faint mb-1">Behalten</p>
                     <p className="text-good font-mono font-semibold">{classificationResult?.keep || 0}</p>
@@ -224,6 +223,12 @@ export default function RunDetail() {
                   </div>
                 </div>
               </div>
+              <DataTable
+                data={tableData}
+                columns={['name', 'contact', 'budget', 'status']}
+                onMarkKeep={(id) => console.log('Keep:', id)}
+                onMarkReject={(id) => console.log('Reject:', id)}
+              />
             </div>
           )}
 

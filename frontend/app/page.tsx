@@ -260,6 +260,12 @@ export default function Home() {
             <span className="text-gold font-mono text-xs tracking-wider">02</span>
             <h2 className="text-lg font-disp font-normal">Letzte Runs</h2>
             <div className="flex-1 h-px bg-gradient-to-r from-line to-transparent" />
+            <button
+              onClick={() => router.push('/runs')}
+              className="text-xs text-gold-bright hover:text-gold transition-colors font-mono tracking-wider"
+            >
+              Alle →
+            </button>
           </div>
 
           {error && (
