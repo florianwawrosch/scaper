@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type ScrapeRun, type Source } from '@/lib/api';
+import { useToast } from '@/app/components/Toast';
 
 export default function Home() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [runs, setRuns] = useState<ScrapeRun[]>([]);
   const [sources, setSources] = useState<Record<string, Source>>({});
   const [selectedSource, setSelectedSource] = useState('meta_ads_library');
@@ -19,6 +21,8 @@ export default function Home() {
   const [platforms, setPlatforms] = useState(['FACEBOOK', 'INSTAGRAM']);
   const [adStatus, setAdStatus] = useState('ACTIVE');
   const [mediaType, setMediaType] = useState('ALL');
+  const [presets, setPresets] = useState<Record<string, any>>({});
+  const [presetName, setPresetName] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
@@ -29,6 +33,12 @@ export default function Home() {
         ]);
         setRuns(runsData);
         setSources(sourcesData);
+
+        // Load presets from localStorage
+        const saved = localStorage.getItem('presets');
+        if (saved) {
+          setPresets(JSON.parse(saved));
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data');
       } finally {
@@ -37,6 +47,53 @@ export default function Home() {
     };
     loadData();
   }, []);
+
+  const handleSavePreset = () => {
+    if (!presetName.trim()) {
+      showToast('Preset-Name erforderlich', 'warning');
+      return;
+    }
+
+    const config = {
+      source: selectedSource,
+      keywords: keywords.split('\n').filter(k => k.trim()),
+      countries,
+      platforms,
+      adStatus,
+      mediaType,
+    };
+
+    const newPresets = {
+      ...presets,
+      [presetName]: config,
+    };
+
+    setPresets(newPresets);
+    localStorage.setItem('presets', JSON.stringify(newPresets));
+    showToast(`Preset "${presetName}" gespeichert`, 'success');
+    setPresetName('');
+  };
+
+  const handleLoadPreset = (name: string) => {
+    const preset = presets[name];
+    if (!preset) return;
+
+    setSelectedSource(preset.source);
+    setKeywords(preset.keywords.join('\n'));
+    setCountries(preset.countries);
+    setPlatforms(preset.platforms);
+    setAdStatus(preset.adStatus);
+    setMediaType(preset.mediaType);
+    showToast(`Preset "${name}" geladen`, 'success');
+  };
+
+  const handleDeletePreset = (name: string) => {
+    const newPresets = { ...presets };
+    delete newPresets[name];
+    setPresets(newPresets);
+    localStorage.setItem('presets', JSON.stringify(newPresets));
+    showToast(`Preset "${name}" gelöscht`, 'info');
+  };
 
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString('de-DE', {
@@ -60,7 +117,7 @@ export default function Home() {
 
   const handleCreateRun = async () => {
     if (!keywords.trim()) {
-      setError('Suchbegriffe sind erforderlich');
+      showToast('Suchbegriffe sind erforderlich', 'warning');
       return;
     }
 
@@ -78,6 +135,7 @@ export default function Home() {
 
       const newRun = await api.runs.create(selectedSource, config);
       setRuns([newRun, ...runs]);
+      showToast('Run erstellt! Laden...', 'success');
 
       // Reset form
       setKeywords('');
@@ -89,7 +147,9 @@ export default function Home() {
       // Navigate to run details
       router.push(`/runs/${newRun.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create run');
+      const message = err instanceof Error ? err.message : 'Failed to create run';
+      setError(message);
+      showToast(message, 'error');
     } finally {
       setCreating(false);
     }
@@ -232,14 +292,39 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button
-                    type="button"
-                    className="h-8 bg-panel-3 border border-line rounded text-ink hover:border-gold-dim transition-colors text-xs font-medium disabled:opacity-50"
-                    disabled={creating}
-                  >
-                    Config speichern
-                  </button>
+                <div className="grid grid-cols-3 gap-3 pt-2">
+                  {Object.keys(presets).length > 0 && (
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) handleLoadPreset(e.target.value);
+                      }}
+                      className="h-8 bg-panel-3 border border-line rounded text-ink px-2 py-1 text-xs"
+                    >
+                      <option value="">Preset laden...</option>
+                      {Object.keys(presets).map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <div className="flex gap-2 col-span={Object.keys(presets).length > 0 ? 1 : 2}">
+                    <input
+                      type="text"
+                      value={presetName}
+                      onChange={(e) => setPresetName(e.target.value)}
+                      placeholder="Preset-Name"
+                      className="flex-1 h-8 bg-panel-3 border border-line rounded text-ink px-2 py-1 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSavePreset}
+                      className="h-8 bg-panel-3 border border-line rounded text-ink hover:border-gold-dim transition-colors text-xs font-medium disabled:opacity-50 whitespace-nowrap px-2"
+                    >
+                      💾
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={handleCreateRun}
