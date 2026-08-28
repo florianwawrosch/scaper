@@ -6,14 +6,9 @@ import { api, type ScrapeRun } from '@/lib/api';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from '@/app/components/Toast';
 import { TagInput } from '@/app/components/TagInput';
+import { CountrySelect } from '@/app/components/CountrySelect';
 
-const COUNTRY_OPTIONS = [
-  { value: 'DE', label: 'DE' },
-  { value: 'AT', label: 'AT' },
-  { value: 'CH', label: 'CH' },
-  { value: 'US', label: 'US' },
-  { value: 'GB', label: 'GB' },
-];
+
 const PLATFORM_OPTIONS = [
   { value: 'FACEBOOK',  label: 'Facebook'  },
   { value: 'INSTAGRAM', label: 'Instagram' },
@@ -78,7 +73,7 @@ export default function Home() {
   const [loading,     setLoading]     = useState(true);
   const [creating,    setCreating]    = useState(false);
   const [tags,        setTags]        = useState<string[]>([]);
-  const [countries,   setCountries]   = useState(['DE', 'AT']);
+  const [countries,   setCountries]   = useState(['DE', 'AT', 'CH']);
   const [platforms,   setPlatforms]   = useState(['FACEBOOK', 'INSTAGRAM']);
   const [adStatus,    setAdStatus]    = useState('ACTIVE');
   const [csvFile,     setCsvFile]     = useState<File | null>(null);
@@ -273,7 +268,7 @@ export default function Home() {
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <div>
                   <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Länder</p>
-                  <ChipGroup options={COUNTRY_OPTIONS} value={countries} onChange={setCountries} />
+                  <CountrySelect value={countries} onChange={setCountries} />
                 </div>
                 <div>
                   <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Plattformen</p>
