@@ -164,73 +164,83 @@ export default function Settings() {
                     <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, opacity: .6 }}>{group.desc}</p>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                     {group.services.map((svc: Service) => {
-                      const connected   = !!keys[svc.key];
+                      const connected    = !!keys[svc.key];
                       const isConnecting = connecting === svc.key;
 
                       return (
                         <div key={svc.key} style={{
-                          background: T.panel2,
-                          border: `1px solid ${connected ? T.tealB : T.lineS}`,
-                          borderRadius: 8, overflow: 'hidden',
+                          background: connected ? 'rgba(79,209,197,.04)' : T.panel2,
+                          border: `1px solid ${connected ? 'rgba(79,209,197,.18)' : 'rgba(255,255,255,.06)'}`,
+                          borderRadius: 7, overflow: 'hidden',
+                          transition: 'background .2s, border-color .2s',
                         }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
                             {/* Status dot */}
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: connected ? T.teal : T.lineS }} />
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: connected ? T.teal : 'rgba(255,255,255,.15)', transition: 'background .2s' }} />
 
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: T.ink }}>{svc.label}</p>
+                              <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 500, color: connected ? T.ink : T.inkD }}>{svc.label}</p>
                               <p style={{ fontFamily: T.body, fontSize: 11, color: T.inkF, marginTop: 1 }}>{svc.desc}</p>
                             </div>
 
                             {connected ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                                <span style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF, letterSpacing: '.06em' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal, letterSpacing: '.04em' }}>
                                   {show[svc.key] ? keys[svc.key] : maskKey(keys[svc.key])}
                                 </span>
                                 <button type="button" onClick={() => setShow(p => ({ ...p, [svc.key]: !p[svc.key] }))}
-                                  style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer' }}>
-                                  {show[svc.key] ? '●' : '○'}
+                                  style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6, lineHeight: 1 }}>
+                                  {show[svc.key] ? '◉' : '○'}
                                 </button>
                                 <button type="button" onClick={() => disconnect(svc.key)}
-                                  style={{ fontSize: 15, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>
+                                  style={{ fontSize: 14, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, opacity: .5 }}>
                                   ×
                                 </button>
                               </div>
                             ) : (
-                              <button type="button"
-                                onClick={() => { setConnecting(isConnecting ? null : svc.key); setInput(''); }}
-                                style={{
-                                  fontFamily: T.mono, fontSize: 11, padding: '4px 12px', borderRadius: 5,
-                                  background: isConnecting ? T.goldD : 'transparent',
-                                  border: `1px solid ${isConnecting ? T.gold : T.lineS}`,
-                                  color: isConnecting ? T.gold : T.inkD,
-                                  cursor: 'pointer', transition: 'all .12s', flexShrink: 0,
-                                }}>
-                                {isConnecting ? 'Abbrechen' : '+ API Key'}
-                              </button>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                {isConnecting && (
+                                  <button type="button" onClick={() => { setConnecting(null); setInput(''); }}
+                                    style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6 }}>
+                                    Abbrechen
+                                  </button>
+                                )}
+                                {!isConnecting && (
+                                  <button type="button"
+                                    onClick={() => { setConnecting(svc.key); setInput(''); }}
+                                    style={{
+                                      fontFamily: T.mono, fontSize: 10, padding: '3px 9px', borderRadius: 4,
+                                      background: 'transparent', border: `1px solid rgba(255,255,255,.1)`,
+                                      color: T.inkD, cursor: 'pointer',
+                                    }}>
+                                    + Key
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
 
                           {isConnecting && (
-                            <div style={{ display: 'flex', gap: 8, padding: '0 16px 12px', alignItems: 'center' }}>
-                              <input autoFocus type="password" value={input}
+                            <div style={{ display: 'flex', gap: 6, padding: '0 14px 10px', alignItems: 'center' }}>
+                              <input autoFocus type="text" value={input}
                                 onChange={e => setInput(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && connect(svc.key)}
                                 placeholder={svc.hint}
                                 style={{
                                   flex: 1, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 5,
-                                  padding: '7px 11px', fontFamily: T.mono, fontSize: 12, color: T.ink, outline: 'none',
+                                  padding: '5px 9px', fontFamily: T.mono, fontSize: 11, color: T.ink, outline: 'none',
                                 }}
                               />
                               <button type="button" onClick={() => connect(svc.key)} disabled={!input.trim()}
                                 style={{
-                                  fontFamily: T.mono, fontSize: 12, padding: '7px 16px', borderRadius: 5,
-                                  background: input.trim() ? T.gold : T.panel, border: `1px solid ${T.line}`,
-                                  color: input.trim() ? '#07070a' : T.inkF,
+                                  fontFamily: T.mono, fontSize: 10, padding: '5px 12px', borderRadius: 5,
+                                  background: input.trim() ? 'rgba(232,176,75,.12)' : 'transparent',
+                                  border: `1px solid ${input.trim() ? T.gold : 'rgba(255,255,255,.1)'}`,
+                                  color: input.trim() ? T.gold : T.inkF,
                                   cursor: input.trim() ? 'pointer' : 'default',
-                                  fontWeight: 600, transition: 'all .12s', flexShrink: 0,
+                                  transition: 'all .12s', flexShrink: 0,
                                 }}>
                                 Speichern
                               </button>

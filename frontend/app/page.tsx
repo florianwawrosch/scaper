@@ -238,7 +238,11 @@ export default function Home() {
       setRuns(prev => [run, ...prev]);
       router.push(`/runs/${run.id}`);
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : 'Fehler beim Erstellen');
+      if (e instanceof TypeError) {
+        setFormError(`Backend nicht erreichbar (${API_URL}). Backend-URL in den Einstellungen konfigurieren.`);
+      } else {
+        setFormError(e instanceof Error ? e.message : 'Fehler beim Erstellen');
+      }
     } finally {
       setCreating(false);
     }
@@ -247,22 +251,8 @@ export default function Home() {
   const fmt = (d: string) =>
     new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
 
-  const backendMissing = typeof window !== 'undefined'
-    && API_URL.includes('localhost')
-    && window.location.hostname !== 'localhost'
-    && window.location.hostname !== '127.0.0.1';
-
   return (
     <div style={{ minHeight: '100vh' }}>
-      {backendMissing && (
-        <div style={{ background: 'rgba(232,115,107,.12)', borderBottom: '1px solid rgba(232,115,107,.3)', padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14 }}>⚠</span>
-          <p style={{ fontFamily: T.ffMono, fontSize: 11, color: '#e8736b', lineHeight: 1.5 }}>
-            <strong>Backend nicht konfiguriert.</strong>{' '}
-            Meta Ads Scraping funktioniert nicht. CSV-Upload funktioniert ohne Backend. Setze <code style={{ background: 'rgba(232,115,107,.15)', padding: '1px 5px', borderRadius: 3 }}>NEXT_PUBLIC_API_URL</code> in den Vercel-Projekt-Einstellungen auf deine Backend-URL.
-          </p>
-        </div>
-      )}
       <div style={{ maxWidth: 1060, margin: '0 auto', padding: '20px 20px 48px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, alignItems: 'start' }}>
 

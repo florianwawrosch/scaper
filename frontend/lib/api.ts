@@ -2,6 +2,16 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export const API_URL = API_BASE;
 
+async function extractError(res: Response, fallback: string): Promise<never> {
+  let msg = `${fallback} (HTTP ${res.status})`;
+  try {
+    const body = await res.json();
+    const detail = body.detail || body.error || body.message;
+    if (detail) msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
+  } catch {}
+  throw new Error(msg);
+}
+
 export interface ScrapeRun {
   id: string;
   source: string;
@@ -30,20 +40,20 @@ export interface Preset {
 export const api = {
   health: async () => {
     const res = await fetch(`${API_BASE}/api/health`);
-    if (!res.ok) throw new Error('Health check failed');
+    if (!res.ok) return extractError(res, 'Health check fehlgeschlagen');
     return res.json();
   },
 
   runs: {
     list: async () => {
       const res = await fetch(`${API_BASE}/api/runs`);
-      if (!res.ok) throw new Error('Failed to fetch runs');
+      if (!res.ok) return extractError(res, 'Runs konnten nicht geladen werden');
       return res.json() as Promise<ScrapeRun[]>;
     },
 
     get: async (runId: string) => {
       const res = await fetch(`${API_BASE}/api/runs/${runId}`);
-      if (!res.ok) throw new Error('Failed to fetch run');
+      if (!res.ok) return extractError(res, 'Run konnte nicht geladen werden');
       return res.json() as Promise<ScrapeRun>;
     },
 
@@ -53,7 +63,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source, scraper_config: scraperConfig }),
       });
-      if (!res.ok) throw new Error('Failed to create run');
+      if (!res.ok) return extractError(res, 'Run konnte nicht erstellt werden');
       return res.json() as Promise<ScrapeRun>;
     },
 
@@ -63,13 +73,13 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error('Failed to update run');
+      if (!res.ok) return extractError(res, 'Run konnte nicht aktualisiert werden');
       return res.json() as Promise<ScrapeRun>;
     },
 
     getDataset: async (runId: string) => {
       const res = await fetch(`${API_BASE}/api/runs/${runId}/dataset`);
-      if (!res.ok) throw new Error('Failed to fetch dataset');
+      if (!res.ok) return extractError(res, 'Datensatz konnte nicht geladen werden');
       return res.json();
     },
 
@@ -79,7 +89,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ df_data: dfData, mapping }),
       });
-      if (!res.ok) throw new Error('Failed to save dataset');
+      if (!res.ok) return extractError(res, 'Datensatz konnte nicht gespeichert werden');
       return res.json();
     },
 
@@ -88,7 +98,7 @@ export const api = {
         method: 'POST',
         body: formData,
       });
-      if (!res.ok) throw new Error('Failed to upload file');
+      if (!res.ok) return extractError(res, 'Upload fehlgeschlagen');
       return res.json();
     },
 
@@ -98,7 +108,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ aiProvider, aiModel, df_data: dfData, mapping }),
       });
-      if (!res.ok) throw new Error('Failed to classify');
+      if (!res.ok) return extractError(res, 'Klassifizierung fehlgeschlagen');
       return res.json();
     },
 
@@ -108,7 +118,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ aiProvider, aiModel, prompt, column_name: columnName }),
       });
-      if (!res.ok) throw new Error('Failed to analyze');
+      if (!res.ok) return extractError(res, 'Analyse fehlgeschlagen');
       return res.json() as Promise<{ column_name: string; values: string[] }>;
     },
   },
@@ -116,13 +126,13 @@ export const api = {
   sources: {
     list: async () => {
       const res = await fetch(`${API_BASE}/api/sources`);
-      if (!res.ok) throw new Error('Failed to fetch sources');
+      if (!res.ok) return extractError(res, 'Quellen konnten nicht geladen werden');
       return res.json() as Promise<Source[]>;
     },
 
     getPresets: async (sourceKey: string) => {
       const res = await fetch(`${API_BASE}/api/sources/${sourceKey}/presets`);
-      if (!res.ok) throw new Error('Failed to fetch presets');
+      if (!res.ok) return extractError(res, 'Presets konnten nicht geladen werden');
       return res.json() as Promise<Preset[]>;
     },
 
@@ -132,7 +142,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, config }),
       });
-      if (!res.ok) throw new Error('Failed to save preset');
+      if (!res.ok) return extractError(res, 'Preset konnte nicht gespeichert werden');
       return res.json() as Promise<Preset>;
     },
   },
