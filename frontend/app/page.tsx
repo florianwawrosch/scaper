@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Papa from 'papaparse';
 import { api, API_URL, type ScrapeRun } from '@/lib/api';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from '@/app/components/Toast';
@@ -94,23 +95,40 @@ export default function Home() {
     if (saved) setPresets(JSON.parse(saved));
   }, []);
 
-  const uploadCsv = useCallback(async (file: File) => {
+  const uploadCsv = useCallback((file: File) => {
     setUploading(true);
     setFormError('');
-    try {
-      const run = await api.runs.create('csv_import', {});
-      const fd = new FormData();
-      fd.append('file', file);
-      await api.runs.upload(run.id, fd);
-      setRuns(prev => [run, ...prev]);
-      router.push(`/runs/${run.id}`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Unbekannter Fehler';
-      setFormError(`Upload fehlgeschlagen: ${msg} | Backend: ${API_URL}`);
-      setCsvFile(null);
-    } finally {
-      setUploading(false);
-    }
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        setUploading(false);
+        if (!results.data || results.data.length === 0) {
+          setFormError('CSV enthält keine Zeilen.');
+          setCsvFile(null);
+          return;
+        }
+        const id = `csv_${Date.now()}`;
+        try {
+          localStorage.setItem(`csv_run_${id}`, JSON.stringify({
+            data: results.data,
+            fields: results.meta.fields ?? [],
+            filename: file.name,
+            createdAt: new Date().toISOString(),
+          }));
+        } catch {
+          setFormError('Datei zu groß für lokalen Speicher.');
+          setCsvFile(null);
+          return;
+        }
+        router.push(`/csv/${id}`);
+      },
+      error: (err: Error) => {
+        setUploading(false);
+        setFormError(`CSV konnte nicht gelesen werden: ${err.message}`);
+        setCsvFile(null);
+      },
+    });
   }, [router]);
 
   // Global drag-to-drop listeners
@@ -225,7 +243,7 @@ export default function Home() {
           <span style={{ fontSize: 14 }}>⚠</span>
           <p style={{ fontFamily: T.ffMono, fontSize: 11, color: '#e8736b', lineHeight: 1.5 }}>
             <strong>Backend nicht konfiguriert.</strong>{' '}
-            CSV-Upload und Scraping funktionieren nicht. Setze <code style={{ background: 'rgba(232,115,107,.15)', padding: '1px 5px', borderRadius: 3 }}>NEXT_PUBLIC_API_URL</code> in den Vercel-Projekt-Einstellungen auf deine Backend-URL.
+            Meta Ads Scraping funktioniert nicht. CSV-Upload funktioniert ohne Backend. Setze <code style={{ background: 'rgba(232,115,107,.15)', padding: '1px 5px', borderRadius: 3 }}>NEXT_PUBLIC_API_URL</code> in den Vercel-Projekt-Einstellungen auf deine Backend-URL.
           </p>
         </div>
       )}
