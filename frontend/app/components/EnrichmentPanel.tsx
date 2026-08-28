@@ -17,6 +17,19 @@ const PROVIDERS = [
   { id: 'findymail', label: 'FindyMail', desc: 'E-Mail Verifikation' },
 ] as const;
 
+const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
+
+const T = {
+  panel:  'var(--th-panel)',
+  panel2: 'var(--th-panel2)',
+  line:   'var(--th-line)',
+  lineS:  'var(--th-line-soft)',
+  gold:   'var(--th-gold)',
+  ink:    'var(--th-ink)',
+  inkD:   'var(--th-ink-d)',
+  inkF:   'var(--th-ink-f)',
+};
+
 export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete }: Props) {
   const { showToast } = useToast();
   const [running, setRunning] = useState(false);
@@ -57,47 +70,49 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete }: Pro
     }
   };
 
-  const statusIcon = (s?: ProviderStatus) => ({
-    idle: null, running: '↻', done: '✓', error: '✕',
-  }[s || 'idle']);
+  const statusIcon = (s?: ProviderStatus) =>
+    ({ idle: null, running: '↻', done: '✓', error: '✕' }[s ?? 'idle']);
 
-  const statusCls = (s?: ProviderStatus) => ({
-    idle: 'text-ink-faint', running: 'text-warn', done: 'text-good', error: 'text-bad',
-  }[s || 'idle']);
+  const statusColor = (s?: ProviderStatus) =>
+    ({ idle: T.inkF, running: '#e8b04b', done: '#4fd1c5', error: '#e8736b' }[s ?? 'idle']);
 
   return (
-    <div className="border border-line rounded-lg overflow-hidden">
-      <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
-        <span className="text-xs font-mono tracking-wider text-ink uppercase">Enrichment</span>
-        <span className="text-xs font-mono text-ink-faint ml-auto">{leadsCount} Leads</span>
+    <div style={{ border: `1px solid ${T.line}`, borderRadius: 10, overflow: 'hidden' }}>
+
+      {/* Header */}
+      <div style={{ padding: '10px 16px', borderBottom: `1px solid ${T.line}`, background: T.panel, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ ...mono, fontSize: 10, letterSpacing: '.1em', color: T.inkF, textTransform: 'uppercase' }}>Enrichment</span>
+        <span style={{ ...mono, fontSize: 11, color: T.inkF, marginLeft: 'auto' }}>{leadsCount} Leads</span>
       </div>
 
-      <div className="p-5 bg-panel-2 space-y-4">
+      <div style={{ padding: '16px', background: T.panel2, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
         {/* Provider selector */}
         <div>
-          <label className="block text-xs font-mono tracking-wider text-ink-faint uppercase mb-2">Provider</label>
-          <div className="grid grid-cols-2 gap-2">
+          <p style={{ ...mono, fontSize: 9, letterSpacing: '.1em', color: T.inkF, textTransform: 'uppercase', marginBottom: 8 }}>Provider</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {PROVIDERS.map(p => {
               const s = status[p.id];
               const icon = statusIcon(s);
+              const isActive = selected === p.id;
               return (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => setSelected(p.id)}
-                  className={`px-3 py-2.5 rounded border text-left transition-all ${
-                    selected === p.id
-                      ? 'border-gold bg-gold/10'
-                      : 'border-line hover:border-line-soft'
-                  }`}
+                  style={{
+                    padding: '10px 12px', borderRadius: 7, textAlign: 'left', cursor: 'pointer',
+                    border: isActive ? '1px solid rgba(232,176,75,.4)' : `1px solid ${T.line}`,
+                    background: isActive ? 'rgba(232,176,75,.06)' : 'transparent',
+                  }}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className={`text-xs font-mono ${selected === p.id ? 'text-gold' : 'text-ink-dim'}`}>{p.label}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                    <span style={{ ...mono, fontSize: 11, color: isActive ? T.gold : T.inkD }}>{p.label}</span>
                     {icon && (
-                      <span className={`text-xs font-mono ${statusCls(s)}`}>{icon}</span>
+                      <span style={{ ...mono, fontSize: 11, color: statusColor(s) }}>{icon}</span>
                     )}
                   </div>
-                  <p className="text-xs text-ink-faint mt-0.5">{p.desc}</p>
+                  <p style={{ ...mono, fontSize: 10, color: T.inkF }}>{p.desc}</p>
                 </button>
               );
             })}
@@ -106,29 +121,33 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete }: Pro
 
         {/* Result */}
         {result && (
-          <div className="bg-panel-3 border border-good/20 rounded p-3 flex items-center justify-between">
-            <span className="text-xs font-mono text-ink-faint">Ergebnis</span>
-            <span className="text-xs font-mono text-good font-semibold">
-              {result.enriched} / {result.total} enriched
-            </span>
+          <div style={{ padding: '10px 12px', border: '1px solid rgba(79,209,197,.2)', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ ...mono, fontSize: 11, color: T.inkF }}>Ergebnis</span>
+            <span style={{ ...mono, fontSize: 12, color: '#4fd1c5', fontWeight: 600 }}>{result.enriched} / {result.total} enriched</span>
           </div>
         )}
 
-        <div className="space-y-2">
-          <ul className="text-xs font-mono text-ink-faint space-y-1">
-            <li>→ E-Mail Adressen</li>
-            <li>→ Telefonnummern</li>
-            <li>→ Unternehmensdaten</li>
-          </ul>
-        </div>
+        {/* Field list */}
+        <ul style={{ display: 'flex', flexDirection: 'column', gap: 4, listStyle: 'none', padding: 0, margin: 0 }}>
+          {['E-Mail Adressen', 'Telefonnummern', 'Unternehmensdaten'].map(f => (
+            <li key={f} style={{ ...mono, fontSize: 11, color: T.inkF }}>→ {f}</li>
+          ))}
+        </ul>
 
+        {/* Run button */}
         <button
           onClick={start}
           disabled={running || leadsCount === 0}
-          className="w-full py-2.5 rounded bg-gradient-to-r from-gold to-gold-dim hover:from-gold-bright hover:to-gold text-noir text-xs font-semibold font-mono tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            ...mono, width: '100%', padding: '9px 0', borderRadius: 7, cursor: 'pointer',
+            border: '1px solid rgba(232,176,75,.35)', background: 'rgba(232,176,75,.1)',
+            color: '#e8b04b', fontSize: 12, fontWeight: 600, letterSpacing: '.06em',
+            opacity: running || leadsCount === 0 ? 0.4 : 1,
+          }}
         >
           {running ? '↻ Läuft…' : '▶ Enrichment starten'}
         </button>
+
       </div>
     </div>
   );
