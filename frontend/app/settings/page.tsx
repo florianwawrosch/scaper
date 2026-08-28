@@ -105,6 +105,32 @@ export default function Settings() {
 
   const totalConnected = GROUPS.flatMap(g => g.services).filter(s => keys[s.key]).length;
 
+  const exportKeys = () => {
+    const data = JSON.stringify(keys, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'lp-api-keys.json'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importKeys = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+        const next = { ...keys, ...parsed };
+        setKeys(next);
+        persist(next, theme);
+      } catch { /* invalid file — silently ignore */ }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   const NAV: { key: NavKey; label: string; badge?: number }[] = [
     { key: 'integrations', label: 'Integrationen', badge: totalConnected || undefined },
     { key: 'design',       label: 'Design' },
@@ -144,13 +170,25 @@ export default function Settings() {
         {/* ── Integrationen ── */}
         {nav === 'integrations' && (
           <>
-            <div style={{ marginBottom: 28 }}>
-              <h1 style={{ fontFamily: T.disp, fontSize: 22, fontWeight: 700, color: T.ink }}>
-                API <em style={{ color: T.gold }}>Integrationen</em>
-              </h1>
-              <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
-                Alle Keys werden ausschließlich lokal in deinem Browser gespeichert.
-              </p>
+            <div style={{ marginBottom: 28, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <h1 style={{ fontFamily: T.disp, fontSize: 22, fontWeight: 700, color: T.ink }}>
+                  API <em style={{ color: T.gold }}>Integrationen</em>
+                </h1>
+                <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
+                  Alle Keys werden ausschließlich lokal in deinem Browser gespeichert.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: 4 }}>
+                <button type="button" onClick={exportKeys}
+                  style={{ fontFamily: T.mono, fontSize: 10, padding: '4px 10px', borderRadius: 5, background: 'transparent', border: `1px solid rgba(255,255,255,.1)`, color: T.inkD, cursor: 'pointer' }}>
+                  ↓ Export
+                </button>
+                <label style={{ fontFamily: T.mono, fontSize: 10, padding: '4px 10px', borderRadius: 5, background: 'transparent', border: `1px solid rgba(255,255,255,.1)`, color: T.inkD, cursor: 'pointer' }}>
+                  ↑ Import
+                  <input type="file" accept=".json" onChange={importKeys} style={{ display: 'none' }} />
+                </label>
+              </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
