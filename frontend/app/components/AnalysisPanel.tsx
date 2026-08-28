@@ -34,14 +34,15 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
   const router = useRouter();
   const storageKey = `analysis_configs_${runId}`;
 
-  const [configs,  setConfigs]  = useState<AnalysisConfig[]>([]);
-  const [running,  setRunning]  = useState<Record<string, boolean>>({});
-  const [apiKeys,  setApiKeys]  = useState<Record<string, string>>({});
+  const [configs,   setConfigs]   = useState<AnalysisConfig[]>([]);
+  const [running,   setRunning]   = useState<Record<string, boolean>>({});
+  const [apiKeys,   setApiKeys]   = useState<Record<string, string>>({});
+  const [keysReady, setKeysReady] = useState(false);
 
   useEffect(() => {
-    // Load settings client-side (localStorage not available on server)
     const s = loadSettings();
     setApiKeys(s.apiKeys as Record<string, string>);
+    setKeysReady(true);
   }, []);
 
   useEffect(() => {
@@ -51,9 +52,10 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
     } catch {}
   }, [storageKey]);
 
-  // Show all providers; frontend key overrides backend env var, error surfaces naturally if neither has it
-  const PROVIDERS = ALL_PROVIDERS as readonly { id: string; label: string; models: readonly string[] }[];
-  const missingCount = 0;
+  // Only show providers where a key is configured (localStorage or NEXT_PUBLIC_* env var)
+  const PROVIDERS = (ALL_PROVIDERS as readonly { id: string; label: string; models: readonly string[] }[])
+    .filter(p => !!apiKeys[p.id]);
+  const missingCount = ALL_PROVIDERS.length - PROVIDERS.length;
 
   const persist = (next: AnalysisConfig[]) => {
     setConfigs(next);
@@ -104,10 +106,10 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
         >+ Spalte</button>
       </div>
 
-      {/* No API keys at all */}
-      {PROVIDERS.length === 0 && (
+      {/* No API keys at all — only show after settings have loaded */}
+      {keysReady && PROVIDERS.length === 0 && (
         <div style={{ padding: '14px 16px', border: '1px dashed rgba(255,255,255,.09)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <p style={{ ...mono, fontSize: 11, color: '#5f6e87' }}>Kein KI-API Key hinterlegt.</p>
+          <p style={{ ...mono, fontSize: 11, color: '#5f6e87' }}>Kein KI-API Key hinterlegt. Bitte Gemini, Claude oder OpenAI Key in den Einstellungen eintragen.</p>
           <button
             onClick={() => router.push('/settings')}
             style={{ ...mono, fontSize: 10, alignSelf: 'flex-start', padding: '3px 10px', borderRadius: 4, border: '1px solid rgba(99,129,255,.3)', background: 'rgba(99,129,255,.08)', color: '#6381ff', cursor: 'pointer' }}
