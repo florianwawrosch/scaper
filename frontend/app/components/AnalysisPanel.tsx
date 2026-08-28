@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { loadSettings } from '@/lib/settings';
 import { useToast } from './Toast';
 
-const PROVIDERS = [
-  { id: 'gemini',    label: 'Gemini',  models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
-  { id: 'anthropic', label: 'Claude',  models: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'] },
-  { id: 'openai',    label: 'GPT',     models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
+const ALL_PROVIDERS = [
+  { id: 'gemini',    label: 'Gemini', models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
+  { id: 'anthropic', label: 'Claude', models: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'] },
+  { id: 'openai',    label: 'GPT',    models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
 ] as const;
 
 export interface AnalysisConfig {
@@ -29,10 +31,16 @@ const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" 
 
 export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }: Props) {
   const { showToast } = useToast();
+  const router = useRouter();
   const storageKey = `analysis_configs_${runId}`;
 
   const [configs, setConfigs] = useState<AnalysisConfig[]>([]);
   const [running, setRunning] = useState<Record<string, boolean>>({});
+
+  // Only providers with a configured API key
+  const settings = loadSettings();
+  const PROVIDERS = ALL_PROVIDERS.filter(p => !!settings.apiKeys[p.id as keyof typeof settings.apiKeys]);
+  const missingCount = ALL_PROVIDERS.length - PROVIDERS.length;
 
   useEffect(() => {
     try {
@@ -47,10 +55,12 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
   };
 
   const add = () => {
+    const defaultProvider = PROVIDERS[0];
+    if (!defaultProvider) return showToast('Kein API Key hinterlegt — bitte in Einstellungen eintragen', 'warning');
     const id = `cfg_${Date.now()}`;
     persist([...configs, {
       id, name: `Analyse ${configs.length + 1}`,
-      provider: 'gemini', model: 'gemini-2.0-flash', prompt: '',
+      provider: defaultProvider.id, model: defaultProvider.models[0], prompt: '',
     }]);
   };
 
@@ -66,7 +76,8 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
     try {
       const rid = runId || (resolveRunId ? await resolveRunId() : '');
       if (!rid) throw new Error('Kein Backend verbunden. Backend-URL in Einstellungen konfigurieren.');
-      const res = await api.runs.analyze(rid, cfg.provider, cfg.model, cfg.prompt, cfg.name);
+      const apiKey = settings.apiKeys[cfg.provider as keyof typeof settings.apiKeys] || undefined;
+      const res = await api.runs.analyze(rid, cfg.provider, cfg.model, cfg.prompt, cfg.name, apiKey);
       onColumnResult(res.column_name, res.values);
       showToast(`Spalte "${cfg.name}" fertig`, 'success');
     } catch (e) {
@@ -87,7 +98,28 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
         >+ Spalte</button>
       </div>
 
-      {configs.length === 0 && (
+      {/* No API keys at all */}
+      {PROVIDERS.length === 0 && (
+        <div style={{ padding: '14px 16px', border: '1px dashed rgba(255,255,255,.09)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <p style={{ ...mono, fontSize: 11, color: '#5f6e87' }}>Kein KI-API Key hinterlegt.</p>
+          <button
+            onClick={() => router.push('/settings')}
+            style={{ ...mono, fontSize: 10, alignSelf: 'flex-start', padding: '3px 10px', borderRadius: 4, border: '1px solid rgba(99,129,255,.3)', background: 'rgba(99,129,255,.08)', color: '#6381ff', cursor: 'pointer' }}
+          >→ Einstellungen</button>
+        </div>
+      )}
+
+      {/* Partial keys — show note */}
+      {PROVIDERS.length > 0 && missingCount > 0 && (
+        <button
+          onClick={() => router.push('/settings')}
+          style={{ ...mono, fontSize: 10, textAlign: 'left', padding: '5px 10px', borderRadius: 5, border: '1px solid rgba(99,129,255,.2)', background: 'rgba(99,129,255,.05)', color: '#6381ff', cursor: 'pointer' }}
+        >
+          + {missingCount} weitere KI-Modelle — API Key in Einstellungen hinzufügen
+        </button>
+      )}
+
+      {configs.length === 0 && PROVIDERS.length > 0 && (
         <div style={{ padding: '18px 16px', textAlign: 'center', border: '1px dashed rgba(255,255,255,.09)', borderRadius: 8 }}>
           <p style={{ ...mono, fontSize: 11, color: '#5f6e87' }}>Noch keine KI-Analyse. Klicke «+ Spalte» um eine hinzuzufügen.</p>
         </div>
@@ -95,6 +127,7 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
 
       {configs.map(cfg => {
         const prov = PROVIDERS.find(p => p.id === cfg.provider) ?? PROVIDERS[0];
+        if (!prov) return null;
         const isRunning = running[cfg.id];
         return (
           <div key={cfg.id} style={{ border: '1px solid rgba(255,255,255,.07)', borderRadius: 8, padding: '12px 14px', background: 'rgba(255,255,255,.02)', display: 'flex', flexDirection: 'column', gap: 9 }}>
@@ -107,10 +140,7 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
                 placeholder="Spaltenname"
                 style={{ ...mono, flex: 1, fontSize: 12, color: '#f5cc77', background: 'transparent', border: 'none', outline: 'none', borderBottom: '1px solid rgba(232,176,75,.2)', paddingBottom: 2 }}
               />
-              <button
-                onClick={() => remove(cfg.id)}
-                style={{ ...mono, fontSize: 16, color: '#5f6e87', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
-              >×</button>
+              <button onClick={() => remove(cfg.id)} style={{ ...mono, fontSize: 16, color: '#5f6e87', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
             </div>
 
             {/* Provider + model row */}

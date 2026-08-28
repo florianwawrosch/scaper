@@ -31,17 +31,17 @@ class ClassificationResult:
     raw: str = ""
 
 
-def _get_client():
+def _get_client(api_key: str = None, model_name: str = None):
     import google.generativeai as genai
 
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
+    key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not key:
         raise RuntimeError(
             "GEMINI_API_KEY fehlt. Bitte als Umgebungsvariable setzen (siehe .env.example)."
         )
-    genai.configure(api_key=api_key)
-    model_name = os.environ.get(_MODEL_ENV, _DEFAULT_MODEL)
-    return genai.GenerativeModel(model_name)
+    genai.configure(api_key=key)
+    resolved_model = model_name or os.environ.get(_MODEL_ENV, _DEFAULT_MODEL)
+    return genai.GenerativeModel(resolved_model)
 
 
 def build_prompt(lead: Lead, criteria: dict) -> str:
@@ -123,8 +123,10 @@ def classify_batch(
     criteria: dict,
     progress_callback: Callable[[int, int], None] | None = None,
     pause_seconds: float = 0.0,
+    api_key: str = None,
+    model_name: str = None,
 ) -> list[ClassificationResult]:
-    model = _get_client()
+    model = _get_client(api_key=api_key, model_name=model_name)
     results = []
     for i, lead in enumerate(leads, 1):
         try:

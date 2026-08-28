@@ -48,6 +48,7 @@ class ClassifyRequest(BaseModel):
     aiModel: str = "gemini-2.0-flash"
     df_data: Optional[list] = None
     mapping: Optional[dict] = None
+    apiKey: Optional[str] = None
 
 
 class AnalyzeRequest(BaseModel):
@@ -55,6 +56,7 @@ class AnalyzeRequest(BaseModel):
     aiModel: str = "gemini-2.0-flash"
     prompt: str
     column_name: str = "KI Analyse"
+    apiKey: Optional[str] = None
 
 
 class EnrichRequest(BaseModel):
@@ -267,13 +269,13 @@ async def classify(run_id: str, req: ClassifyRequest):
     try:
         if provider == "gemini":
             from core.gemini_classifier import classify_batch
-            results = classify_batch(leads, criteria)
+            results = classify_batch(leads, criteria, api_key=req.apiKey, model_name=req.aiModel)
 
         elif provider == "anthropic":
-            results = _classify_anthropic(leads, criteria, model_name)
+            results = _classify_anthropic(leads, criteria, model_name, api_key=req.apiKey)
 
         elif provider == "openai":
-            results = _classify_openai(leads, criteria, model_name)
+            results = _classify_openai(leads, criteria, model_name, api_key=req.apiKey)
 
         else:
             from core.gemini_classifier import classify_batch
@@ -300,12 +302,12 @@ async def classify(run_id: str, req: ClassifyRequest):
     }
 
 
-def _classify_anthropic(leads, criteria, model_name: str):
+def _classify_anthropic(leads, criteria, model_name: str, api_key: str = None):
     """Classify using Anthropic Claude."""
     import anthropic
     from core.gemini_classifier import build_prompt, _parse_response, ClassificationResult
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY fehlt")
 
@@ -328,12 +330,12 @@ def _classify_anthropic(leads, criteria, model_name: str):
     return results
 
 
-def _classify_openai(leads, criteria, model_name: str):
+def _classify_openai(leads, criteria, model_name: str, api_key: str = None):
     """Classify using OpenAI."""
     import openai
     from core.gemini_classifier import build_prompt, _parse_response, ClassificationResult
 
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = api_key or os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY fehlt")
 
@@ -355,17 +357,23 @@ def _classify_openai(leads, criteria, model_name: str):
     return results
 
 
-def _call_ai_single(provider: str, model_name: str, prompt: str) -> str:
+def _call_ai_single(provider: str, model_name: str, prompt: str, api_key: str = None) -> str:
     try:
         if provider == "gemini":
             import google.generativeai as genai
-            genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+            key = api_key or os.environ.get("GEMINI_API_KEY", "")
+            if not key:
+                return "Fehler: GEMINI_API_KEY fehlt"
+            genai.configure(api_key=key)
             model = genai.GenerativeModel(model_name)
             resp = model.generate_content(prompt)
             return resp.text.strip()
         elif provider == "anthropic":
             import anthropic
-            client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+            key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+            if not key:
+                return "Fehler: ANTHROPIC_API_KEY fehlt"
+            client = anthropic.Anthropic(api_key=key)
             msg = client.messages.create(
                 model=model_name, max_tokens=256,
                 messages=[{"role": "user", "content": prompt}]
@@ -373,7 +381,10 @@ def _call_ai_single(provider: str, model_name: str, prompt: str) -> str:
             return msg.content[0].text.strip()
         elif provider == "openai":
             import openai
-            client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+            key = api_key or os.environ.get("OPENAI_API_KEY", "")
+            if not key:
+                return "Fehler: OPENAI_API_KEY fehlt"
+            client = openai.OpenAI(api_key=key)
             resp = client.chat.completions.create(
                 model=model_name, max_tokens=256,
                 messages=[{"role": "user", "content": prompt}]
@@ -402,7 +413,7 @@ async def analyze_run(run_id: str, req: AnalyzeRequest):
             if v and str(v).strip() and k != "_idx"
         )
         full_prompt = f"{req.prompt}\n\nDaten:\n{row_text}\n\nAntworte nur kurz und direkt."
-        value = _call_ai_single(provider, req.aiModel, full_prompt)
+        value = _call_ai_single(provider, req.aiModel, full_prompt, api_key=req.apiKey)
         values.append(value)
 
     return {"column_name": req.column_name, "values": values}

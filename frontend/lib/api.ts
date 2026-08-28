@@ -102,21 +102,21 @@ export const api = {
       return res.json();
     },
 
-    classify: async (runId: string, aiProvider: string, aiModel: string, dfData?: unknown[], mapping?: Record<string, unknown>) => {
+    classify: async (runId: string, aiProvider: string, aiModel: string, dfData?: unknown[], mapping?: Record<string, unknown>, apiKey?: string) => {
       const res = await fetch(`${API_BASE}/api/runs/${runId}/classify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aiProvider, aiModel, df_data: dfData, mapping }),
+        body: JSON.stringify({ aiProvider, aiModel, df_data: dfData, mapping, apiKey }),
       });
       if (!res.ok) return extractError(res, 'Klassifizierung fehlgeschlagen');
       return res.json();
     },
 
-    analyze: async (runId: string, aiProvider: string, aiModel: string, prompt: string, columnName: string) => {
+    analyze: async (runId: string, aiProvider: string, aiModel: string, prompt: string, columnName: string, apiKey?: string) => {
       const res = await fetch(`${API_BASE}/api/runs/${runId}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aiProvider, aiModel, prompt, column_name: columnName }),
+        body: JSON.stringify({ aiProvider, aiModel, prompt, column_name: columnName, apiKey }),
       });
       if (!res.ok) return extractError(res, 'Analyse fehlgeschlagen');
       return res.json() as Promise<{ column_name: string; values: string[] }>;

@@ -90,14 +90,12 @@ export default function CsvViewer() {
     </div>
   );
 
-  const includedCount = run.data.length - excludedRows.size;
-
   return (
     <div style={{ minHeight: '100vh' }}>
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '20px 24px 64px' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
           <button
             onClick={() => router.push('/')}
             style={{ fontFamily: T.ffMono, fontSize: 11, padding: '5px 11px', borderRadius: 5, background: 'transparent', border: `1px solid ${T.lineS}`, color: T.inkD, cursor: 'pointer', flexShrink: 0, marginTop: 2 }}
@@ -110,21 +108,6 @@ export default function CsvViewer() {
               importiert {fmt(run.createdAt)}
             </p>
           </div>
-        </div>
-
-        {/* KPI bar */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 24 }}>
-          {[
-            { label: 'Gesamt',    value: run.data.length,               cls: '' },
-            { label: 'Inklusive', value: includedCount,                 cls: 'teal' },
-            { label: 'Ausgeschl.', value: excludedRows.size,            cls: 'rose' },
-            { label: 'Spalten',   value: run.fields.length + aiColumns.length, cls: 'gold' },
-          ].map(({ label, value, cls }) => (
-            <div key={label} style={{ background: T.panel2, border: `1px solid ${T.lineS}`, borderRadius: 7, padding: '10px 14px' }}>
-              <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 4 }}>{label}</p>
-              <p style={{ fontFamily: T.ffDisp, fontSize: 22, fontWeight: 700, color: cls === 'teal' ? T.teal : cls === 'gold' ? T.gold : cls === 'rose' ? '#e8736b' : T.ink, lineHeight: 1 }}>{value.toLocaleString('de-DE')}</p>
-            </div>
-          ))}
         </div>
 
         {/* Main grid: table + analysis panel */}
