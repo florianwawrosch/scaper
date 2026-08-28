@@ -131,7 +131,7 @@ export default function CsvViewer() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, alignItems: 'start' }}>
 
           {/* Table */}
-          <div>
+          <div style={{ minWidth: 0 }}>
             <DataTable
               data={run.data}
               rawColumns={run.fields}
