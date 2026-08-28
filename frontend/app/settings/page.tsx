@@ -20,17 +20,30 @@ export default function Settings() {
   const [keys,   setKeys]     = useState<Record<string, string>>({
     gemini: '', anthropic: '', openai: '', hunter_io: '', findymail: '', meta_ads: '',
   });
+  const [theme,  setTheme]    = useState<'noir' | 'classic'>('noir');
 
   useEffect(() => {
     const s = loadSettings();
     setKeys(s.apiKeys);
+    setTheme(s.theme ?? 'noir');
   }, []);
+
+  const applyTheme = (t: 'noir' | 'classic') => {
+    setTheme(t);
+    if (t === 'classic') {
+      document.documentElement.dataset.theme = 'classic';
+    } else {
+      delete document.documentElement.dataset.theme;
+    }
+    const current = loadSettings();
+    saveSettings({ ...current, theme: t });
+  };
 
   const save = async () => {
     setSaving(true);
     try {
       const current = loadSettings();
-      saveSettings({ ...current, apiKeys: keys as any });
+      saveSettings({ ...current, apiKeys: keys as any, theme });
       showToast('Gespeichert', 'success');
     } catch {
       showToast('Fehler', 'error');
@@ -56,6 +69,38 @@ export default function Settings() {
             Nur lokal im Browser gespeichert. Nie an externe Server übertragen.
             Die KI-Auswahl erfolgt pro Run.
           </p>
+        </div>
+
+        {/* Theme toggle */}
+        <div style={{ marginBottom: 32 }}>
+          <div className="sec-head">
+            <span className="idx">DESIGN</span>
+            <h2 style={{ fontSize: 18 }}>Design</h2>
+            <div className="rule" />
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {([
+              { id: 'noir',    label: 'Noir',    sub: 'Cormorant · Inter · JetBrains Mono' },
+              { id: 'classic', label: 'Classic', sub: 'Fraunces · Spline Sans' },
+            ] as const).map(t => (
+              <button
+                key={t.id}
+                onClick={() => applyTheme(t.id)}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: theme === t.id ? '1px solid rgba(201,163,95,.5)' : '1px solid rgba(255,255,255,.07)',
+                  background: theme === t.id ? 'rgba(201,163,95,.07)' : 'transparent',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all .15s',
+                }}
+              >
+                <p style={{ fontFamily: 'var(--ff-body)', fontSize: 13, fontWeight: 500, color: theme === t.id ? 'var(--th-gold)' : 'var(--th-ink)', marginBottom: 2 }}>{t.label}</p>
+                <p style={{ fontFamily: 'var(--ff-mono)', fontSize: 10, color: 'var(--th-ink-f)' }}>{t.sub}</p>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 32, alignItems: 'start' }}>

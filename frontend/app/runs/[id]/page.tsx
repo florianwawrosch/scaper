@@ -55,6 +55,25 @@ export default function RunDetail() {
 
   useEffect(() => { loadRun(); }, [loadRun]);
 
+  // Poll every 3s while scraping
+  useEffect(() => {
+    if (!run || run.status !== 'scraping') return;
+    const t = setInterval(async () => {
+      try {
+        const data = await api.runs.get(runId);
+        setRun(data);
+        if (data.status !== 'scraping') {
+          clearInterval(t);
+          try {
+            const ds = await api.runs.getDataset(runId);
+            if (ds.df_data?.length) setTableData(ds.df_data);
+          } catch {}
+        }
+      } catch {}
+    }, 3000);
+    return () => clearInterval(t);
+  }, [run?.status, runId]);
+
   const saveRating = async () => {
     if (!run) return;
     setSavingRating(true);
@@ -207,35 +226,15 @@ export default function RunDetail() {
                 </div>
               )}
 
-              {/* Pipeline steps */}
-              <div className="card" style={{ gridColumn: '1/-1' }}>
-                <h5 style={{ marginBottom: 20 }}>Pipeline</h5>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-                  {['Scraped', 'Gefiltert', 'Enriched', 'Exportiert'].map((step, i, arr) => {
-                    const done = i === 0 && total > 0;
-                    return (
-                      <div key={step} style={{ display: 'flex', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                          <div style={{
-                            width: 32, height: 32, borderRadius: '50%',
-                            border: done ? '1px solid #4fd1c5' : '1px solid rgba(255,255,255,.1)',
-                            background: done ? 'rgba(79,209,197,.12)' : 'rgba(255,255,255,.02)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontFamily: "'Spline Sans Mono', monospace", fontSize: 12,
-                            color: done ? '#4fd1c5' : '#5f6e87',
-                          }}>
-                            {done ? '✓' : i + 1}
-                          </div>
-                          <span style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 10, color: done ? '#4fd1c5' : '#5f6e87', letterSpacing: '.06em', whiteSpace: 'nowrap' }}>{step}</span>
-                        </div>
-                        {i < arr.length - 1 && (
-                          <div style={{ width: 48, height: 1, background: done ? 'rgba(79,209,197,.3)' : 'rgba(255,255,255,.07)', margin: '0 8px', marginBottom: 24 }} />
-                        )}
-                      </div>
-                    );
-                  })}
+              {/* Scraping indicator */}
+              {run.status === 'scraping' && (
+                <div className="card" style={{ gridColumn: '1/-1', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e8b04b', animation: 'pulse 1.5s infinite' }} />
+                  <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#9aa7bd', letterSpacing: '.04em' }}>
+                    Scraping läuft… Seite wird automatisch aktualisiert.
+                  </p>
                 </div>
-              </div>
+              )}
             </div>
           )}
 

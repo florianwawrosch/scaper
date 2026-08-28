@@ -15,6 +15,7 @@ export interface AppSettings {
     countries: string[];
     platforms: string[];
   };
+  theme: 'noir' | 'classic';
 }
 
 const STORAGE_KEY = 'appSettings';
@@ -35,6 +36,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     countries: ['DE', 'AT'],
     platforms: ['FACEBOOK', 'INSTAGRAM'],
   },
+  theme: 'noir',
 };
 
 export function loadSettings(): AppSettings {
