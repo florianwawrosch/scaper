@@ -8,18 +8,31 @@ export default function Settings() {
     hunter_io: '',
     findymail: '',
     anthropic: '',
+    gemini: '',
+    openai: '',
   });
+  const [aiProvider, setAiProvider] = useState('gemini');
+  const [aiModel, setAiModel] = useState('gemini-2.0-flash');
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Save to localStorage for now
       localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
+      localStorage.setItem('aiConfig', JSON.stringify({
+        provider: aiProvider,
+        model: aiModel,
+      }));
       await new Promise(resolve => setTimeout(resolve, 500));
     } finally {
       setSaving(false);
     }
+  };
+
+  const modelsByProvider = {
+    gemini: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+    anthropic: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4.5-20251001'],
+    openai: ['gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
   };
 
   return (
@@ -64,6 +77,49 @@ export default function Settings() {
                   />
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* AI Configuration */}
+          <div className="bg-panel-2 border border-line-soft rounded p-4">
+            <h3 className="font-mono text-xs tracking-wider text-ink-faint mb-4 font-medium">
+              AI Konfiguration
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-mono tracking-wider text-ink-faint mb-1">
+                  AI Provider
+                </label>
+                <select
+                  value={aiProvider}
+                  onChange={(e) => {
+                    setAiProvider(e.target.value);
+                    const models = modelsByProvider[e.target.value as keyof typeof modelsByProvider];
+                    if (models) setAiModel(models[0]);
+                  }}
+                  className="w-full bg-panel-3 border border-line rounded text-ink px-2.5 py-1.5 text-sm"
+                >
+                  <option value="gemini">Google Gemini</option>
+                  <option value="anthropic">Anthropic Claude</option>
+                  <option value="openai">OpenAI GPT</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-mono tracking-wider text-ink-faint mb-1">
+                  AI Modell
+                </label>
+                <select
+                  value={aiModel}
+                  onChange={(e) => setAiModel(e.target.value)}
+                  className="w-full bg-panel-3 border border-line rounded text-ink px-2.5 py-1.5 text-sm"
+                >
+                  {modelsByProvider[aiProvider as keyof typeof modelsByProvider]?.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
