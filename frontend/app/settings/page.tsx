@@ -64,6 +64,7 @@ const T = {
 
 export default function Settings() {
   const [keys,       setKeys]       = useState<Record<string, string>>({});
+  const [localKeys,  setLocalKeys]  = useState<Record<string, string>>({});
   const [theme,      setTheme]      = useState<'noir' | 'classic'>('noir');
   const [nav,        setNav]        = useState<NavKey>('integrations');
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -74,6 +75,11 @@ export default function Settings() {
     const s = loadSettings();
     setKeys(s.apiKeys as Record<string, string>);
     setTheme(s.theme ?? 'noir');
+    // Track what's actually in localStorage (vs. env var fallbacks)
+    try {
+      const raw = localStorage.getItem('appSettings');
+      if (raw) setLocalKeys((JSON.parse(raw) as any).apiKeys ?? {});
+    } catch {}
   }, []);
 
   const persist = (nextKeys: Record<string, string>, nextTheme: 'noir' | 'classic') => {
@@ -206,17 +212,19 @@ export default function Settings() {
                     {group.services.map((svc: Service) => {
                       const connected    = !!keys[svc.key];
                       const isConnecting = connecting === svc.key;
+                      // Key came from env var if it's present but not saved in localStorage
+                      const fromEnv      = connected && !localKeys[svc.key];
 
                       return (
                         <div key={svc.key} style={{
-                          background: connected ? 'rgba(79,209,197,.04)' : T.panel2,
-                          border: `1px solid ${connected ? 'rgba(79,209,197,.18)' : 'rgba(255,255,255,.06)'}`,
+                          background: connected ? (fromEnv ? 'rgba(99,129,255,.04)' : 'rgba(79,209,197,.04)') : T.panel2,
+                          border: `1px solid ${connected ? (fromEnv ? 'rgba(99,129,255,.2)' : 'rgba(79,209,197,.18)') : 'rgba(255,255,255,.06)'}`,
                           borderRadius: 7, overflow: 'hidden',
                           transition: 'background .2s, border-color .2s',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
                             {/* Status dot */}
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: connected ? T.teal : 'rgba(255,255,255,.15)', transition: 'background .2s' }} />
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: connected ? (fromEnv ? '#6381ff' : T.teal) : 'rgba(255,255,255,.15)', transition: 'background .2s' }} />
 
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 500, color: connected ? T.ink : T.inkD }}>{svc.label}</p>
@@ -225,17 +233,25 @@ export default function Settings() {
 
                             {connected ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal, letterSpacing: '.04em' }}>
-                                  {show[svc.key] ? keys[svc.key] : maskKey(keys[svc.key])}
-                                </span>
-                                <button type="button" onClick={() => setShow(p => ({ ...p, [svc.key]: !p[svc.key] }))}
-                                  style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6, lineHeight: 1 }}>
-                                  {show[svc.key] ? '◉' : '○'}
-                                </button>
-                                <button type="button" onClick={() => disconnect(svc.key)}
-                                  style={{ fontSize: 14, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, opacity: .5 }}>
-                                  ×
-                                </button>
+                                {fromEnv ? (
+                                  <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', color: '#6381ff', background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', borderRadius: 4, padding: '2px 7px' }}>
+                                    via Vercel Env
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal, letterSpacing: '.04em' }}>
+                                      {show[svc.key] ? keys[svc.key] : maskKey(keys[svc.key])}
+                                    </span>
+                                    <button type="button" onClick={() => setShow(p => ({ ...p, [svc.key]: !p[svc.key] }))}
+                                      style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6, lineHeight: 1 }}>
+                                      {show[svc.key] ? '◉' : '○'}
+                                    </button>
+                                    <button type="button" onClick={() => disconnect(svc.key)}
+                                      style={{ fontSize: 14, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, opacity: .5 }}>
+                                      ×
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             ) : (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
