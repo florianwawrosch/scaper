@@ -1,6 +1,7 @@
 """Meta Ads Library API scraper."""
 
 import json
+import urllib.error
 import urllib.request
 import urllib.parse
 
@@ -53,19 +54,22 @@ def scrape_meta_ads(
         if not term.strip():
             continue
 
+        def jl(lst):
+            return json.dumps(lst, separators=(',', ':'))
+
         params = {
             "access_token": access_token,
             "search_terms": term.strip(),
-            "ad_reached_countries": json.dumps(ad_reached_countries),
+            "ad_reached_countries": jl(ad_reached_countries),
             "ad_active_status": ad_active_status,
             "fields": ",".join(FIELDS),
             "limit": min(int(limit), 100),
         }
 
         if publisher_platforms:
-            params["publisher_platforms"] = json.dumps(publisher_platforms)
+            params["publisher_platforms"] = jl(publisher_platforms)
         if languages:
-            params["languages"] = json.dumps(languages)
+            params["languages"] = jl(languages)
         if media_type and media_type != "ALL":
             params["media_type"] = media_type
         if search_type:
@@ -88,26 +92,36 @@ def scrape_meta_ads(
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": "LeadPipeline/1.0"})
                 with urllib.request.urlopen(req, timeout=30) as resp:
-                    data = json.loads(resp.read().decode())
-
-                if "error" in data:
-                    err = data["error"]
-                    raise RuntimeError(f"Meta API Fehler: {err.get('message', str(err))}")
-
-                ads = data.get("data", [])
-                for ad in ads:
-                    if collected >= limit:
-                        break
-                    all_results.append(_flatten(ad, term))
-                    collected += 1
-
-                next_url = data.get("paging", {}).get("next")
-                url = next_url if (next_url and collected < limit) else None
-
-            except RuntimeError:
-                raise
+                    raw = resp.read().decode()
+            except urllib.error.HTTPError as e:
+                raw = e.read().decode()
+                try:
+                    err_data = json.loads(raw)
+                    msg = err_data.get("error", {}).get("message", raw[:200])
+                except Exception:
+                    msg = raw[:200]
+                raise RuntimeError(f"Meta API HTTP {e.code}: {msg}")
             except Exception as e:
-                break
+                raise RuntimeError(f"Netzwerkfehler: {e}")
+
+            try:
+                data = json.loads(raw)
+            except Exception:
+                raise RuntimeError(f"Ungültige API-Antwort: {raw[:200]}")
+
+            if "error" in data:
+                err = data["error"]
+                raise RuntimeError(f"Meta API Fehler ({err.get('code', '?')}): {err.get('message', str(err))}")
+
+            ads = data.get("data", [])
+            for ad in ads:
+                if collected >= limit:
+                    break
+                all_results.append(_flatten(ad, term))
+                collected += 1
+
+            next_url = data.get("paging", {}).get("next")
+            url = next_url if (next_url and collected < limit) else None
 
     return all_results
 

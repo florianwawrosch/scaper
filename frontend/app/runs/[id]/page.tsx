@@ -217,20 +217,30 @@ export default function RunDetail() {
                 </dl>
               </div>
 
-              {run.scraper_config && (
+              {run.scraper_config && !run.scraper_config.error && (
                 <div className="card">
                   <h5 style={{ marginBottom: 16 }}>Konfiguration</h5>
-                  <pre style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 11.5, color: '#9aa7bd', overflow: 'auto', whiteSpace: 'pre-wrap', maxHeight: 200, lineHeight: 1.6 }}>
+                  <pre style={{ fontFamily: 'var(--ff-mono)', fontSize: 11, color: 'var(--th-ink-d)', overflow: 'auto', whiteSpace: 'pre-wrap', maxHeight: 180, lineHeight: 1.6 }}>
                     {JSON.stringify(run.scraper_config, null, 2)}
                   </pre>
+                </div>
+              )}
+
+              {/* Error banner */}
+              {run.status === 'failed' && !!run.scraper_config?.error && (
+                <div className="card" style={{ gridColumn: '1/-1', borderColor: 'rgba(232,115,107,.3)', background: 'rgba(232,115,107,.06)' }}>
+                  <p style={{ fontFamily: 'var(--ff-mono)', fontSize: 10, letterSpacing: '.15em', textTransform: 'uppercase', color: '#e8736b', marginBottom: 8 }}>Fehler</p>
+                  <p style={{ fontFamily: 'var(--ff-mono)', fontSize: 12, color: 'var(--th-ink)', lineHeight: 1.6 }}>
+                    {String(run.scraper_config.error)}
+                  </p>
                 </div>
               )}
 
               {/* Scraping indicator */}
               {run.status === 'scraping' && (
                 <div className="card" style={{ gridColumn: '1/-1', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e8b04b', animation: 'pulse 1.5s infinite' }} />
-                  <p style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, color: '#9aa7bd', letterSpacing: '.04em' }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--th-gold)', animation: 'pulse 1.5s infinite' }} />
+                  <p style={{ fontFamily: 'var(--ff-mono)', fontSize: 12, color: 'var(--th-ink-d)', letterSpacing: '.04em' }}>
                     Scraping läuft… Seite wird automatisch aktualisiert.
                   </p>
                 </div>

@@ -21,7 +21,7 @@ export default function Settings() {
   const [theme, setTheme] = useState<'noir' | 'classic'>('noir');
   const [show,  setShow]  = useState<Record<string, boolean>>({});
   const [save,  setSave]  = useState<SaveState>('idle');
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     const s = loadSettings();
