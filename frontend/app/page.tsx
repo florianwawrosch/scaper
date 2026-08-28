@@ -288,16 +288,30 @@ export default function Home() {
               {creating ? 'Startet…' : '→ Scraping starten'}
             </button>
 
-            {/* CSV hint */}
+            {/* CSV drop zone */}
             <div
               onClick={() => fileInputRef.current?.click()}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, border: `1px dashed ${T.lineS}`, cursor: 'pointer', transition: 'border-color .15s' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = T.gold)}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = T.lineS)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 4, padding: '12px 16px', borderRadius: 6,
+                border: `1px dashed ${csvFile ? T.gold : T.lineS}`,
+                background: csvFile ? T.goldD : 'transparent',
+                cursor: 'pointer', transition: 'all .15s', textAlign: 'center',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = T.gold; e.currentTarget.style.background = T.goldD; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = csvFile ? T.gold : T.lineS; e.currentTarget.style.background = csvFile ? T.goldD : 'transparent'; }}
             >
-              <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF }}>
-                {uploading ? 'Lädt…' : csvFile ? `✓ ${csvFile.name}` : '↓ Oder CSV / Excel importieren — Datei hier ablegen oder klicken'}
-              </span>
+              {uploading ? (
+                <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF }}>Lädt…</span>
+              ) : csvFile ? (
+                <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.gold }}>✓ {csvFile.name}</span>
+              ) : (
+                <>
+                  <span style={{ fontSize: 16, color: T.inkF, lineHeight: 1 }}>↑</span>
+                  <span style={{ fontFamily: T.ffMono, fontSize: 11, fontWeight: 500, color: T.inkD }}>CSV / Excel importieren</span>
+                  <span style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF }}>Klicken oder Datei hierher ziehen</span>
+                </>
+              )}
             </div>
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) { setCsvFile(f); uploadCsv(f); } }} />
