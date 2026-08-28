@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { api, type ScrapeRun } from '@/lib/api';
 import { DataTable } from '@/app/components/DataTable';
+import { ExportPanel } from '@/app/components/ExportPanel';
+import type { ExportRow } from '@/lib/export';
 
 const TABS = ['Scraping', 'Review & Filter', 'Enrichment', 'Export'] as const;
 type Tab = typeof TABS[number];
@@ -260,25 +262,24 @@ export default function RunDetail() {
           )}
 
           {activeTab === 'Export' && (
-            <div className="space-y-3">
-              <div className="bg-panel-2 border border-line-soft rounded p-4">
-                <h3 className="font-mono text-xs tracking-wider text-ink-faint mb-3 font-medium">
-                  Format
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <button className="h-8 bg-gradient-to-r from-gold/40 to-gold-dim/40 border border-gold/35 text-gold rounded hover:from-gold/60 hover:to-gold-dim/60 transition-colors text-xs font-medium">
-                    ↓ XLSX
-                  </button>
-                  <button className="h-8 bg-gradient-to-r from-gold/40 to-gold-dim/40 border border-gold/35 text-gold rounded hover:from-gold/60 hover:to-gold-dim/60 transition-colors text-xs font-medium">
-                    ↓ CSV
-                  </button>
-                </div>
-              </div>
-              <div className="bg-panel-3 rounded p-3 text-xs text-ink-dim">
-                <p className="mb-1">Zeilen zum Export:</p>
-                <p className="font-mono text-gold font-semibold">{classificationResult?.keep || 0} Einträge</p>
-              </div>
-            </div>
+            <ExportPanel
+              runId={runId}
+              leads={
+                tableData
+                  .filter((item) => item.status === 'Active')
+                  .map((item) => ({
+                    id: item.id,
+                    name: item.name,
+                    email: item.contact,
+                    phone: undefined,
+                    company: undefined,
+                    budget: item.budget,
+                    status: 'KEEP' as const,
+                    reason: undefined,
+                    createdAt: run.created_at,
+                  }))
+              }
+            />
           )}
         </div>
 
