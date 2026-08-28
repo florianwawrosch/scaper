@@ -2,192 +2,240 @@
 
 import { useState, useEffect } from 'react';
 import { useToast } from '@/app/components/Toast';
-import { loadSettings, saveSettings, type AppSettings } from '@/lib/settings';
+import { loadSettings, saveSettings } from '@/lib/settings';
 
-const API_KEY_FIELDS = [
-  { key: 'gemini',    label: 'Google Gemini',       placeholder: 'AIza…' },
-  { key: 'anthropic', label: 'Anthropic',            placeholder: 'sk-ant-…' },
-  { key: 'openai',    label: 'OpenAI',               placeholder: 'sk-…' },
-  { key: 'meta_ads',  label: 'Meta Ads Library Token', placeholder: 'EAAxx…' },
-  { key: 'hunter_io', label: 'Hunter.io',            placeholder: 'xxxxxxxx…' },
-  { key: 'findymail', label: 'FindyMail',            placeholder: 'Bearer token…' },
+const PROVIDERS = [
+  { id: 'gemini',    name: 'Gemini',    models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
+  { id: 'anthropic', name: 'Claude',    models: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'] },
+  { id: 'openai',    name: 'GPT',       models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
 ] as const;
 
-const MODELS: Record<string, string[]> = {
-  gemini:    ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-  anthropic: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'],
-  openai:    ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-};
+const KEY_FIELDS = [
+  { key: 'gemini',    label: 'Google Gemini',   hint: 'AIzaSy…', group: 'AI' },
+  { key: 'anthropic', label: 'Anthropic Claude', hint: 'sk-ant-…', group: 'AI' },
+  { key: 'openai',    label: 'OpenAI',           hint: 'sk-…', group: 'AI' },
+  { key: 'hunter_io', label: 'Hunter.io',        hint: 'xxxxxxxx…', group: 'Enrichment' },
+  { key: 'findymail', label: 'FindyMail',        hint: 'Bearer token…', group: 'Enrichment' },
+  { key: 'meta_ads',  label: 'Meta Ads Library', hint: 'EAAxx…', group: 'Scraping' },
+] as const;
+
+type Section = 'ai' | 'keys';
 
 export default function Settings() {
   const { showToast } = useToast();
-  const [loading, setLoading] = useState(true);
+  const [section, setSection] = useState<Section>('ai');
   const [saving, setSaving] = useState(false);
-  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>({
-    gemini: '', anthropic: '', openai: '', meta_ads: '', hunter_io: '', findymail: '',
-  });
+  const [show, setShow] = useState<Record<string, boolean>>({});
   const [aiProvider, setAiProvider] = useState('gemini');
   const [aiModel, setAiModel] = useState('gemini-2.0-flash');
+  const [keys, setKeys] = useState<Record<string, string>>({
+    gemini: '', anthropic: '', openai: '', hunter_io: '', findymail: '', meta_ads: '',
+  });
 
   useEffect(() => {
     const s = loadSettings();
-    setApiKeys(s.apiKeys);
+    setKeys(s.apiKeys);
     setAiProvider(s.aiConfig.provider);
     setAiModel(s.aiConfig.model);
-    setLoading(false);
   }, []);
 
-  const handleSave = async () => {
+  const save = async () => {
     setSaving(true);
     try {
       saveSettings({
-        apiKeys: apiKeys as any,
-        aiConfig: { provider: aiProvider as 'gemini' | 'anthropic' | 'openai', model: aiModel },
+        apiKeys: keys as any,
+        aiConfig: { provider: aiProvider as any, model: aiModel },
         defaults: { countries: ['DE', 'AT'], platforms: ['FACEBOOK', 'INSTAGRAM'] },
       });
-      showToast('Einstellungen gespeichert', 'success');
+      showToast('Gespeichert', 'success');
     } catch {
-      showToast('Fehler beim Speichern', 'error');
+      showToast('Fehler', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-noir flex items-center justify-center">
-        <p className="text-ink-faint font-mono text-xs tracking-wider animate-pulse">Lädt…</p>
-      </div>
-    );
-  }
+  const currentProvider = PROVIDERS.find(p => p.id === aiProvider)!;
+  const filledKeys = KEY_FIELDS.filter(f => keys[f.key]?.length > 0).length;
 
-  const toggleShow = (key: string) => setShowKeys(p => ({ ...p, [key]: !p[key] }));
+  const NAV: { id: Section; label: string; desc: string }[] = [
+    { id: 'ai',   label: 'AI Modell',  desc: 'Provider & Modell auswählen' },
+    { id: 'keys', label: 'API Keys',   desc: `${filledKeys} / ${KEY_FIELDS.length} konfiguriert` },
+  ];
 
   return (
     <div className="min-h-screen bg-noir">
-      <div className="max-w-3xl mx-auto px-6 py-10">
+      <div className="max-w-6xl mx-auto px-8 py-12">
 
-        {/* Header */}
-        <div className="mb-10">
-          <p className="text-gold font-mono text-xs tracking-widest uppercase mb-2">Konfiguration</p>
-          <h1 className="text-4xl font-disp font-light tracking-tight">
+        {/* Page Header */}
+        <div className="mb-12">
+          <p className="text-gold font-mono text-xs tracking-widest uppercase mb-3">Konfiguration</p>
+          <h1 className="font-disp text-5xl font-light tracking-tight text-ink mb-1">
             <em className="italic text-gold-bright">Einstellungen</em>
           </h1>
         </div>
 
-        <div className="space-y-3">
-          {/* AI Provider */}
-          <div className="border border-line rounded-lg overflow-hidden">
-            <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
-              <span className="text-gold font-mono text-xs tracking-widest">01</span>
-              <span className="text-xs font-mono tracking-wider text-ink uppercase">AI Konfiguration</span>
+        <div className="grid grid-cols-[220px_1fr] gap-8">
+
+          {/* Sidebar */}
+          <div className="space-y-1">
+            {NAV.map(n => (
+              <button
+                key={n.id}
+                onClick={() => setSection(n.id)}
+                className={`w-full text-left px-4 py-3 rounded-lg transition-all ${
+                  section === n.id
+                    ? 'bg-panel-2 border border-gold-dim/40'
+                    : 'hover:bg-panel-2/50 border border-transparent'
+                }`}
+              >
+                <p className={`text-sm font-medium transition-colors ${section === n.id ? 'text-gold' : 'text-ink-dim'}`}>
+                  {n.label}
+                </p>
+                <p className="text-xs text-ink-faint mt-0.5 font-mono">{n.desc}</p>
+              </button>
+            ))}
+
+            <div className="pt-6">
+              <button
+                onClick={save}
+                disabled={saving}
+                className="w-full py-3 rounded-lg bg-gradient-to-r from-gold to-gold-dim hover:from-gold-bright hover:to-gold text-noir text-sm font-semibold transition-all disabled:opacity-40"
+              >
+                {saving ? 'Speichert…' : 'Speichern'}
+              </button>
             </div>
-            <div className="p-5 bg-panel-2 space-y-4">
-              <div>
-                <label className="block text-xs font-mono tracking-wider text-ink-faint uppercase mb-2">Provider</label>
-                <div className="flex gap-2">
-                  {Object.keys(MODELS).map(p => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => {
-                        setAiProvider(p);
-                        setAiModel(MODELS[p][0]);
-                      }}
-                      className={`px-3 py-1.5 text-xs font-mono tracking-wide rounded border transition-all ${
-                        aiProvider === p
-                          ? 'bg-gold text-noir border-gold font-semibold'
-                          : 'border-line text-ink-faint hover:border-gold-dim hover:text-ink'
-                      }`}
-                    >
-                      {p === 'gemini' ? 'Gemini' : p === 'anthropic' ? 'Anthropic' : 'OpenAI'}
-                    </button>
-                  ))}
+
+            {/* Status */}
+            <div className="pt-4 space-y-2">
+              {KEY_FIELDS.map(f => (
+                <div key={f.key} className="flex items-center gap-2 px-1">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${keys[f.key] ? 'bg-good' : 'bg-line'}`} />
+                  <span className="text-xs font-mono text-ink-faint truncate">{f.label}</span>
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs font-mono tracking-wider text-ink-faint uppercase mb-2">Modell</label>
-                <div className="flex gap-2 flex-wrap">
-                  {MODELS[aiProvider]?.map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setAiModel(m)}
-                      className={`px-3 py-1.5 text-xs font-mono tracking-wide rounded border transition-all ${
-                        aiModel === m
-                          ? 'border-gold-dim text-gold bg-gold/10'
-                          : 'border-line text-ink-faint hover:border-line-soft hover:text-ink'
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* API Keys */}
-          <div className="border border-line rounded-lg overflow-hidden">
-            <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
-              <span className="text-gold font-mono text-xs tracking-widest">02</span>
-              <span className="text-xs font-mono tracking-wider text-ink uppercase">API Keys</span>
-              <span className="ml-auto text-xs font-mono text-ink-faint">nur lokal gespeichert</span>
-            </div>
-            <div className="p-5 bg-panel-2 space-y-3">
-              {API_KEY_FIELDS.map(({ key, label, placeholder }) => {
-                const val = apiKeys[key] || '';
-                const hasValue = val.length > 0;
-                return (
-                  <div key={key}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-mono tracking-wider text-ink-faint">{label}</label>
-                      {hasValue && (
-                        <span className="text-xs font-mono text-good tracking-wider">✓ gesetzt</span>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type={showKeys[key] ? 'text' : 'password'}
-                        value={val}
-                        onChange={e => setApiKeys(p => ({ ...p, [key]: e.target.value }))}
-                        placeholder={placeholder}
-                        className="flex-1 bg-panel-3 border border-line rounded text-ink text-xs font-mono px-3 py-2 focus:outline-none focus:border-gold-dim transition-colors placeholder:text-ink-faint/40"
-                      />
+          {/* Content */}
+          <div>
+            {section === 'ai' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-disp font-light mb-1">AI <em className="italic text-gold-bright">Provider</em></h2>
+                  <p className="text-sm text-ink-faint">Welches Modell für die Lead-Klassifizierung verwendet wird.</p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  {PROVIDERS.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => { setAiProvider(p.id); setAiModel(p.models[0]); }}
+                      className={`p-5 rounded-xl border text-left transition-all ${
+                        aiProvider === p.id
+                          ? 'border-gold bg-gold/8 shadow-[0_0_30px_-8px_rgba(201,163,95,0.2)]'
+                          : 'border-line bg-panel-2 hover:border-line-soft'
+                      }`}
+                    >
+                      <p className={`text-base font-semibold mb-1 ${aiProvider === p.id ? 'text-gold' : 'text-ink'}`}>
+                        {p.name}
+                      </p>
+                      <p className="text-xs font-mono text-ink-faint">{p.models.length} Modelle</p>
+                    </button>
+                  ))}
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-medium text-ink mb-3">Modell auswählen</h3>
+                  <div className="space-y-2">
+                    {currentProvider.models.map(m => (
                       <button
-                        type="button"
-                        onClick={() => toggleShow(key)}
-                        className="px-2.5 border border-line rounded text-ink-faint hover:text-ink transition-colors text-xs"
-                        title={showKeys[key] ? 'Verbergen' : 'Anzeigen'}
+                        key={m}
+                        onClick={() => setAiModel(m)}
+                        className={`w-full flex items-center gap-4 px-5 py-4 rounded-lg border text-left transition-all ${
+                          aiModel === m
+                            ? 'border-gold-dim bg-panel-2'
+                            : 'border-line bg-panel-2/50 hover:border-line-soft hover:bg-panel-2'
+                        }`}
                       >
-                        {showKeys[key] ? '●' : '○'}
+                        <div className={`w-3 h-3 rounded-full border-2 transition-colors shrink-0 ${
+                          aiModel === m ? 'border-gold bg-gold' : 'border-ink-faint'
+                        }`} />
+                        <span className={`font-mono text-sm ${aiModel === m ? 'text-ink' : 'text-ink-dim'}`}>{m}</span>
+                        {m === currentProvider.models[0] && (
+                          <span className="ml-auto text-xs font-mono text-gold-dim">empfohlen</span>
+                        )}
                       </button>
-                    </div>
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                </div>
+              </div>
+            )}
 
-          {/* Info */}
-          <div className="bg-panel-2 border border-line rounded-lg p-4 flex gap-3">
-            <div className="w-1 bg-gold-dim rounded shrink-0" />
-            <div className="text-xs text-ink-faint space-y-1">
-              <p className="text-ink font-mono tracking-wide">Datenschutz</p>
-              <p>API-Keys werden ausschließlich lokal im Browser-Speicher (localStorage) gespeichert.</p>
-              <p>Keine Übertragung an externe Server — nur direkte API-Calls von deinem Browser.</p>
-            </div>
-          </div>
+            {section === 'keys' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-disp font-light mb-1">API <em className="italic text-gold-bright">Keys</em></h2>
+                  <p className="text-sm text-ink-faint">Nur lokal im Browser gespeichert. Nie an externe Server übertragen.</p>
+                </div>
 
-          {/* Save */}
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full py-3 rounded-lg bg-gradient-to-r from-gold to-gold-dim hover:from-gold-bright hover:to-gold text-noir font-semibold text-sm tracking-wide transition-all disabled:opacity-40"
-          >
-            {saving ? 'Speichert…' : 'Einstellungen speichern'}
-          </button>
+                {(['AI', 'Enrichment', 'Scraping'] as const).map(group => {
+                  const fields = KEY_FIELDS.filter(f => f.group === group);
+                  return (
+                    <div key={group}>
+                      <p className="text-xs font-mono tracking-widest text-ink-faint uppercase mb-3">{group}</p>
+                      <div className="space-y-2">
+                        {fields.map(({ key, label, hint }) => {
+                          const val = keys[key] || '';
+                          const filled = val.length > 0;
+                          return (
+                            <div
+                              key={key}
+                              className={`flex items-center gap-4 px-5 py-4 rounded-xl border transition-all ${
+                                filled ? 'border-good/30 bg-panel-2' : 'border-line bg-panel-2/60'
+                              }`}
+                            >
+                              <div className="w-28 shrink-0">
+                                <p className="text-sm font-medium text-ink">{label}</p>
+                              </div>
+                              <div className="flex-1 relative">
+                                <input
+                                  type={show[key] ? 'text' : 'password'}
+                                  value={val}
+                                  onChange={e => setKeys(p => ({ ...p, [key]: e.target.value }))}
+                                  placeholder={hint}
+                                  className="w-full bg-transparent border-0 text-sm font-mono text-ink placeholder:text-ink-faint/30 outline-none py-0"
+                                />
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0">
+                                {filled && (
+                                  <span className="text-xs font-mono text-good">✓</span>
+                                )}
+                                <button
+                                  onClick={() => setShow(p => ({ ...p, [key]: !p[key] }))}
+                                  className="text-ink-faint hover:text-ink transition-colors text-xs font-mono w-4"
+                                >
+                                  {show[key] ? '●' : '○'}
+                                </button>
+                                {filled && (
+                                  <button
+                                    onClick={() => setKeys(p => ({ ...p, [key]: '' }))}
+                                    className="text-ink-faint hover:text-bad transition-colors text-xs"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
