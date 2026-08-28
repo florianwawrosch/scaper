@@ -51,9 +51,9 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
     } catch {}
   }, [storageKey]);
 
-  // Only providers with a configured API key
-  const PROVIDERS = ALL_PROVIDERS.filter(p => !!apiKeys[p.id]);
-  const missingCount = ALL_PROVIDERS.length - PROVIDERS.length;
+  // Show all providers; frontend key overrides backend env var, error surfaces naturally if neither has it
+  const PROVIDERS = ALL_PROVIDERS;
+  const missingCount = 0;
 
   const persist = (next: AnalysisConfig[]) => {
     setConfigs(next);
