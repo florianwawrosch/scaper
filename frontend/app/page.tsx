@@ -6,431 +6,352 @@ import { api, type ScrapeRun, type Source } from '@/lib/api';
 import { useToast } from '@/app/components/Toast';
 import { loadSettings, type AppSettings } from '@/lib/settings';
 
+const COUNTRY_OPTIONS = [
+  { value: 'DE', label: 'DE — Deutschland' },
+  { value: 'AT', label: 'AT — Österreich' },
+  { value: 'CH', label: 'CH — Schweiz' },
+  { value: 'US', label: 'US — USA' },
+  { value: 'GB', label: 'GB — UK' },
+];
+
+const PLATFORM_OPTIONS = [
+  { value: 'FACEBOOK', label: 'Facebook' },
+  { value: 'INSTAGRAM', label: 'Instagram' },
+];
+
+const STATUS_MAP: Record<ScrapeRun['status'], { label: string; cls: string }> = {
+  draft:         { label: 'Draft',       cls: 'text-ink-faint border-ink-faint/30 bg-ink-faint/5' },
+  scraping:      { label: 'Scraping',    cls: 'text-warn border-warn/40 bg-warn/8' },
+  dataset_ready: { label: 'Bereit',      cls: 'text-good border-good/40 bg-good/8' },
+  in_progress:   { label: 'Aktiv',       cls: 'text-warn border-warn/40 bg-warn/8' },
+  completed:     { label: 'Fertig',      cls: 'text-good border-good/40 bg-good/8' },
+  failed:        { label: 'Fehler',      cls: 'text-bad border-bad/40 bg-bad/8' },
+};
+
+function Toggle({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: string; label: string }[];
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const toggle = (v: string) =>
+    onChange(value.includes(v) ? value.filter(x => x !== v) : [...value, v]);
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map(o => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => toggle(o.value)}
+          className={`px-2.5 py-1 text-xs font-mono tracking-wide rounded border transition-all ${
+            value.includes(o.value)
+              ? 'bg-gold text-noir border-gold font-semibold'
+              : 'bg-transparent text-ink-faint border-line hover:border-gold-dim hover:text-ink'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
   const [runs, setRuns] = useState<ScrapeRun[]>([]);
-  const [sources, setSources] = useState<Record<string, Source>>({});
+  const [sources, setSources] = useState<{ key: string; label: string }[]>([]);
   const [selectedSource, setSelectedSource] = useState('meta_ads_library');
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Form state
   const [keywords, setKeywords] = useState('');
   const [countries, setCountries] = useState(['DE', 'AT']);
   const [platforms, setPlatforms] = useState(['FACEBOOK', 'INSTAGRAM']);
   const [adStatus, setAdStatus] = useState('ACTIVE');
-  const [mediaType, setMediaType] = useState('ALL');
   const [presets, setPresets] = useState<Record<string, any>>({});
   const [presetName, setPresetName] = useState('');
-  const [settings, setSettings] = useState<AppSettings | null>(null);
 
   useEffect(() => {
-    const loadData = async () => {
+    (async () => {
       try {
-        // Load settings first
-        const appSettings = loadSettings();
-        setSettings(appSettings);
-
-        const [runsData, sourcesData] = await Promise.all([
-          api.runs.list(),
-          api.sources.list(),
-        ]);
+        const [runsData, sourcesData] = await Promise.all([api.runs.list(), api.sources.list()]);
         setRuns(runsData);
-        // Convert sources array to record object
-        const sourcesRecord = sourcesData.reduce(
-          (acc, source) => ({
-            ...acc,
-            [source.key]: { ...source, name: source.label },
-          }),
-          {} as Record<string, Source & { name: string }>
-        );
-        setSources(sourcesRecord);
-
-        // Load presets from localStorage
-        const saved = localStorage.getItem('presets');
-        if (saved) {
-          setPresets(JSON.parse(saved));
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load data');
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
+        setSources(sourcesData);
+        if (sourcesData.length > 0) setSelectedSource(sourcesData[0].key);
+      } catch {}
+      const saved = localStorage.getItem('presets');
+      if (saved) setPresets(JSON.parse(saved));
+      setLoading(false);
+    })();
   }, []);
 
-  const handleSavePreset = () => {
-    if (!presetName.trim()) {
-      showToast('Preset-Name erforderlich', 'warning');
-      return;
-    }
-
-    const config = {
-      source: selectedSource,
-      keywords: keywords.split('\n').filter(k => k.trim()),
-      countries,
-      platforms,
-      adStatus,
-      mediaType,
-    };
-
-    const newPresets = {
-      ...presets,
-      [presetName]: config,
-    };
-
-    setPresets(newPresets);
-    localStorage.setItem('presets', JSON.stringify(newPresets));
-    showToast(`Preset "${presetName}" gespeichert`, 'success');
+  const savePreset = () => {
+    if (!presetName.trim()) return showToast('Name erforderlich', 'warning');
+    const cfg = { source: selectedSource, keywords: keywords.split('\n').filter(Boolean), countries, platforms, adStatus };
+    const next = { ...presets, [presetName]: cfg };
+    setPresets(next);
+    localStorage.setItem('presets', JSON.stringify(next));
+    showToast(`"${presetName}" gespeichert`, 'success');
     setPresetName('');
   };
 
-  const handleLoadPreset = (name: string) => {
-    const preset = presets[name];
-    if (!preset) return;
-
-    setSelectedSource(preset.source);
-    setKeywords(preset.keywords.join('\n'));
-    setCountries(preset.countries);
-    setPlatforms(preset.platforms);
-    setAdStatus(preset.adStatus);
-    setMediaType(preset.mediaType);
-    showToast(`Preset "${name}" geladen`, 'success');
+  const loadPreset = (name: string) => {
+    const p = presets[name];
+    if (!p) return;
+    setSelectedSource(p.source);
+    setKeywords(p.keywords.join('\n'));
+    setCountries(p.countries);
+    setPlatforms(p.platforms);
+    setAdStatus(p.adStatus);
+    showToast(`"${name}" geladen`, 'success');
   };
 
-  const handleDeletePreset = (name: string) => {
-    const newPresets = { ...presets };
-    delete newPresets[name];
-    setPresets(newPresets);
-    localStorage.setItem('presets', JSON.stringify(newPresets));
-    showToast(`Preset "${name}" gelöscht`, 'info');
+  const deletePreset = (name: string) => {
+    const next = { ...presets };
+    delete next[name];
+    setPresets(next);
+    localStorage.setItem('presets', JSON.stringify(next));
   };
 
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('de-DE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  };
-
-  const getStatusBadge = (status: ScrapeRun['status']) => {
-    const statusMap = {
-      draft: { label: 'KONFIGURIERT', color: 'bg-ink-faint/10 border-ink-faint/35 text-ink-faint' },
-      scraping: { label: 'WIRD GESCRAPED', color: 'bg-warn/10 border-warn/35 text-warn' },
-      dataset_ready: { label: 'BEREIT', color: 'bg-good/10 border-good/35 text-good' },
-      in_progress: { label: 'WIRD BEARBEITET', color: 'bg-warn/10 border-warn/35 text-warn' },
-      completed: { label: 'FERTIG', color: 'bg-good/10 border-good/35 text-good' },
-      failed: { label: 'FEHLER', color: 'bg-bad/10 border-bad/35 text-bad' },
-    };
-    return statusMap[status];
-  };
-
-  const handleCreateRun = async () => {
-    if (!keywords.trim()) {
-      showToast('Suchbegriffe sind erforderlich', 'warning');
-      return;
-    }
-
+  const createRun = async () => {
+    if (!keywords.trim()) return showToast('Suchbegriffe erforderlich', 'warning');
     setCreating(true);
-    setError(null);
-
     try {
-      const config = {
-        keywords: keywords.split('\n').filter(k => k.trim()),
+      const run = await api.runs.create(selectedSource, {
+        keywords: keywords.split('\n').filter(Boolean),
         countries,
         platforms,
         ad_status: adStatus,
-        media_type: mediaType,
-      };
-
-      const newRun = await api.runs.create(selectedSource, config);
-      setRuns([newRun, ...runs]);
-      showToast('Run erstellt! Laden...', 'success');
-
-      // Reset form
-      setKeywords('');
-      setCountries(['DE', 'AT']);
-      setPlatforms(['FACEBOOK', 'INSTAGRAM']);
-      setAdStatus('ACTIVE');
-      setMediaType('ALL');
-
-      // Navigate to run details
-      router.push(`/runs/${newRun.id}`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create run';
-      setError(message);
-      showToast(message, 'error');
+      });
+      setRuns([run, ...runs]);
+      showToast('Run erstellt', 'success');
+      router.push(`/runs/${run.id}`);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Fehler', 'error');
     } finally {
       setCreating(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-ink-dim">Loading...</p>
-      </div>
-    );
-  }
+  const fmt = (d: string) =>
+    new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
 
   return (
     <div className="min-h-screen bg-noir">
-      <div className="max-w-6xl mx-auto px-6 py-6">
-        {/* Header */}
-        <div className="border-t border-gold-dim border-b border-line mb-8 py-4">
-          <div className="absolute w-[100px] h-px bg-gold -translate-y-[12px]" />
-          <p className="text-gold font-mono text-xs tracking-widest uppercase mb-1">
-            Lead Pipeline
-          </p>
-          <h1 className="text-3xl font-disp font-light mb-1">
-            Lead <em className="italic text-gold-bright">Pipeline</em>
+      <div className="max-w-7xl mx-auto px-6 py-10">
+
+        {/* Page Header */}
+        <div className="mb-12">
+          <p className="text-gold font-mono text-xs tracking-widest uppercase mb-3">Lead Acquisition System</p>
+          <h1 className="text-4xl font-disp font-light tracking-tight text-ink mb-2">
+            Neuen Run <em className="italic text-gold-bright">starten</em>
           </h1>
-          <p className="text-ink-dim text-xs font-light">
+          <p className="text-ink-faint text-sm font-light">
             Scrape · Filter · Enrich · Export
           </p>
         </div>
 
-        {/* Section 01: New Run */}
-        <section className="mb-10">
-          <div className="flex items-baseline gap-3 mb-4">
-            <span className="text-gold font-mono text-xs tracking-wider">01</span>
-            <h2 className="text-lg font-disp font-normal">Neuer Run</h2>
-            <div className="flex-1 h-px bg-gradient-to-r from-line to-transparent" />
-          </div>
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-8">
+          {/* Left: Form */}
+          <div className="space-y-1">
 
-          <div className="space-y-3">
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="block text-xs font-mono tracking-wider text-ink-faint mb-1">
-                  Datenquelle
-                </label>
-                <select
-                  value={selectedSource}
-                  onChange={(e) => setSelectedSource(e.target.value)}
-                  className="w-full bg-panel-2 border border-line rounded text-ink px-2.5 py-1.5 text-sm"
-                >
-                  {Object.entries(sources).map(([key, src]) => (
-                    <option key={key} value={key}>
-                      {src.name}
-                    </option>
-                  ))}
-                </select>
+            {/* Section: Source */}
+            <div className="border border-line rounded-lg overflow-hidden">
+              <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
+                <span className="text-gold font-mono text-xs tracking-widest">01</span>
+                <span className="text-xs font-mono tracking-wider text-ink uppercase">Datenquelle</span>
               </div>
-              <div className="flex-1" />
+              <div className="p-5 bg-panel-2 space-y-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {sources.map(s => (
+                    <button
+                      key={s.key}
+                      type="button"
+                      onClick={() => setSelectedSource(s.key)}
+                      className={`px-3 py-2.5 rounded border text-xs font-mono tracking-wide transition-all text-left ${
+                        selectedSource === s.key
+                          ? 'border-gold bg-gold/10 text-gold'
+                          : 'border-line bg-panel-3 text-ink-faint hover:border-line-soft hover:text-ink'
+                      }`}
+                    >
+                      {s.label || s.key}
+                    </button>
+                  ))}
+                  {sources.length === 0 && (
+                    <div className="col-span-3 text-ink-faint text-xs font-mono py-2">Backend nicht verbunden</div>
+                  )}
+                </div>
+              </div>
             </div>
 
-            {/* Configuration Panel */}
-            <div className="bg-panel-2 border border-line-soft rounded p-3 mt-3">
-              <h3 className="font-mono text-xs tracking-wider text-ink mb-3 font-medium">
-                Suchparameter
-              </h3>
-              <div className="space-y-3">
+            {/* Section: Keywords */}
+            <div className="border border-line rounded-lg overflow-hidden">
+              <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
+                <span className="text-gold font-mono text-xs tracking-widest">02</span>
+                <span className="text-xs font-mono tracking-wider text-ink uppercase">Suchbegriffe</span>
+                <span className="ml-auto text-ink-faint text-xs font-mono">je Zeile ein Begriff</span>
+              </div>
+              <div className="p-5 bg-panel-2">
+                <textarea
+                  value={keywords}
+                  onChange={e => setKeywords(e.target.value)}
+                  placeholder={"High Ticket Coach\nManifestation\nOnline Business\nPersonal Branding"}
+                  rows={5}
+                  className="w-full bg-panel-3 border border-line rounded text-ink text-sm font-mono px-3 py-2.5 resize-none focus:outline-none focus:border-gold-dim transition-colors placeholder:text-ink-faint/50"
+                />
+              </div>
+            </div>
+
+            {/* Section: Parameters */}
+            <div className="border border-line rounded-lg overflow-hidden">
+              <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
+                <span className="text-gold font-mono text-xs tracking-widest">03</span>
+                <span className="text-xs font-mono tracking-wider text-ink uppercase">Parameter</span>
+              </div>
+              <div className="p-5 bg-panel-2 space-y-5">
+
                 <div>
-                  <label className="block text-xs font-mono tracking-wider text-ink-faint mb-1">
-                    Suchbegriffe
-                  </label>
-                  <textarea
-                    value={keywords}
-                    onChange={(e) => setKeywords(e.target.value)}
-                    placeholder="z.B. High Ticket Coach&#10;Manifestation&#10;Online Business"
-                    className="w-full bg-panel-3 border border-line rounded text-ink px-2.5 py-1.5 text-sm resize-none"
-                    rows={2}
-                  />
+                  <label className="block text-xs font-mono tracking-wider text-ink-faint mb-2 uppercase">Länder</label>
+                  <Toggle options={COUNTRY_OPTIONS} value={countries} onChange={setCountries} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-mono tracking-wider text-ink-faint mb-1">
-                      Länder
-                    </label>
-                    <select
-                      multiple
-                      value={countries}
-                      onChange={(e) => setCountries(Array.from(e.target.selectedOptions, option => option.value))}
-                      className="w-full bg-panel-3 border border-line rounded text-ink px-2.5 py-1.5 text-sm"
-                    >
-                      <option>AT</option>
-                      <option>DE</option>
-                      <option>CH</option>
-                      <option>US</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-mono tracking-wider text-ink-faint mb-1">
-                      Status
-                    </label>
-                    <select
-                      value={adStatus}
-                      onChange={(e) => setAdStatus(e.target.value)}
-                      className="w-full bg-panel-3 border border-line rounded text-ink px-2.5 py-1.5 text-sm"
-                    >
-                      <option>ACTIVE</option>
-                      <option>ALL</option>
-                      <option>INACTIVE</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-xs font-mono tracking-wider text-ink-faint mb-2 uppercase">Plattformen</label>
+                  <Toggle options={PLATFORM_OPTIONS} value={platforms} onChange={setPlatforms} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-mono tracking-wider text-ink-faint mb-1">
-                      Plattformen
-                    </label>
-                    <select
-                      multiple
-                      value={platforms}
-                      onChange={(e) => setPlatforms(Array.from(e.target.selectedOptions, option => option.value))}
-                      className="w-full bg-panel-3 border border-line rounded text-ink px-2.5 py-1.5 text-sm"
-                    >
-                      <option>FACEBOOK</option>
-                      <option>INSTAGRAM</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-mono tracking-wider text-ink-faint mb-1">
-                      Medientyp
-                    </label>
-                    <select
-                      value={mediaType}
-                      onChange={(e) => setMediaType(e.target.value)}
-                      className="w-full bg-panel-3 border border-line rounded text-ink px-2.5 py-1.5 text-sm"
-                    >
-                      <option>ALL</option>
-                      <option>IMAGE</option>
-                      <option>VIDEO</option>
-                    </select>
+                <div>
+                  <label className="block text-xs font-mono tracking-wider text-ink-faint mb-2 uppercase">Ad-Status</label>
+                  <div className="flex gap-1.5">
+                    {['ACTIVE', 'ALL', 'INACTIVE'].map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setAdStatus(s)}
+                        className={`px-2.5 py-1 text-xs font-mono tracking-wide rounded border transition-all ${
+                          adStatus === s
+                            ? 'bg-gold text-noir border-gold font-semibold'
+                            : 'bg-transparent text-ink-faint border-line hover:border-gold-dim hover:text-ink'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
                   </div>
                 </div>
+              </div>
+            </div>
 
-                <div className="grid grid-cols-3 gap-3 pt-2">
-                  {Object.keys(presets).length > 0 && (
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value) handleLoadPreset(e.target.value);
-                      }}
-                      className="h-8 bg-panel-3 border border-line rounded text-ink px-2 py-1 text-xs"
-                    >
-                      <option value="">Preset laden...</option>
-                      {Object.keys(presets).map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <div className="flex gap-2 col-span={Object.keys(presets).length > 0 ? 1 : 2}">
-                    <input
-                      type="text"
-                      value={presetName}
-                      onChange={(e) => setPresetName(e.target.value)}
-                      placeholder="Preset-Name"
-                      className="flex-1 h-8 bg-panel-3 border border-line rounded text-ink px-2 py-1 text-xs"
-                    />
+            {/* Presets Bar */}
+            <div className="border border-line rounded-lg overflow-hidden">
+              <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
+                <span className="text-gold font-mono text-xs tracking-widest">04</span>
+                <span className="text-xs font-mono tracking-wider text-ink uppercase">Presets</span>
+              </div>
+              <div className="p-4 bg-panel-2 flex flex-wrap gap-2 items-center">
+                {Object.keys(presets).map(name => (
+                  <div key={name} className="flex items-center gap-1 bg-panel-3 border border-line rounded px-2 py-1">
                     <button
                       type="button"
-                      onClick={handleSavePreset}
-                      className="h-8 bg-panel-3 border border-line rounded text-ink hover:border-gold-dim transition-colors text-xs font-medium disabled:opacity-50 whitespace-nowrap px-2"
+                      onClick={() => loadPreset(name)}
+                      className="text-xs font-mono text-ink-dim hover:text-gold transition-colors"
                     >
-                      💾
+                      {name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deletePreset(name)}
+                      className="text-ink-faint hover:text-bad transition-colors text-xs ml-1"
+                    >
+                      ×
                     </button>
                   </div>
+                ))}
+                <div className="flex items-center gap-2 ml-auto">
+                  <input
+                    type="text"
+                    value={presetName}
+                    onChange={e => setPresetName(e.target.value)}
+                    placeholder="Name..."
+                    className="h-7 bg-panel-3 border border-line rounded text-ink text-xs font-mono px-2 focus:outline-none focus:border-gold-dim w-32"
+                  />
                   <button
                     type="button"
-                    onClick={handleCreateRun}
-                    className="h-8 bg-gradient-to-r from-gold to-gold-dim text-noir rounded hover:from-gold-bright hover:to-gold transition-colors text-xs font-medium font-semibold disabled:opacity-50"
-                    disabled={creating}
+                    onClick={savePreset}
+                    className="h-7 px-3 text-xs font-mono border border-line rounded text-ink-faint hover:text-gold hover:border-gold-dim transition-colors"
                   >
-                    {creating ? 'Wird gestartet...' : 'Run starten'}
+                    Speichern
                   </button>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
 
-        {/* Section 02: Recent Runs */}
-        <section>
-          <div className="flex items-baseline gap-3 mb-4">
-            <span className="text-gold font-mono text-xs tracking-wider">02</span>
-            <h2 className="text-lg font-disp font-normal">Letzte Runs</h2>
-            <div className="flex-1 h-px bg-gradient-to-r from-line to-transparent" />
+            {/* CTA */}
             <button
-              onClick={() => router.push('/runs')}
-              className="text-xs text-gold-bright hover:text-gold transition-colors font-mono tracking-wider"
+              type="button"
+              onClick={createRun}
+              disabled={creating}
+              className="w-full py-3.5 rounded-lg bg-gradient-to-r from-gold to-gold-dim hover:from-gold-bright hover:to-gold text-noir font-semibold text-sm tracking-wide transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Alle →
+              {creating ? 'Wird gestartet…' : '→ Run starten'}
             </button>
           </div>
 
-          {error && (
-            <div className="bg-bad/10 border border-bad/35 rounded p-2 mb-3 text-bad text-xs">
-              {error}
-            </div>
-          )}
+          {/* Right: Recent Runs */}
+          <div>
+            <div className="border border-line rounded-lg overflow-hidden sticky top-20">
+              <div className="px-5 py-3 border-b border-line bg-panel flex items-center justify-between">
+                <span className="text-xs font-mono tracking-wider text-ink uppercase">Letzte Runs</span>
+                <button
+                  onClick={() => router.push('/runs')}
+                  className="text-gold-bright font-mono text-xs hover:text-gold transition-colors tracking-wider"
+                >
+                  Alle →
+                </button>
+              </div>
 
-          <div className="border border-line-soft rounded overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-panel border-b border-line">
-                  <th className="text-xs font-mono tracking-wider text-ink-faint text-left px-3 py-2 font-medium">
-                    Status
-                  </th>
-                  <th className="text-xs font-mono tracking-wider text-ink-faint text-left px-3 py-2 font-medium">
-                    Quelle
-                  </th>
-                  <th className="text-xs font-mono tracking-wider text-ink-faint text-left px-3 py-2 font-medium">
-                    Datum
-                  </th>
-                  <th className="text-xs font-mono tracking-wider text-ink-faint text-left px-3 py-2 font-medium">
-                    Keep
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.slice(0, 3).map((run) => {
-                  const statusInfo = getStatusBadge(run.status);
-                  const classificationResult = Object.values(run.classification_results)[0];
-                  const keepCount = classificationResult?.keep || 0;
-                  return (
-                    <tr
-                      key={run.id}
-                      onClick={() => router.push(`/runs/${run.id}`)}
-                      className="border-b border-line-soft hover:bg-panel-3/50 transition-colors cursor-pointer"
-                    >
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-mono tracking-wider border ${statusInfo.color}`}>
-                            {statusInfo.label}
-                          </span>
-                          {run.status !== 'completed' && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                router.push(`/runs/${run.id}/edit`);
-                              }}
-                              className="text-ink-faint hover:text-gold-bright transition-colors text-xs"
-                              title="Run bearbeiten"
-                            >
-                              ✎
-                            </button>
-                          )}
+              {loading ? (
+                <div className="p-6 text-center text-ink-faint text-xs font-mono">Lädt…</div>
+              ) : runs.length === 0 ? (
+                <div className="p-8 text-center">
+                  <p className="text-ink-faint text-xs font-mono mb-1">Noch keine Runs</p>
+                  <p className="text-ink-faint/50 text-xs">Starte deinen ersten Run links.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-line-soft">
+                  {runs.slice(0, 8).map(run => {
+                    const s = STATUS_MAP[run.status];
+                    const keep = Object.values(run.classification_results)[0]?.keep || 0;
+                    return (
+                      <button
+                        key={run.id}
+                        type="button"
+                        onClick={() => router.push(`/runs/${run.id}`)}
+                        className="w-full px-5 py-3 hover:bg-panel-3/40 transition-colors text-left flex items-center gap-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-mono text-ink-dim truncate">{run.source}</p>
+                          <p className="text-xs text-ink-faint font-mono mt-0.5">{fmt(run.created_at)}</p>
                         </div>
-                      </td>
-                      <td className="px-3 py-2 text-xs text-ink-dim">{run.source}</td>
-                      <td className="px-3 py-2 text-xs text-ink-dim font-mono">{formatDate(run.created_at)}</td>
-                      <td className="px-3 py-2 text-xs font-mono text-good font-semibold">{keepCount}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {keep > 0 && (
+                            <span className="text-xs font-mono text-good font-semibold">{keep}</span>
+                          )}
+                          <span className={`px-1.5 py-0.5 rounded border text-xs font-mono tracking-wide ${s.cls}`}>
+                            {s.label}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        </section>
+        </div>
       </div>
     </div>
   );

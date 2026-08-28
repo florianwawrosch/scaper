@@ -4,173 +4,181 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type ScrapeRun } from '@/lib/api';
 
+const STATUS_MAP: Record<ScrapeRun['status'], { label: string; cls: string }> = {
+  draft:         { label: 'Draft',    cls: 'text-ink-faint border-ink-faint/30 bg-ink-faint/5' },
+  scraping:      { label: 'Scraping', cls: 'text-warn border-warn/40 bg-warn/8' },
+  dataset_ready: { label: 'Bereit',   cls: 'text-good border-good/40 bg-good/8' },
+  in_progress:   { label: 'Aktiv',    cls: 'text-warn border-warn/40 bg-warn/8' },
+  completed:     { label: 'Fertig',   cls: 'text-good border-good/40 bg-good/8' },
+  failed:        { label: 'Fehler',   cls: 'text-bad border-bad/40 bg-bad/8' },
+};
+
+const FILTERS = ['all', 'draft', 'dataset_ready', 'completed', 'failed'] as const;
+type Filter = typeof FILTERS[number];
+
 export default function RunsList() {
   const router = useRouter();
   const [runs, setRuns] = useState<ScrapeRun[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<ScrapeRun['status'] | 'all'>('all');
+  const [filter, setFilter] = useState<Filter>('all');
   const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const PAGE_SIZE = 25;
 
   useEffect(() => {
-    const loadRuns = async () => {
-      try {
-        const data = await api.runs.list();
-        setRuns(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load runs');
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadRuns();
+    api.runs.list()
+      .then(setRuns)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  const getStatusBadge = (status: ScrapeRun['status']) => {
-    const statusMap = {
-      draft: { label: 'KONFIGURIERT', color: 'bg-ink-faint/10 border-ink-faint/35 text-ink-faint' },
-      scraping: { label: 'WIRD GESCRAPED', color: 'bg-warn/10 border-warn/35 text-warn' },
-      dataset_ready: { label: 'BEREIT', color: 'bg-good/10 border-good/35 text-good' },
-      in_progress: { label: 'WIRD BEARBEITET', color: 'bg-warn/10 border-warn/35 text-warn' },
-      completed: { label: 'FERTIG', color: 'bg-good/10 border-good/35 text-good' },
-      failed: { label: 'FEHLER', color: 'bg-bad/10 border-bad/35 text-bad' },
-    };
-    return statusMap[status];
-  };
-
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('de-DE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  };
-
   const filtered = filter === 'all' ? runs : runs.filter(r => r.status === filter);
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const maxPage = Math.ceil(filtered.length / pageSize);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-noir">
-        <p className="text-ink-dim">Loading...</p>
-      </div>
-    );
-  }
+  const fmt = (d: string) =>
+    new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+
+  const FILTER_LABELS: Record<Filter, string> = {
+    all: 'Alle',
+    draft: 'Draft',
+    dataset_ready: 'Bereit',
+    completed: 'Fertig',
+    failed: 'Fehler',
+  };
 
   return (
     <div className="min-h-screen bg-noir">
-      <div className="max-w-6xl mx-auto px-6 py-6">
-        <button
-          onClick={() => router.back()}
-          className="text-ink-dim hover:text-gold-bright transition-colors mb-6 text-xs font-mono tracking-wider"
-        >
-          ← Zurück
-        </button>
+      <div className="max-w-7xl mx-auto px-6 py-10">
 
-        <div className="border-t border-gold-dim border-b border-line mb-8 py-4">
-          <div className="absolute w-[100px] h-px bg-gold -translate-y-[12px]" />
-          <h1 className="text-3xl font-disp font-light mb-1">
+        {/* Header */}
+        <div className="mb-10">
+          <button
+            onClick={() => router.push('/')}
+            className="text-ink-faint hover:text-gold-bright font-mono text-xs tracking-wider transition-colors mb-6 block"
+          >
+            ← Dashboard
+          </button>
+          <p className="text-gold font-mono text-xs tracking-widest uppercase mb-2">Pipeline History</p>
+          <h1 className="text-4xl font-disp font-light tracking-tight">
             Alle <em className="italic text-gold-bright">Runs</em>
           </h1>
-          <p className="text-ink-dim text-xs font-light">{filtered.length} Einträge</p>
         </div>
 
-        {error && (
-          <div className="bg-bad/10 border border-bad/35 rounded p-3 mb-6 text-bad text-xs">
-            {error}
-          </div>
-        )}
+        {/* Summary Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+          {[
+            { label: 'Total', value: runs.length, cls: 'text-ink' },
+            { label: 'Fertig', value: runs.filter(r => r.status === 'completed').length, cls: 'text-good' },
+            { label: 'Aktiv', value: runs.filter(r => r.status === 'in_progress' || r.status === 'scraping').length, cls: 'text-warn' },
+            { label: 'Fehler', value: runs.filter(r => r.status === 'failed').length, cls: 'text-bad' },
+          ].map(({ label, value, cls }) => (
+            <div key={label} className="bg-panel-2 border border-line rounded-lg px-4 py-3">
+              <p className="text-xs font-mono tracking-wider text-ink-faint mb-1 uppercase">{label}</p>
+              <p className={`text-2xl font-disp font-light ${cls}`}>{value}</p>
+            </div>
+          ))}
+        </div>
 
-        {/* Filter */}
-        <div className="mb-6 flex gap-2 flex-wrap">
-          {(['all', 'draft', 'scraping', 'completed', 'failed'] as const).map((status) => (
+        {/* Filters */}
+        <div className="flex gap-2 mb-5 flex-wrap">
+          {FILTERS.map(f => (
             <button
-              key={status}
-              onClick={() => {
-                setFilter(status);
-                setPage(1);
-              }}
-              className={`px-3 py-1.5 text-xs font-mono tracking-wider rounded transition-colors ${
-                filter === status
-                  ? 'bg-gold text-noir font-semibold'
-                  : 'bg-panel-3 border border-line text-ink-faint hover:text-ink'
+              key={f}
+              onClick={() => { setFilter(f); setPage(1); }}
+              className={`px-3 py-1.5 text-xs font-mono tracking-wider rounded border transition-all ${
+                filter === f
+                  ? 'bg-gold text-noir border-gold font-semibold'
+                  : 'bg-panel-3 border-line text-ink-faint hover:text-ink hover:border-line-soft'
               }`}
             >
-              {status === 'all' ? 'ALLE' : status.toUpperCase()}
+              {FILTER_LABELS[f]}
+              {f !== 'all' && (
+                <span className="ml-1.5 opacity-60">
+                  {runs.filter(r => r.status === f).length}
+                </span>
+              )}
             </button>
           ))}
         </div>
 
         {/* Table */}
-        <div className="border border-line-soft rounded overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-panel border-b border-line">
-                <th className="text-xs font-mono tracking-wider text-ink-faint text-left px-3 py-2 font-medium">
-                  Status
-                </th>
-                <th className="text-xs font-mono tracking-wider text-ink-faint text-left px-3 py-2 font-medium">
-                  Quelle
-                </th>
-                <th className="text-xs font-mono tracking-wider text-ink-faint text-left px-3 py-2 font-medium">
-                  Datum
-                </th>
-                <th className="text-xs font-mono tracking-wider text-ink-faint text-left px-3 py-2 font-medium">
-                  Keep
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginated.map((run) => {
-                const statusInfo = getStatusBadge(run.status);
-                const classificationResult = Object.values(run.classification_results)[0];
-                const keepCount = classificationResult?.keep || 0;
-                return (
-                  <tr
-                    key={run.id}
-                    onClick={() => router.push(`/runs/${run.id}`)}
-                    className="border-b border-line-soft hover:bg-panel-3/50 transition-colors cursor-pointer"
-                  >
-                    <td className="px-3 py-2">
-                      <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-mono tracking-wider border ${statusInfo.color}`}>
-                        {statusInfo.label}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-ink-dim">{run.source}</td>
-                    <td className="px-3 py-2 text-xs text-ink-dim font-mono">{formatDate(run.created_at)}</td>
-                    <td className="px-3 py-2 text-xs font-mono text-good font-semibold">{keepCount}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {loading ? (
+          <div className="border border-line rounded-lg bg-panel-2 p-12 text-center">
+            <p className="text-ink-faint font-mono text-xs tracking-wider">Lädt…</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="border border-line rounded-lg bg-panel-2 p-12 text-center">
+            <p className="text-ink-faint font-mono text-xs">Keine Runs gefunden</p>
+          </div>
+        ) : (
+          <div className="border border-line rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-panel border-b border-line">
+                  <th className="text-left px-4 py-2.5 text-xs font-mono tracking-wider text-ink-faint uppercase">Status</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-mono tracking-wider text-ink-faint uppercase">Quelle</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-mono tracking-wider text-ink-faint uppercase hidden sm:table-cell">Erstellt</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-mono tracking-wider text-ink-faint uppercase">Keep</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-mono tracking-wider text-ink-faint uppercase">Reject</th>
+                  <th className="px-4 py-2.5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line-soft">
+                {paginated.map(run => {
+                  const s = STATUS_MAP[run.status];
+                  const cr = Object.values(run.classification_results)[0];
+                  return (
+                    <tr
+                      key={run.id}
+                      onClick={() => router.push(`/runs/${run.id}`)}
+                      className="hover:bg-panel-3/50 transition-colors cursor-pointer group"
+                    >
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-mono tracking-wide ${s.cls}`}>
+                          {s.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs font-mono text-ink-dim">{run.source}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-ink-faint hidden sm:table-cell">{fmt(run.created_at)}</td>
+                      <td className="px-4 py-3 text-right text-xs font-mono font-semibold text-good">
+                        {cr?.keep ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right text-xs font-mono text-bad">
+                        {cr?.reject ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right text-xs font-mono text-ink-faint group-hover:text-gold-bright transition-colors">
+                        →
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
 
-        {/* Pagination */}
-        {maxPage > 1 && (
-          <div className="flex items-center justify-between mt-4 text-xs text-ink-dim">
-            <span>{filtered.length} Einträge</span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage(Math.max(1, page - 1))}
-                disabled={page === 1}
-                className="px-2 py-1 bg-panel-3 border border-line rounded hover:border-gold-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs"
-              >
-                ← Zurück
-              </button>
-              <span className="px-3 py-1">
-                {page} / {maxPage}
-              </span>
-              <button
-                onClick={() => setPage(Math.min(maxPage, page + 1))}
-                disabled={page === maxPage}
-                className="px-2 py-1 bg-panel-3 border border-line rounded hover:border-gold-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs"
-              >
-                Weiter →
-              </button>
-            </div>
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="px-4 py-3 border-t border-line bg-panel flex items-center justify-between">
+                <span className="text-xs font-mono text-ink-faint">
+                  {filtered.length} Einträge · Seite {page} / {totalPages}
+                </span>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="px-2.5 py-1 text-xs font-mono border border-line rounded text-ink-faint hover:border-gold-dim hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    ← Zurück
+                  </button>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="px-2.5 py-1 text-xs font-mono border border-line rounded text-ink-faint hover:border-gold-dim hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Weiter →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

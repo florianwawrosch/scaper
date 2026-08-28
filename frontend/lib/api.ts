@@ -8,6 +8,7 @@ export interface ScrapeRun {
   rating: number;
   feedback: string;
   classification_results: Record<string, { keep: number; reject: number; unklar: number }>;
+  scraper_config?: Record<string, unknown>;
 }
 
 export interface Source {

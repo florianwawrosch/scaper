@@ -2,152 +2,139 @@
 
 import { useState } from 'react';
 
-interface DataRow {
-  id: string;
-  [key: string]: any;
-}
-
 interface DataTableProps {
-  data: DataRow[];
+  data: Record<string, any>[];
   columns: string[];
   onMarkKeep?: (id: string) => void;
   onMarkReject?: (id: string) => void;
 }
 
 export function DataTable({ data, columns, onMarkKeep, onMarkReject }: DataTableProps) {
-  const [sortBy, setSortBy] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortAsc, setSortAsc] = useState(true);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const PAGE = 15;
 
   const filtered = data.filter(row =>
-    columns.some(col =>
-      String(row[col] || '').toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    columns.some(c => String(row[c] ?? '').toLowerCase().includes(search.toLowerCase()))
   );
 
-  const sorted = sortBy
+  const sorted = sortCol
     ? [...filtered].sort((a, b) => {
-        const aVal = a[sortBy];
-        const bVal = b[sortBy];
-        const cmp = String(aVal).localeCompare(String(bVal));
-        return sortOrder === 'asc' ? cmp : -cmp;
+        const cmp = String(a[sortCol] ?? '').localeCompare(String(b[sortCol] ?? ''));
+        return sortAsc ? cmp : -cmp;
       })
     : filtered;
 
-  const paginated = sorted.slice((page - 1) * pageSize, page * pageSize);
-  const maxPage = Math.ceil(sorted.length / pageSize);
+  const paginated = sorted.slice((page - 1) * PAGE, page * PAGE);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE));
 
-  const handleSort = (col: string) => {
-    if (sortBy === col) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(col);
-      setSortOrder('asc');
-    }
+  const sort = (col: string) => {
+    if (sortCol === col) setSortAsc(a => !a);
+    else { setSortCol(col); setSortAsc(true); }
   };
 
   return (
-    <div className="space-y-3">
-      {/* Search */}
-      <input
-        type="text"
-        placeholder="Suchen..."
-        value={searchTerm}
-        onChange={(e) => {
-          setSearchTerm(e.target.value);
-          setPage(1);
-        }}
-        className="w-full bg-panel-3 border border-line rounded text-ink px-2.5 py-1.5 text-xs"
-      />
+    <div className="border border-line rounded-lg overflow-hidden">
+      {/* Search bar */}
+      <div className="px-4 py-2.5 border-b border-line bg-panel flex items-center gap-3">
+        <span className="text-xs font-mono tracking-wider text-ink-faint uppercase">Dataset</span>
+        <input
+          type="text"
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); }}
+          placeholder="Suchen…"
+          className="flex-1 max-w-xs bg-panel-3 border border-line rounded text-ink text-xs font-mono px-2.5 py-1 focus:outline-none focus:border-gold-dim transition-colors placeholder:text-ink-faint/40"
+        />
+        <span className="text-xs font-mono text-ink-faint ml-auto">{filtered.length} Zeilen</span>
+      </div>
 
       {/* Table */}
-      <div className="border border-line-soft rounded overflow-x-auto">
+      <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="bg-panel border-b border-line">
-              <th className="px-2 py-2 text-left font-mono tracking-wider text-ink-faint font-medium w-12">
-                #
-              </th>
-              {columns.map((col) => (
+            <tr className="border-b border-line bg-panel-2">
+              <th className="px-3 py-2 text-left font-mono tracking-wider text-ink-faint w-10">#</th>
+              {columns.map(col => (
                 <th
                   key={col}
-                  onClick={() => handleSort(col)}
-                  className="px-2 py-2 text-left font-mono tracking-wider text-ink-faint font-medium cursor-pointer hover:text-ink transition-colors"
+                  onClick={() => sort(col)}
+                  className="px-3 py-2 text-left font-mono tracking-wider text-ink-faint cursor-pointer hover:text-ink transition-colors select-none whitespace-nowrap"
                 >
                   {col}
-                  {sortBy === col && (
-                    <span className="ml-1 text-gold-bright">
-                      {sortOrder === 'asc' ? '↑' : '↓'}
-                    </span>
+                  {sortCol === col && (
+                    <span className="ml-1 text-gold">{sortAsc ? '↑' : '↓'}</span>
                   )}
                 </th>
               ))}
-              <th className="px-2 py-2 text-left font-mono tracking-wider text-ink-faint font-medium w-20">
-                Aktion
-              </th>
+              {(onMarkKeep || onMarkReject) && (
+                <th className="px-3 py-2 w-16" />
+              )}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-line-soft">
             {paginated.map((row, idx) => (
-              <tr
-                key={row.id}
-                className="border-b border-line-soft hover:bg-panel-3/30 transition-colors"
-              >
-                <td className="px-2 py-1.5 text-ink-dim font-mono">
-                  {(page - 1) * pageSize + idx + 1}
+              <tr key={row.id || idx} className="hover:bg-panel-3/30 transition-colors">
+                <td className="px-3 py-2 font-mono text-ink-faint/60 tabular-nums">
+                  {(page - 1) * PAGE + idx + 1}
                 </td>
-                {columns.map((col) => (
-                  <td key={`${row.id}-${col}`} className="px-2 py-1.5 text-ink-dim truncate max-w-xs">
-                    {String(row[col] || '—')}
+                {columns.map(col => (
+                  <td key={col} className="px-3 py-2 text-ink-dim font-mono truncate max-w-[200px]">
+                    {String(row[col] ?? '—')}
                   </td>
                 ))}
-                <td className="px-2 py-1.5">
-                  <div className="flex gap-1">
-                    {onMarkKeep && (
-                      <button
-                        onClick={() => onMarkKeep(row.id)}
-                        className="px-1.5 py-0.5 text-xs bg-good/10 border border-good/35 text-good rounded hover:bg-good/20 transition-colors"
-                      >
-                        ✓
-                      </button>
-                    )}
-                    {onMarkReject && (
-                      <button
-                        onClick={() => onMarkReject(row.id)}
-                        className="px-1.5 py-0.5 text-xs bg-bad/10 border border-bad/35 text-bad rounded hover:bg-bad/20 transition-colors"
-                      >
-                        ✗
-                      </button>
-                    )}
-                  </div>
-                </td>
+                {(onMarkKeep || onMarkReject) && (
+                  <td className="px-3 py-2">
+                    <div className="flex gap-1">
+                      {onMarkKeep && (
+                        <button
+                          onClick={() => onMarkKeep(row.id || idx)}
+                          className="w-6 h-5 text-xs bg-good/10 border border-good/30 text-good rounded hover:bg-good/20 transition-colors"
+                        >
+                          ✓
+                        </button>
+                      )}
+                      {onMarkReject && (
+                        <button
+                          onClick={() => onMarkReject(row.id || idx)}
+                          className="w-6 h-5 text-xs bg-bad/10 border border-bad/30 text-bad rounded hover:bg-bad/20 transition-colors"
+                        >
+                          ✗
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
+            {paginated.length === 0 && (
+              <tr>
+                <td colSpan={columns.length + 2} className="px-3 py-8 text-center text-ink-faint font-mono">
+                  Keine Daten
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
       {/* Pagination */}
-      {maxPage > 1 && (
-        <div className="flex items-center justify-between text-xs text-ink-dim">
-          <span>{filtered.length} Einträge</span>
-          <div className="flex gap-1">
+      {totalPages > 1 && (
+        <div className="px-4 py-2.5 border-t border-line bg-panel flex items-center justify-between">
+          <span className="text-xs font-mono text-ink-faint">{page} / {totalPages}</span>
+          <div className="flex gap-1.5">
             <button
-              onClick={() => setPage(Math.max(1, page - 1))}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-2 py-1 bg-panel-3 border border-line rounded hover:border-gold-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-2 py-1 text-xs font-mono border border-line rounded text-ink-faint hover:border-gold-dim hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               ←
             </button>
-            <span className="px-2 py-1">
-              {page} / {maxPage}
-            </span>
             <button
-              onClick={() => setPage(Math.min(maxPage, page + 1))}
-              disabled={page === maxPage}
-              className="px-2 py-1 bg-panel-3 border border-line rounded hover:border-gold-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-2 py-1 text-xs font-mono border border-line rounded text-ink-faint hover:border-gold-dim hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               →
             </button>

@@ -7,86 +7,75 @@ import { useToast } from './Toast';
 interface ExportPanelProps {
   runId: string;
   leads: ExportRow[];
-  isLoading?: boolean;
 }
 
-export function ExportPanel({ runId, leads, isLoading = false }: ExportPanelProps) {
+export function ExportPanel({ runId, leads }: ExportPanelProps) {
   const { showToast } = useToast();
   const [exporting, setExporting] = useState(false);
 
-  const handleExport = async (format: 'csv' | 'xlsx') => {
-    if (leads.length === 0) {
-      showToast('Keine Leads zum Exportieren', 'warning');
-      return;
-    }
-
+  const doExport = async (format: 'csv' | 'xlsx') => {
+    if (leads.length === 0) return showToast('Keine Leads zum Exportieren', 'warning');
     setExporting(true);
     try {
       const filename = getFilenameWithTimestamp(`leads_run_${runId}`);
-
-      if (format === 'csv') {
-        exportToCSV(leads, `${filename}.csv`);
-      } else {
-        exportToXLSX(leads, `${filename}.xlsx`);
-      }
-
+      if (format === 'csv') exportToCSV(leads, `${filename}.csv`);
+      else exportToXLSX(leads, `${filename}.xlsx`);
       showToast(`${leads.length} Leads als ${format.toUpperCase()} exportiert`, 'success');
-    } catch (error) {
+    } catch {
       showToast('Export fehlgeschlagen', 'error');
-      console.error('Export error:', error);
     } finally {
       setExporting(false);
     }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="bg-panel-2 border border-line-soft rounded p-4">
-        <h3 className="font-mono text-xs tracking-wider text-ink-faint mb-4 font-medium">
-          Leads Exportieren
-        </h3>
-
-        <div className="space-y-3">
-          <div className="bg-panel-3 rounded p-3">
-            <p className="text-xs text-ink-dim mb-2">
-              <span className="font-semibold text-ink">{leads.length}</span> Leads verfügbar
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => handleExport('csv')}
-                disabled={exporting || leads.length === 0}
-                className="h-8 bg-panel-3 border border-line rounded text-ink hover:border-gold-dim transition-colors text-xs font-medium disabled:opacity-50 whitespace-nowrap"
-              >
-                {exporting ? '⟳' : '📥'} CSV
-              </button>
-              <button
-                onClick={() => handleExport('xlsx')}
-                disabled={exporting || leads.length === 0}
-                className="h-8 bg-panel-3 border border-line rounded text-ink hover:border-gold-dim transition-colors text-xs font-medium disabled:opacity-50 whitespace-nowrap"
-              >
-                {exporting ? '⟳' : '📥'} XLSX
-              </button>
-            </div>
-          </div>
-
-          <div className="text-xs text-ink-dim space-y-1">
-            <p className="font-semibold text-ink">Spalten im Export:</p>
-            <ul className="list-disc list-inside space-y-0.5">
-              <li>ID, Name, E-Mail, Telefon</li>
-              <li>Unternehmen, Budget</li>
-              <li>Status (KEEP/REJECT/UNCLEAR)</li>
-              <li>Klassifizierungsbegründung</li>
-              <li>Erstellt am</li>
-            </ul>
-          </div>
-        </div>
+    <div className="border border-line rounded-lg overflow-hidden">
+      <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
+        <span className="text-xs font-mono tracking-wider text-ink uppercase">Export</span>
+        <span className="ml-auto text-xs font-mono text-ink-faint">
+          <span className="text-good font-semibold">{leads.length}</span> Leads bereit
+        </span>
       </div>
 
-      {leads.length === 0 && !isLoading && (
-        <div className="bg-warn/10 border border-warn/35 rounded p-3 text-xs text-warn">
-          Keine Leads verfügbar. Führe zuerst eine Klassifizierung durch.
-        </div>
-      )}
+      <div className="p-5 bg-panel-2 space-y-4">
+        {leads.length === 0 ? (
+          <div className="border border-warn/30 bg-warn/5 rounded p-4 text-center">
+            <p className="text-xs font-mono text-warn">Keine Leads verfügbar.</p>
+            <p className="text-xs font-mono text-ink-faint mt-1">Führe zuerst Klassifizierung und Enrichment durch.</p>
+          </div>
+        ) : (
+          <>
+            <div className="bg-panel-3 border border-line rounded p-4">
+              <p className="text-xs font-mono text-ink-faint uppercase tracking-wider mb-3">Exportinhalt</p>
+              <ul className="text-xs font-mono text-ink-dim space-y-1">
+                {['Name', 'E-Mail', 'Telefon', 'Unternehmen', 'Status', 'Begründung', 'Erstellt'].map(f => (
+                  <li key={f} className="flex items-center gap-2">
+                    <span className="text-gold/60">→</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => doExport('csv')}
+                disabled={exporting}
+                className="py-3 rounded border border-line bg-panel-3 hover:border-gold-dim hover:bg-panel-2 text-ink text-xs font-mono tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ↓ CSV
+              </button>
+              <button
+                onClick={() => doExport('xlsx')}
+                disabled={exporting}
+                className="py-3 rounded border border-gold-dim bg-gold/5 hover:bg-gold/10 text-gold text-xs font-mono tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ↓ XLSX
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

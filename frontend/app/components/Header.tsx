@@ -2,63 +2,54 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 
+const NAV = [
+  { href: '/', label: 'Dashboard' },
+  { href: '/runs', label: 'Runs' },
+  { href: '/settings', label: 'Einstellungen' },
+];
+
 export function Header() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const isActive = (path: string) => pathname === path;
-
   return (
-    <header className="bg-panel border-b border-line">
-      <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-8">
-          {/* Logo */}
+    <header className="bg-panel border-b border-line sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-6 h-12 flex items-center justify-between">
+        <div className="flex items-center gap-10">
           <button
             onClick={() => router.push('/')}
-            className="flex items-baseline gap-2 hover:opacity-80 transition-opacity"
+            className="flex items-baseline gap-2 select-none"
           >
-            <span className="text-gold font-disp text-xl font-light">
-              Lead <em className="italic text-gold-bright">Pipeline</em>
+            <span className="text-gold font-mono text-xs tracking-widest uppercase font-semibold">LP</span>
+            <span className="text-ink font-disp text-base font-light tracking-tight">
+              Lead <em className="text-gold-bright italic">Pipeline</em>
             </span>
           </button>
 
-          {/* Nav */}
           <nav className="hidden sm:flex items-center gap-6">
-            <button
-              onClick={() => router.push('/')}
-              className={`text-xs font-mono tracking-wider transition-colors ${
-                isActive('/') ? 'text-gold' : 'text-ink-faint hover:text-ink'
-              }`}
-            >
-              Home
-            </button>
-            <button
-              onClick={() => router.push('/runs')}
-              className={`text-xs font-mono tracking-wider transition-colors ${
-                pathname.startsWith('/runs') ? 'text-gold' : 'text-ink-faint hover:text-ink'
-              }`}
-            >
-              Runs
-            </button>
-            <button
-              onClick={() => router.push('/settings')}
-              className={`text-xs font-mono tracking-wider transition-colors ${
-                isActive('/settings') ? 'text-gold' : 'text-ink-faint hover:text-ink'
-              }`}
-            >
-              Einstellungen
-            </button>
+            {NAV.map(({ href, label }) => {
+              const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+              return (
+                <button
+                  key={href}
+                  onClick={() => router.push(href)}
+                  className={`relative text-xs font-mono tracking-wider transition-colors pb-0.5 ${
+                    active ? 'text-ink' : 'text-ink-faint hover:text-ink-dim'
+                  }`}
+                >
+                  {label}
+                  {active && (
+                    <span className="absolute -bottom-[13px] left-0 right-0 h-px bg-gold" />
+                  )}
+                </button>
+              );
+            })}
           </nav>
         </div>
 
-        {/* Status */}
-        <div className="flex items-center gap-3">
-          <div className="text-xs text-ink-faint font-mono">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-good" />
-              <span>Connected</span>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 text-xs font-mono text-ink-faint">
+          <span className="w-1.5 h-1.5 rounded-full bg-good inline-block" />
+          <span className="tracking-wider">System OK</span>
         </div>
       </div>
     </header>

@@ -4,164 +4,131 @@ import { useState } from 'react';
 import { getApiKey } from '@/lib/settings';
 import { useToast } from './Toast';
 
-interface EnrichmentPanelProps {
+interface Props {
   runId: string;
   leadsCount: number;
-  onEnrichmentStart?: () => void;
   onEnrichmentComplete?: () => void;
 }
 
-interface EnrichmentStatus {
-  hunter_io: 'pending' | 'running' | 'completed' | 'failed';
-  findymail: 'pending' | 'running' | 'completed' | 'failed';
-  linkedin: 'pending' | 'running' | 'completed' | 'failed';
-}
+type ProviderStatus = 'idle' | 'running' | 'done' | 'error';
 
-export function EnrichmentPanel({
-  runId,
-  leadsCount,
-  onEnrichmentStart,
-  onEnrichmentComplete,
-}: EnrichmentPanelProps) {
+const PROVIDERS = [
+  { id: 'hunter_io', label: 'Hunter.io', desc: 'E-Mail Finder' },
+  { id: 'findymail', label: 'FindyMail', desc: 'E-Mail Verifikation' },
+] as const;
+
+export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete }: Props) {
   const { showToast } = useToast();
-  const [enriching, setEnriching] = useState(false);
-  const [status, setStatus] = useState<EnrichmentStatus>({
-    hunter_io: 'pending',
-    findymail: 'pending',
-    linkedin: 'pending',
-  });
+  const [running, setRunning] = useState(false);
+  const [selected, setSelected] = useState<string>('hunter_io');
+  const [status, setStatus] = useState<Record<string, ProviderStatus>>({});
+  const [result, setResult] = useState<{ enriched: number; total: number } | null>(null);
 
-  const handleStartEnrichment = async () => {
-    const hunterKey = getApiKey('hunter_io');
-    const findymailKey = getApiKey('findymail');
-
-    if (!hunterKey && !findymailKey) {
-      showToast('Keine Enrichment-APIs konfiguriert (Hunter.io oder FindyMail)', 'warning');
+  const start = async () => {
+    const apiKey = getApiKey(selected as any);
+    if (!apiKey) {
+      showToast(`Kein API-Key für ${selected} konfiguriert`, 'warning');
       return;
     }
+    if (leadsCount === 0) return showToast('Keine Leads zum Enrichment', 'warning');
 
-    setEnriching(true);
-    onEnrichmentStart?.();
+    setRunning(true);
+    setStatus(p => ({ ...p, [selected]: 'running' }));
 
     try {
-      setStatus((prev) => ({
-        ...prev,
-        hunter_io: hunterKey ? 'running' : 'pending',
-        findymail: findymailKey ? 'running' : 'pending',
-      }));
-
-      // Call enrichment backend
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/enrich`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/runs/${runId}/enrich`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          runId,
-          providers: {
-            hunterIo: !!hunterKey,
-            findymail: !!findymailKey,
-          },
-          hunterIoKey: hunterKey,
-          findymailKey: findymailKey,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: selected, apiKey }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Enrichment failed: ${response.statusText}`);
-      }
+      if (!res.ok) throw new Error(await res.text());
 
-      const data = await response.json();
-
-      setStatus({
-        hunter_io: data.hunterIo?.success ? 'completed' : 'failed',
-        findymail: data.findymail?.success ? 'completed' : 'failed',
-        linkedin: 'pending',
-      });
-
-      showToast(`Enrichment abgeschlossen: ${data.enrichedCount} Kontakte`, 'success');
+      const data = await res.json();
+      setResult({ enriched: data.enriched, total: data.total });
+      setStatus(p => ({ ...p, [selected]: 'done' }));
+      showToast(`${data.enriched} von ${data.total} Leads enriched`, 'success');
       onEnrichmentComplete?.();
-    } catch (error) {
-      showToast(
-        error instanceof Error ? error.message : 'Enrichment fehlgeschlagen',
-        'error'
-      );
-      setStatus({
-        hunter_io: 'failed',
-        findymail: 'failed',
-        linkedin: 'pending',
-      });
+    } catch (e) {
+      setStatus(p => ({ ...p, [selected]: 'error' }));
+      showToast(e instanceof Error ? e.message : 'Fehler', 'error');
     } finally {
-      setEnriching(false);
+      setRunning(false);
     }
   };
 
-  const getStatusBadge = (stat: EnrichmentStatus[keyof EnrichmentStatus]) => {
-    const badges = {
-      pending: 'text-ink-faint',
-      running: 'text-warn',
-      completed: 'text-good',
-      failed: 'text-bad',
-    };
-    const labels = {
-      pending: '⋯',
-      running: '⟳',
-      completed: '✓',
-      failed: '✕',
-    };
-    return { badge: badges[stat], label: labels[stat] };
-  };
+  const statusIcon = (s?: ProviderStatus) => ({
+    idle: null, running: '↻', done: '✓', error: '✕',
+  }[s || 'idle']);
+
+  const statusCls = (s?: ProviderStatus) => ({
+    idle: 'text-ink-faint', running: 'text-warn', done: 'text-good', error: 'text-bad',
+  }[s || 'idle']);
 
   return (
-    <div className="space-y-4">
-      <div className="bg-panel-2 border border-line-soft rounded p-4">
-        <h3 className="font-mono text-xs tracking-wider text-ink-faint mb-4 font-medium">
-          Enrichment
-        </h3>
+    <div className="border border-line rounded-lg overflow-hidden">
+      <div className="px-5 py-3 border-b border-line bg-panel flex items-center gap-3">
+        <span className="text-xs font-mono tracking-wider text-ink uppercase">Enrichment</span>
+        <span className="text-xs font-mono text-ink-faint ml-auto">{leadsCount} Leads</span>
+      </div>
 
-        <div className="space-y-3 mb-4">
-          {[
-            { id: 'hunter_io', name: 'Hunter.io', icon: '📧' },
-            { id: 'findymail', name: 'FindyMail', icon: '💼' },
-            { id: 'linkedin', name: 'LinkedIn', icon: '🔗' },
-          ].map((provider) => {
-            const stat = status[provider.id as keyof EnrichmentStatus];
-            const { badge, label } = getStatusBadge(stat);
-            return (
-              <div key={provider.id} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span>{provider.icon}</span>
-                  <span className="text-xs text-ink-dim">{provider.name}</span>
-                </div>
-                <span className={`font-mono text-xs ${badge}`}>{label}</span>
-              </div>
-            );
-          })}
+      <div className="p-5 bg-panel-2 space-y-4">
+        {/* Provider selector */}
+        <div>
+          <label className="block text-xs font-mono tracking-wider text-ink-faint uppercase mb-2">Provider</label>
+          <div className="grid grid-cols-2 gap-2">
+            {PROVIDERS.map(p => {
+              const s = status[p.id];
+              const icon = statusIcon(s);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setSelected(p.id)}
+                  className={`px-3 py-2.5 rounded border text-left transition-all ${
+                    selected === p.id
+                      ? 'border-gold bg-gold/10'
+                      : 'border-line hover:border-line-soft'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-mono ${selected === p.id ? 'text-gold' : 'text-ink-dim'}`}>{p.label}</span>
+                    {icon && (
+                      <span className={`text-xs font-mono ${statusCls(s)}`}>{icon}</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-ink-faint mt-0.5">{p.desc}</p>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="bg-panel-3 rounded p-3 mb-3 text-xs">
-          <p className="text-ink-faint mb-1">Leads zum Enrichment:</p>
-          <p className="font-mono text-gold font-semibold">{leadsCount} Einträge</p>
+        {/* Result */}
+        {result && (
+          <div className="bg-panel-3 border border-good/20 rounded p-3 flex items-center justify-between">
+            <span className="text-xs font-mono text-ink-faint">Ergebnis</span>
+            <span className="text-xs font-mono text-good font-semibold">
+              {result.enriched} / {result.total} enriched
+            </span>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <ul className="text-xs font-mono text-ink-faint space-y-1">
+            <li>→ E-Mail Adressen</li>
+            <li>→ Telefonnummern</li>
+            <li>→ Unternehmensdaten</li>
+          </ul>
         </div>
 
         <button
-          onClick={handleStartEnrichment}
-          disabled={enriching || leadsCount === 0}
-          className="w-full h-8 bg-gradient-to-r from-gold to-gold-dim text-noir rounded hover:from-gold-bright hover:to-gold transition-colors text-xs font-medium font-semibold disabled:opacity-50"
+          onClick={start}
+          disabled={running || leadsCount === 0}
+          className="w-full py-2.5 rounded bg-gradient-to-r from-gold to-gold-dim hover:from-gold-bright hover:to-gold text-noir text-xs font-semibold font-mono tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {enriching ? '⟳ Enrichment läuft...' : '▶ Enrichment starten'}
+          {running ? '↻ Läuft…' : '▶ Enrichment starten'}
         </button>
-      </div>
-
-      <div className="bg-panel-3 rounded p-3 text-xs text-ink-dim space-y-1">
-        <p className="font-semibold text-ink">Unterstützte Daten:</p>
-        <ul className="list-disc list-inside space-y-0.5">
-          <li>E-Mail Verifikation</li>
-          <li>Telefonnummern</li>
-          <li>Unternehmensinformationen</li>
-          <li>Social Media Profile</li>
-          <li>Berufsbezeichnungen</li>
-        </ul>
       </div>
     </div>
   );
