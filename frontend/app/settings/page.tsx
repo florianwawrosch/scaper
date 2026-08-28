@@ -1,8 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useToast } from '@/app/components/Toast';
+import { loadSettings, saveSettings, type AppSettings } from '@/lib/settings';
 
 export default function Settings() {
+  const { showToast } = useToast();
+  const [loading, setLoading] = useState(true);
   const [apiKeys, setApiKeys] = useState({
     meta_ads: '',
     hunter_io: '',
@@ -15,15 +19,33 @@ export default function Settings() {
   const [aiModel, setAiModel] = useState('gemini-2.0-flash');
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    const settings = loadSettings();
+    setApiKeys(settings.apiKeys);
+    setAiProvider(settings.aiConfig.provider);
+    setAiModel(settings.aiConfig.model);
+    setLoading(false);
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      localStorage.setItem('apiKeys', JSON.stringify(apiKeys));
-      localStorage.setItem('aiConfig', JSON.stringify({
-        provider: aiProvider,
-        model: aiModel,
-      }));
+      const settings: AppSettings = {
+        apiKeys,
+        aiConfig: {
+          provider: aiProvider as 'gemini' | 'anthropic' | 'openai',
+          model: aiModel,
+        },
+        defaults: {
+          countries: ['DE', 'AT'],
+          platforms: ['FACEBOOK', 'INSTAGRAM'],
+        },
+      };
+      saveSettings(settings);
+      showToast('Einstellungen gespeichert', 'success');
       await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error) {
+      showToast('Fehler beim Speichern', 'error');
     } finally {
       setSaving(false);
     }
@@ -34,6 +56,14 @@ export default function Settings() {
     anthropic: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4.5-20251001'],
     openai: ['gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-noir">
+        <p className="text-ink-dim">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-noir">
@@ -57,7 +87,9 @@ export default function Settings() {
                 { key: 'meta_ads', label: 'Meta Ads Library Token' },
                 { key: 'hunter_io', label: 'Hunter.io API Key' },
                 { key: 'findymail', label: 'FindyMail API Key' },
+                { key: 'gemini', label: 'Google Gemini API Key' },
                 { key: 'anthropic', label: 'Anthropic API Key' },
+                { key: 'openai', label: 'OpenAI API Key' },
               ].map(({ key, label }) => (
                 <div key={key}>
                   <label className="block text-xs font-mono tracking-wider text-ink-faint mb-1">

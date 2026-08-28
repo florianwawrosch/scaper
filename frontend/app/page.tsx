@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type ScrapeRun, type Source } from '@/lib/api';
 import { useToast } from '@/app/components/Toast';
+import { loadSettings, type AppSettings } from '@/lib/settings';
 
 export default function Home() {
   const router = useRouter();
@@ -23,10 +24,15 @@ export default function Home() {
   const [mediaType, setMediaType] = useState('ALL');
   const [presets, setPresets] = useState<Record<string, any>>({});
   const [presetName, setPresetName] = useState('');
+  const [settings, setSettings] = useState<AppSettings | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
       try {
+        // Load settings first
+        const appSettings = loadSettings();
+        setSettings(appSettings);
+
         const [runsData, sourcesData] = await Promise.all([
           api.runs.list(),
           api.sources.list(),
