@@ -1,6 +1,42 @@
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
 
+@theme {
+  --color-noir: #07070a;
+  --color-panel: #0d0e13;
+  --color-panel-2: #12141b;
+  --color-panel-3: #171a22;
+  --color-line: #23262f;
+  --color-line-soft: #1a1d25;
+  --color-gold: #c9a35f;
+  --color-gold-bright: #e5c88b;
+  --color-gold-dim: #8a6f3d;
+  --color-ink: #e9e6df;
+  --color-ink-dim: #9a978f;
+  --color-ink-faint: #6a6862;
+  --color-good: #6bb39a;
+  --color-warn: #d9a441;
+  --color-bad: #c9605a;
+
+  --font-family-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-family-disp: 'Cormorant Garamond', Georgia, serif;
+  --font-family-body: 'Inter', system-ui, sans-serif;
+
+  --font-size-xs: 9.5px;
+  --font-size-sm: 12px;
+  --font-size-base: 13.5px;
+  --font-size-lg: 14px;
+  --font-size-xl: 16px;
+  --font-size-2xl: 26px;
+  --font-size-3xl: 40px;
+
+  --letter-spacing-tight: -0.01em;
+  --letter-spacing-normal: 0em;
+  --letter-spacing-wide: 0.05em;
+  --letter-spacing-wider: 0.1em;
+  --letter-spacing-widest: 0.2em;
+}
+
 * {
   margin: 0;
   padding: 0;
