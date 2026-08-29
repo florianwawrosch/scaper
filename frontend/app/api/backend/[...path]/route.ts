@@ -11,9 +11,15 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { envKey } from '@/lib/serverKeys';
 
+const isLocalhost = (u: string) => /^https?:\/\/(localhost|127\.|0\.0\.0\.0)/i.test(u);
+
 function backendBase(req: NextRequest): string | null {
   const fromClient = req.headers.get('x-backend-url') ?? '';
-  const base = fromClient || process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || '';
+  const serverEnv  = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || '';
+  // A real user override wins — but the client's localhost build-time fallback
+  // must never shadow a proper URL configured server-side.
+  let base = fromClient;
+  if (!base || (isLocalhost(base) && serverEnv && !isLocalhost(serverEnv))) base = serverEnv;
   if (!/^https?:\/\//.test(base)) return null;
   return base.replace(/\/+$/, '');
 }
@@ -42,9 +48,9 @@ function injectKeys(path: string, body: any): any {
 
 async function proxy(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const base = backendBase(req);
-  if (!base) {
+  if (!base || isLocalhost(base)) {
     return NextResponse.json(
-      { detail: 'Backend-URL nicht konfiguriert — in den Einstellungen eintragen.' },
+      { detail: 'Backend-URL fehlt: Die Python-Backend-Adresse (z.B. Railway-URL) in Einstellungen → Backend eintragen, oder als BACKEND_URL Umgebungsvariable in Vercel setzen.' },
       { status: 502 },
     );
   }

@@ -294,35 +294,54 @@ export default function Home() {
     setFormError('');
     if (tags.length === 0) { setFormError('Mindestens einen Suchbegriff eingeben'); return; }
     const settings = loadSettings();
-    // Token from browser settings if present. If empty, the Next.js server
-    // proxy injects it from the Vercel env vars (META_API_KEY etc.) — and the
-    // Railway backend falls back to its own env. So never block here; a truly
-    // missing token surfaces as a clear error banner on the run page.
+    // Token from browser settings if present — otherwise the Vercel server
+    // reads it from its env vars (META_API_KEY etc., see lib/serverKeys.ts).
     const token = settings.apiKeys.meta_ads;
     setCreating(true);
     try {
-      const run = await api.runs.create('meta_ads_library', {
-        keywords: tags,
-        countries: country === 'ALL' ? ['ALL'] : [country],
-        platforms,
-        ad_status: adStatus,
-        media_type: mediaType,
-        search_type: searchType,
-        ...(languages.length > 0 && { languages }),
-        ...(dateMin && { ad_delivery_date_min: dateMin }),
-        ...(dateMax && { ad_delivery_date_max: dateMax }),
-        limit,
-        ...(bylines && { bylines: bylines.split(',').map(s => s.trim()).filter(Boolean) }),
-        ...(token && { meta_ads_token: token }),
+      // Scrape runs directly on the Vercel server — no separate backend needed.
+      const res = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keywords: tags,
+          countries: country === 'ALL' ? ['ALL'] : [country],
+          platforms,
+          ad_status: adStatus,
+          media_type: mediaType,
+          search_type: searchType,
+          ...(languages.length > 0 && { languages }),
+          ...(dateMin && { ad_delivery_date_min: dateMin }),
+          ...(dateMax && { ad_delivery_date_max: dateMax }),
+          limit,
+          ...(bylines && { bylines: bylines.split(',').map(s => s.trim()).filter(Boolean) }),
+          ...(token && { meta_ads_token: token }),
+        }),
       });
-      setRuns(prev => [run, ...prev]);
-      router.push(`/runs/${run.id}`);
-    } catch (e) {
-      if (e instanceof TypeError) {
-        setFormError(`Backend nicht erreichbar (${API_URL}). Backend-URL in den Einstellungen konfigurieren.`);
-      } else {
-        setFormError(e instanceof Error ? e.message : 'Fehler beim Erstellen');
+      if (!res.ok) {
+        let msg = `Scraping fehlgeschlagen (HTTP ${res.status})`;
+        try { msg = (await res.json()).detail ?? msg; } catch {}
+        throw new Error(msg);
       }
+      const { rows } = await res.json() as { rows: Record<string, string>[] };
+      if (!rows?.length) {
+        setFormError('Keine Ads gefunden — andere Suchbegriffe oder Filter probieren.');
+        return;
+      }
+
+      // Store the result through the proven CSV pipeline (IndexedDB + viewer)
+      const id = `csv_${Date.now()}`;
+      const csvText = Papa.unparse(rows);
+      await saveCsvText(id, csvText);
+      localStorage.setItem(`csv_run_${id}`, JSON.stringify({
+        fields: Object.keys(rows[0]),
+        filename: `Meta: ${tags.join(', ')}`,
+        createdAt: new Date().toISOString(),
+        rowCount: rows.length,
+      }));
+      router.push(`/csv/${id}`);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'Fehler beim Scrapen');
     } finally {
       setCreating(false);
     }

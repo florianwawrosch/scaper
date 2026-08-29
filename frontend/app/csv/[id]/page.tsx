@@ -187,6 +187,7 @@ export default function CsvViewer() {
             <AnalysisPanel
               runId={backendRunId ?? ''}
               resolveRunId={resolveBackendRunId}
+              rows={run.data}
               rowCount={run.data.length}
               onColumnResult={(name, values) => {
                 setAiColumns(prev => {

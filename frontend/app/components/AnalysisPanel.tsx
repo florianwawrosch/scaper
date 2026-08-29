@@ -26,17 +26,21 @@ interface Props {
   resolveRunId?: () => Promise<string>;
   rowCount: number;
   onColumnResult: (name: string, values: string[]) => void;
+  /** When provided, analysis runs directly via the Vercel route /api/ai/analyze
+   *  (chunked) — no separate Python backend needed. */
+  rows?: Record<string, string>[];
 }
 
 const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
 
-export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }: Props) {
+export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, rows }: Props) {
   const { showToast } = useToast();
   const router = useRouter();
   const storageKey = `analysis_configs_${runId}`;
 
   const [configs,   setConfigs]   = useState<AnalysisConfig[]>([]);
   const [running,   setRunning]   = useState<Record<string, boolean>>({});
+  const [progress,  setProgress]  = useState<Record<string, number>>({});
   const [apiKeys,   setApiKeys]   = useState<Record<string, string>>({});
   const [keysReady, setKeysReady] = useState(false);
 
@@ -86,21 +90,57 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
 
   const remove = (id: string) => persist(configs.filter(c => c.id !== id));
 
+  // Same prompt format as the Python backend (main.py analyze_run)
+  const buildPrompt = (row: Record<string, string>, userPrompt: string) => {
+    const rowText = Object.entries(row)
+      .filter(([k, v]) => k !== '_idx' && v && String(v).trim())
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('\n');
+    return `${userPrompt}\n\nDaten:\n${rowText}\n\nAntworte nur kurz und direkt.`;
+  };
+
   const runAnalysis = async (cfg: AnalysisConfig) => {
     if (!cfg.prompt.trim()) return showToast('Kein Prompt angegeben', 'warning');
     if (rowCount === 0)      return showToast('Keine Daten vorhanden', 'warning');
     setRunning(p => ({ ...p, [cfg.id]: true }));
     try {
-      const rid = runId || (resolveRunId ? await resolveRunId() : '');
-      if (!rid) throw new Error('Kein Backend verbunden — URL in den Einstellungen konfigurieren.');
       const apiKey = apiKeys[cfg.provider] || undefined;
-      const res = await api.runs.analyze(rid, cfg.provider, cfg.model, cfg.prompt, cfg.name, apiKey);
-      onColumnResult(res.column_name, res.values);
+
+      if (rows?.length) {
+        // Direct mode: analyze via the Vercel route, chunked (no Python backend)
+        const CHUNK = 20;
+        const values: string[] = [];
+        for (let i = 0; i < rows.length; i += CHUNK) {
+          const prompts = rows.slice(i, i + CHUNK).map(r => buildPrompt(r, cfg.prompt));
+          const res = await fetch('/api/ai/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider: cfg.provider, model: cfg.model, prompts, ...(apiKey && { apiKey }) }),
+          });
+          if (!res.ok) {
+            let msg = `Analyse fehlgeschlagen (HTTP ${res.status})`;
+            try { msg = (await res.json()).detail ?? msg; } catch {}
+            throw new Error(msg);
+          }
+          const data = await res.json();
+          values.push(...(data.values ?? []));
+          setProgress(p => ({ ...p, [cfg.id]: Math.min(values.length, rows.length) }));
+        }
+        onColumnResult(cfg.name, values);
+      } else {
+        // Backend mode: existing scrape runs stored on the Python backend
+        const rid = runId || (resolveRunId ? await resolveRunId() : '');
+        if (!rid) throw new Error('Kein Backend verbunden — URL in den Einstellungen konfigurieren.');
+        const res = await api.runs.analyze(rid, cfg.provider, cfg.model, cfg.prompt, cfg.name, apiKey);
+        onColumnResult(res.column_name, res.values);
+      }
+
       showToast(`Spalte "${cfg.name}" fertig`, 'success');
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Fehler', 'error');
     } finally {
       setRunning(p => ({ ...p, [cfg.id]: false }));
+      setProgress(p => ({ ...p, [cfg.id]: 0 }));
     }
   };
 
@@ -202,7 +242,9 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
                 opacity: isRunning || rowCount === 0 ? 0.4 : 1,
               }}
             >
-              {isRunning ? 'Läuft…' : `▶ Analysieren (${rowCount} Zeilen)`}
+              {isRunning
+                ? (progress[cfg.id] ? `Läuft… ${progress[cfg.id]}/${rowCount}` : 'Läuft…')
+                : `▶ Analysieren (${rowCount} Zeilen)`}
             </button>
 
           </div>
