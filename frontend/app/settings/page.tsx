@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { loadSettings, saveSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
+import { loadBlocklist, addToBlocklist, removeFromBlocklist, type BlockEntry } from '@/lib/blocklist';
 
 interface Service { key: string; label: string; hint: string; desc: string }
 interface Group   { key: string; label: string; desc: string; services: Service[] }
@@ -37,7 +38,7 @@ const GROUPS: Group[] = [
   },
 ];
 
-type NavKey = 'integrations' | 'design';
+type NavKey = 'integrations' | 'blocklist' | 'design';
 
 function maskKey(key: string): string {
   if (key.length <= 8) return '••••••••';
@@ -73,6 +74,8 @@ export default function Settings() {
   const [show,       setShow]       = useState<Record<string, boolean>>({});
   const [backendUrl, setBackendUrl] = useState('');
   const [serverKeys, setServerKeys] = useState<Record<string, boolean>>({});
+  const [blocklist,  setBlocklist]  = useState<BlockEntry[]>([]);
+  const [blockInput, setBlockInput] = useState('');
 
   useEffect(() => {
     const s = loadSettings();
@@ -86,6 +89,7 @@ export default function Settings() {
     try { setBackendUrl(localStorage.getItem('backendUrl') ?? ''); } catch {}
     // Which keys exist server-side (Vercel/Railway env vars) — booleans only
     fetchKeyAvailability().then(setServerKeys);
+    setBlocklist(loadBlocklist());
   }, []);
 
   const saveBackendUrl = () => {
@@ -154,6 +158,7 @@ export default function Settings() {
 
   const NAV: { key: NavKey; label: string; badge?: number }[] = [
     { key: 'integrations', label: 'Integrationen', badge: totalConnected || undefined },
+    { key: 'blocklist',    label: 'Blockliste', badge: blocklist.length || undefined },
     { key: 'design',       label: 'Design' },
   ];
 
@@ -363,6 +368,74 @@ export default function Settings() {
                 </div>
               </div>
             </div>
+          </>
+        )}
+
+        {/* ── Blockliste ── */}
+        {nav === 'blocklist' && (
+          <>
+            <div style={{ marginBottom: 28 }}>
+              <h1 style={{ fontFamily: T.disp, fontSize: 22, fontWeight: 700, color: T.ink }}>
+                Block<em style={{ color: T.gold }}>liste</em>
+              </h1>
+              <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
+                Seiten, die grundsätzlich aus Scrape-Ergebnissen ausgeschlossen werden.
+                Hinzufügen auch direkt aus der Ergebnistabelle über das 🚫-Symbol.
+              </p>
+            </div>
+
+            {/* Add entry */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+              <input
+                type="text" value={blockInput}
+                onChange={e => setBlockInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && blockInput.trim()) {
+                    setBlocklist(addToBlocklist(blockInput));
+                    setBlockInput('');
+                  }
+                }}
+                placeholder="Seitenname, z.B. «Fitness Coach Max»"
+                style={{ flex: 1, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 6, padding: '7px 11px', fontFamily: T.mono, fontSize: 12, color: T.ink, outline: 'none' }}
+              />
+              <button
+                type="button"
+                onClick={() => { if (blockInput.trim()) { setBlocklist(addToBlocklist(blockInput)); setBlockInput(''); } }}
+                disabled={!blockInput.trim()}
+                style={{
+                  fontFamily: T.mono, fontSize: 11, padding: '7px 16px', borderRadius: 6, cursor: blockInput.trim() ? 'pointer' : 'default',
+                  border: `1px solid ${blockInput.trim() ? 'rgba(232,176,75,.4)' : T.lineS}`,
+                  background: blockInput.trim() ? 'rgba(232,176,75,.08)' : 'transparent',
+                  color: blockInput.trim() ? T.gold : T.inkF,
+                }}
+              >+ Blocken</button>
+            </div>
+
+            {/* List */}
+            {blocklist.length === 0 ? (
+              <div style={{ padding: '32px 24px', textAlign: 'center', border: `1px dashed ${T.lineS}`, borderRadius: 10 }}>
+                <p style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF }}>Noch keine Seiten geblockt.</p>
+              </div>
+            ) : (
+              <div style={{ border: `1px solid ${T.lineS}`, borderRadius: 10, overflow: 'hidden' }}>
+                {blocklist.map((e, i) => (
+                  <div key={e.pageName} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: i < blocklist.length - 1 ? `1px solid ${T.lineS}` : 'none' }}>
+                    <span style={{ fontFamily: T.mono, fontSize: 12, color: T.inkD, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {e.pageName}
+                    </span>
+                    {e.pageId && (
+                      <span style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF, opacity: .6 }}>ID {e.pageId}</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setBlocklist(removeFromBlocklist(e.pageName))}
+                      title="Von Blockliste entfernen"
+                      style={{ fontSize: 14, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, opacity: .5, padding: 0 }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 

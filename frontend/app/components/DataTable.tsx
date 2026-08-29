@@ -12,6 +12,8 @@ interface DataTableProps {
   onExcludeChange?: (indices: Set<number>) => void;
   /** Rendered in a popover opened from the "+ KI-Spalte" header cell */
   aiSlot?: React.ReactNode;
+  /** When set, each row gets a block button (add page to the Blockliste) */
+  onBlockRow?: (row: Record<string, any>) => void;
 }
 
 interface ColFilter { text: string; values: Set<string> | null }
@@ -137,7 +139,7 @@ function FilterDropdown({
 }
 
 export function DataTable({
-  data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange, aiSlot,
+  data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange, aiSlot, onBlockRow,
 }: DataTableProps) {
   const [globalSearch, setGlobalSearch]   = useState('');
   const [colFilters,   setColFilters]     = useState<Record<string, ColFilter>>({});
@@ -314,6 +316,7 @@ export function DataTable({
                 </th>
               )}
               <th style={{ ...thStyle, width: 28, cursor: 'default', color: '#5f6e87' }}>#</th>
+              {onBlockRow && <th style={{ ...thStyle, width: 30, cursor: 'default' }} title="Seite zur Blockliste hinzufügen">🚫</th>}
               {rawColumns.map(col => {
                 const hasFilter = colFilters[col] && (colFilters[col].text || colFilters[col].values !== null);
                 return (
@@ -385,6 +388,17 @@ export function DataTable({
                     </td>
                   )}
                   <td style={{ ...tdStyle, color: '#5f6e87', fontSize: 10 }}>{(page - 1) * PAGE + i + 1}</td>
+                  {onBlockRow && (
+                    <td style={{ padding: '5px 6px', borderBottom: '1px solid rgba(255,255,255,.04)' }}>
+                      <button
+                        onClick={() => onBlockRow(row)}
+                        title={`«${String(row.page_name ?? '')}» zur Blockliste hinzufügen`}
+                        style={{ ...mono, fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', opacity: .35, lineHeight: 1, padding: 0 }}
+                        onMouseEnter={e => ((e.currentTarget as HTMLElement).style.opacity = '1')}
+                        onMouseLeave={e => ((e.currentTarget as HTMLElement).style.opacity = '.35')}
+                      >🚫</button>
+                    </td>
+                  )}
                   {rawColumns.map(col => (
                     <td key={col} title={String(row[col] ?? '')} style={tdStyle}>
                       {renderCell(String(row[col] ?? ''))}
@@ -408,7 +422,7 @@ export function DataTable({
             })}
             {paginated.length === 0 && (
               <tr>
-                <td colSpan={allColumns.length + (onExcludeChange ? 2 : 1) + (aiSlot ? 1 : 0)} style={{ ...mono, padding: '28px', textAlign: 'center', fontSize: 11, color: '#5f6e87' }}>
+                <td colSpan={allColumns.length + (onExcludeChange ? 2 : 1) + (aiSlot ? 1 : 0) + (onBlockRow ? 1 : 0)} style={{ ...mono, padding: '28px', textAlign: 'center', fontSize: 11, color: '#5f6e87' }}>
                   Keine Daten
                 </td>
               </tr>

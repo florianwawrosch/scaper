@@ -6,6 +6,7 @@ import Papa from 'papaparse';
 import { saveCsvText, deleteCsvText } from '@/lib/csvStorage';
 import { api, API_URL, type ScrapeRun } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
+import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from '@/app/components/Toast';
 import { TagInput } from '@/app/components/TagInput';
@@ -115,18 +116,13 @@ export default function Home() {
   const [formError,      setFormError]      = useState('');
   const [uploading,      setUploading]      = useState(false);
   const [backendKeys,    setBackendKeys]    = useState<Record<string, boolean>>({});
+  const [useBlocklist,   setUseBlocklist]   = useState(true);
+  const [blockCount,     setBlockCount]     = useState(0);
 
   useEffect(() => {
-    api.runs.list().then(runs => {
-      setRuns(runs);
-      const last = runs[0];
-      if (last?.scraper_config) applyRunConfig(last.scraper_config as Record<string, any>);
-    }).catch(() => {}).finally(() => setLoading(false));
-    fetchKeyAvailability().then(setBackendKeys);
+    // Local history renders instantly — no waiting for any network call
     const saved = localStorage.getItem('presets');
     if (saved) setPresets(JSON.parse(saved));
-
-    // Load local CSV imports from localStorage
     const csvItems: {id:string;filename:string;createdAt:string;rowCount:number}[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -140,6 +136,16 @@ export default function Home() {
     }
     csvItems.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     setCsvRuns(csvItems);
+    setBlockCount(loadBlocklist().length);
+    setLoading(false);
+
+    // Backend history (if a backend exists) merges in afterwards
+    api.runs.list().then(runs => {
+      setRuns(runs);
+      const last = runs[0];
+      if (last?.scraper_config) applyRunConfig(last.scraper_config as Record<string, any>);
+    }).catch(() => {});
+    fetchKeyAvailability().then(setBackendKeys);
   }, []);
 
   const deleteCsvImport = async (csvId: string) => {
@@ -329,15 +335,27 @@ export default function Home() {
         return;
       }
 
+      // Apply the blocklist (pages the user always wants excluded)
+      let finalRows = rows;
+      if (useBlocklist) {
+        const { kept, blocked } = applyBlocklist(rows);
+        if (blocked > 0) showToast(`${blocked} Zeilen durch Blockliste entfernt`, 'info');
+        if (kept.length === 0) {
+          setFormError(`Alle ${rows.length} gefundenen Ads stehen auf der Blockliste.`);
+          return;
+        }
+        finalRows = kept;
+      }
+
       // Store the result through the proven CSV pipeline (IndexedDB + viewer)
       const id = `csv_${Date.now()}`;
-      const csvText = Papa.unparse(rows);
+      const csvText = Papa.unparse(finalRows);
       await saveCsvText(id, csvText);
       localStorage.setItem(`csv_run_${id}`, JSON.stringify({
-        fields: Object.keys(rows[0]),
+        fields: Object.keys(finalRows[0]),
         filename: `Meta: ${tags.join(', ')}`,
         createdAt: new Date().toISOString(),
-        rowCount: rows.length,
+        rowCount: finalRows.length,
       }));
       router.push(`/csv/${id}`);
     } catch (e) {
@@ -484,6 +502,19 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Blockliste toggle */}
+            {blockCount > 0 && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', alignSelf: 'flex-start' }}>
+                <input
+                  type="checkbox" checked={useBlocklist} onChange={e => setUseBlocklist(e.target.checked)}
+                  style={{ width: 13, height: 13, cursor: 'pointer', accentColor: '#e8b04b' }}
+                />
+                <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkD }}>
+                  Blockliste anwenden <span style={{ color: T.inkF }}>({blockCount} Seiten)</span>
+                </span>
+              </label>
+            )}
+
             {/* Inline error */}
             {formError && (
               <p style={{ fontFamily: T.ffMono, fontSize: 11, color: '#e8736b', background: 'rgba(232,115,107,.08)', border: '1px solid rgba(232,115,107,.2)', borderRadius: 5, padding: '6px 10px' }}>
@@ -495,6 +526,38 @@ export default function Home() {
             <button className="btn-primary" onClick={startScrape} disabled={creating || uploading}>
               {creating ? 'Startet…' : '→ Scraping starten'}
             </button>
+
+            {/* Animated scrape overlay */}
+            {creating && (
+              <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(10,11,18,.82)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 22 }}>
+                <style>{`
+                  @keyframes lp-pulse { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(1.8); opacity: 0; } }
+                  @keyframes lp-spin  { to { transform: rotate(360deg); } }
+                `}</style>
+                <div style={{ position: 'relative', width: 84, height: 84 }}>
+                  {[0, 1, 2].map(i => (
+                    <div key={i} style={{
+                      position: 'absolute', inset: 0, borderRadius: '50%',
+                      border: '2px solid var(--th-gold)',
+                      animation: `lp-pulse 1.8s ease-out ${i * 0.6}s infinite`,
+                    }} />
+                  ))}
+                  <div style={{
+                    position: 'absolute', inset: 22, borderRadius: '50%',
+                    border: '2px solid rgba(232,176,75,.25)', borderTopColor: 'var(--th-gold)',
+                    animation: 'lp-spin 1s linear infinite',
+                  }} />
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontFamily: T.ffDisp, fontSize: 17, fontWeight: 600, color: T.ink, marginBottom: 5 }}>
+                    Meta Ads werden gescraped…
+                  </p>
+                  <p style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF }}>
+                    {tags.join(', ')} · bis zu {limit} Ads
+                  </p>
+                </div>
+              </div>
+            )}
 
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) { setCsvFile(f); uploadCsv(f); } }} />

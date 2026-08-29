@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Papa from 'papaparse';
 import { loadCsvText } from '@/lib/csvStorage';
+import { addToBlocklist } from '@/lib/blocklist';
+import { useToast } from '@/app/components/Toast';
 import { api } from '@/lib/api';
 import { DataTable } from '@/app/components/DataTable';
 import { AnalysisPanel } from '@/app/components/AnalysisPanel';
@@ -47,6 +49,7 @@ const T = {
 
 export default function CsvViewer() {
   const router = useRouter();
+  const { showToast } = useToast();
   const { id } = useParams<{ id: string }>();
 
   const [run,        setRun]        = useState<CsvRun | null>(null);
@@ -175,12 +178,22 @@ export default function CsvViewer() {
           aiColumns={aiColumns}
           excludedRows={excludedRows}
           onExcludeChange={setExcludedRows}
+          onBlockRow={run.fields.includes('page_name') ? (row) => {
+            const name = String(row.page_name ?? '').trim();
+            if (!name) return;
+            addToBlocklist(name, String(row.page_id ?? '') || undefined);
+            showToast(`«${name}» zur Blockliste hinzugefügt`, 'success');
+          } : undefined}
           aiSlot={
             <AnalysisPanel
               runId={backendRunId ?? ''}
               resolveRunId={resolveBackendRunId}
               rows={run.data}
               rowCount={run.data.length}
+              slotMode
+              onColumnRemove={(name) => {
+                setAiColumns(prev => prev.filter(c => c.name !== name));
+              }}
               onColumnResult={(name, values) => {
                 setAiColumns(prev => {
                   const idx = prev.findIndex(c => c.name === name);
