@@ -202,7 +202,7 @@ export default function Settings() {
                   API <em style={{ color: T.gold }}>Integrationen</em>
                 </h1>
                 <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
-                  Alle Keys werden ausschließlich lokal in deinem Browser gespeichert.
+                  Keys aus deinem Browser oder aus den Vercel-Umgebungsvariablen (blaues Badge = auf dem Server hinterlegt).
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: 4 }}>

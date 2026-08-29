@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type ScrapeRun } from '@/lib/api';
+import { deleteCsvText } from '@/lib/csvStorage';
 
 const T = {
   bg:    'var(--th-bg)',
@@ -202,7 +203,20 @@ export default function RunsList() {
                     <div style={{ ...cellStyle, color: '#4fd1c5', fontWeight: 600, fontSize: 13, textAlign: 'right' }}>{r.rowCount}</div>
                     <div style={{ ...cellStyle, color: T.inkF, textAlign: 'right' }}>—</div>
                     <div style={{ ...cellStyle, color: T.inkF, textAlign: 'right' }}>—</div>
-                    <div style={{ ...cellStyle, color: T.inkF, textAlign: 'right' }}>→</div>
+                    <div style={{ ...cellStyle, textAlign: 'right' }}>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            localStorage.removeItem(`csv_run_${r.id}`);
+                            await deleteCsvText(r.id);
+                          } catch {}
+                          setLocalRuns(prev => prev.filter(x => x.id !== r.id));
+                        }}
+                        title="Eintrag löschen"
+                        style={{ fontFamily: T.mono, fontSize: 13, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, opacity: .5, padding: 0 }}
+                      >×</button>
+                    </div>
                   </div>
                 );
               }

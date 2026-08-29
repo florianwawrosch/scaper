@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 
 interface AiColumn { name: string; values: string[] }
 
@@ -235,6 +236,21 @@ export function DataTable({
     URL.revokeObjectURL(url);
   };
 
+  const exportXlsx = () => {
+    const rows = sorted
+      .filter(row => !excludedRows.has(row._idx))
+      .map(row => {
+        const o: Record<string, any> = {};
+        for (const c of allColumns) o[c] = row[c] ?? '';
+        return o;
+      });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = allColumns.map(() => ({ wch: 22 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Daten');
+    XLSX.writeFile(wb, `export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   const thStyle: React.CSSProperties = {
     ...mono, fontSize: 10, letterSpacing: '.07em', textTransform: 'uppercase',
     padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap',
@@ -303,6 +319,12 @@ export function DataTable({
           title="Als CSV exportieren"
           style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(79,209,197,.3)', background: 'rgba(79,209,197,.06)', color: '#4fd1c5', opacity: sorted.length === 0 ? 0.4 : 1 }}
         >↓ CSV</button>
+        <button
+          onClick={exportXlsx}
+          disabled={sorted.length === 0}
+          title="Als Excel exportieren"
+          style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(79,209,197,.3)', background: 'rgba(79,209,197,.06)', color: '#4fd1c5', opacity: sorted.length === 0 ? 0.4 : 1 }}
+        >↓ XLSX</button>
       </div>
 
       {/* Table */}

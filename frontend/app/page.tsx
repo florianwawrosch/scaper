@@ -139,11 +139,33 @@ export default function Home() {
     setBlockCount(loadBlocklist().length);
     setLoading(false);
 
+    // "Erneut scrapen": prefill the form from a stored run config
+    let hadRescrape = false;
+    try {
+      const rc = localStorage.getItem('rescrape_config');
+      if (rc) {
+        const c = JSON.parse(rc);
+        hadRescrape = true;
+        if (Array.isArray(c.keywords)) setTags(c.keywords);
+        if (c.country)                 setCountry(c.country);
+        if (Array.isArray(c.platforms)) setPlatforms(c.platforms);
+        if (c.adStatus)                setAdStatus(c.adStatus);
+        if (c.mediaType)               setMediaType(c.mediaType);
+        if (c.searchType)              setSearchType(c.searchType);
+        if (Array.isArray(c.languages)) setLanguages(c.languages);
+        if (c.dateMin)                 setDateMin(c.dateMin);
+        if (c.dateMax)                 setDateMax(c.dateMax);
+        if (c.limit)                   setLimit(c.limit);
+        if (c.bylines)                 setBylines(c.bylines);
+        localStorage.removeItem('rescrape_config');
+      }
+    } catch {}
+
     // Backend history (if a backend exists) merges in afterwards
     api.runs.list().then(runs => {
       setRuns(runs);
       const last = runs[0];
-      if (last?.scraper_config) applyRunConfig(last.scraper_config as Record<string, any>);
+      if (!hadRescrape && last?.scraper_config) applyRunConfig(last.scraper_config as Record<string, any>);
     }).catch(() => {});
     fetchKeyAvailability().then(setBackendKeys);
   }, []);
@@ -356,6 +378,11 @@ export default function Home() {
         filename: `Meta: ${tags.join(', ')}`,
         createdAt: new Date().toISOString(),
         rowCount: finalRows.length,
+        // Saved so the run can be repeated with the same settings
+        scrapeConfig: {
+          keywords: tags, country, platforms, adStatus, mediaType, searchType,
+          languages, dateMin, dateMax, limit, bylines,
+        },
       }));
       router.push(`/csv/${id}`);
     } catch (e) {

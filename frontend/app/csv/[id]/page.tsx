@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Papa from 'papaparse';
-import { loadCsvText } from '@/lib/csvStorage';
+import { loadCsvText, saveCsvText } from '@/lib/csvStorage';
 import { addToBlocklist } from '@/lib/blocklist';
 import { useToast } from '@/app/components/Toast';
 import { api } from '@/lib/api';
@@ -17,6 +17,7 @@ interface CsvRun {
   filename: string;
   createdAt: string;
   backendRunId?: string;
+  scrapeConfig?: Record<string, unknown>;
 }
 
 interface StoredCsvMeta {
@@ -25,6 +26,7 @@ interface StoredCsvMeta {
   createdAt: string;
   rowCount?: number;
   backendRunId?: string;
+  scrapeConfig?: Record<string, unknown>;
   // legacy: old format stored data/csv inline in localStorage
   data?: Record<string, string>[];
   csv?: string;
@@ -77,6 +79,7 @@ export default function CsvViewer() {
               filename: meta.filename,
               createdAt: meta.createdAt,
               backendRunId: meta.backendRunId,
+              scrapeConfig: meta.scrapeConfig,
             }),
             error: () => setError('CSV konnte nicht gelesen werden.'),
           });
@@ -84,7 +87,7 @@ export default function CsvViewer() {
 
         if (meta.data) {
           // Legacy format A: parsed data inline in localStorage
-          setRun({ data: meta.data, fields: meta.fields, filename: meta.filename, createdAt: meta.createdAt, backendRunId: meta.backendRunId });
+          setRun({ data: meta.data, fields: meta.fields, filename: meta.filename, createdAt: meta.createdAt, backendRunId: meta.backendRunId, scrapeConfig: meta.scrapeConfig });
         } else if (meta.csv) {
           // Legacy format B: raw CSV text inline in localStorage
           parseText(meta.csv);
@@ -161,6 +164,20 @@ export default function CsvViewer() {
               importiert {fmt(run.createdAt)}
             </p>
           </div>
+          {run.scrapeConfig && (
+            <button
+              onClick={() => {
+                try { localStorage.setItem('rescrape_config', JSON.stringify(run.scrapeConfig)); } catch {}
+                router.push('/');
+              }}
+              title="Suchmaske mit diesen Einstellungen vorbefüllen"
+              style={{
+                fontFamily: T.ffMono, fontSize: 11, padding: '7px 14px', borderRadius: 6,
+                border: `1px solid ${T.lineS}`, background: 'transparent',
+                color: T.inkD, cursor: 'pointer', flexShrink: 0, marginTop: 2, letterSpacing: '.04em',
+              }}
+            >↻ Erneut scrapen</button>
+          )}
           <button
             onClick={() => router.push(`/csv/${id}/enrich`)}
             style={{
@@ -204,6 +221,22 @@ export default function CsvViewer() {
                   }
                   return [...prev, { name, values }];
                 });
+                // Persist real results into the stored CSV so the column
+                // survives reloads ('·' placeholders from Speichern are not saved)
+                if (!values.every(v => v === '·')) {
+                  (async () => {
+                    try {
+                      const merged = run.data.map((r, i) => ({ ...r, [name]: values[i] ?? '' }));
+                      const fields = run.fields.includes(name) ? run.fields : [...run.fields, name];
+                      await saveCsvText(id, Papa.unparse(merged));
+                      const raw = localStorage.getItem(`csv_run_${id}`);
+                      if (raw) {
+                        const m = JSON.parse(raw);
+                        localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...m, fields }));
+                      }
+                    } catch {}
+                  })();
+                }
               }}
             />
           }
