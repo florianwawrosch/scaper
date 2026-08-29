@@ -35,21 +35,62 @@ const FILTER_LABELS: Record<Filter, string> = {
   all: 'Alle', dataset_ready: 'Bereit', completed: 'Fertig', failed: 'Fehler',
 };
 
+interface LocalRun {
+  id: string;
+  filename: string;
+  createdAt: string;
+  rowCount: number;
+  isScrape: boolean;
+}
+
 export default function RunsList() {
   const router = useRouter();
-  const [runs,    setRuns]    = useState<ScrapeRun[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter,  setFilter]  = useState<Filter>('all');
-  const [page,    setPage]    = useState(1);
+  const [runs,      setRuns]      = useState<ScrapeRun[]>([]);
+  const [localRuns, setLocalRuns] = useState<LocalRun[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [filter,    setFilter]    = useState<Filter>('all');
+  const [page,      setPage]      = useState(1);
   const PAGE_SIZE = 25;
 
   useEffect(() => {
-    api.runs.list().then(setRuns).catch(() => {}).finally(() => setLoading(false));
+    // Local entries (scrapes + CSV imports) render instantly
+    const items: LocalRun[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('csv_run_csv_')) {
+        try {
+          const val = JSON.parse(localStorage.getItem(key)!);
+          items.push({
+            id: key.replace('csv_run_', ''),
+            filename: val.filename ?? '?',
+            createdAt: val.createdAt ?? '',
+            rowCount: val.rowCount ?? val.data?.length ?? 0,
+            isScrape: String(val.filename ?? '').startsWith('Meta:'),
+          });
+        } catch {}
+      }
+    }
+    items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    setLocalRuns(items);
+    setLoading(false);
+    // Backend runs (if a backend exists) merge in afterwards
+    api.runs.list().then(setRuns).catch(() => {});
   }, []);
 
   const filtered   = filter === 'all' ? runs : runs.filter(r => r.status === filter);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // Local entries appear in the "Alle" view, newest first alongside backend runs
+  const showLocal  = filter === 'all' ? localRuns : [];
+  const totalCount = filtered.length + showLocal.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const merged: ({ kind: 'backend'; run: ScrapeRun } | { kind: 'local'; run: LocalRun })[] = [
+    ...showLocal.map(r => ({ kind: 'local' as const, run: r })),
+    ...filtered.map(r => ({ kind: 'backend' as const, run: r })),
+  ].sort((a, b) => {
+    const da = a.kind === 'local' ? a.run.createdAt : a.run.created_at;
+    const db = b.kind === 'local' ? b.run.createdAt : b.run.created_at;
+    return String(db).localeCompare(String(da));
+  });
+  const paginated = merged.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const fmt = (d: string) =>
     new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -107,7 +148,7 @@ export default function RunsList() {
             );
           })}
           <span style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, marginLeft: 'auto' }}>
-            {filtered.length} Einträge
+            {totalCount} Einträge
           </span>
         </div>
 
@@ -116,7 +157,7 @@ export default function RunsList() {
           <div style={{ padding: 40, textAlign: 'center', border: `1px solid ${T.lineS}`, borderRadius: 10 }}>
             <p style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF }}>Lädt…</p>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : totalCount === 0 ? (
           <div style={{ padding: '48px 24px', textAlign: 'center', border: `1px solid ${T.lineS}`, borderRadius: 10 }}>
             <p style={{ fontFamily: T.disp, fontSize: 18, color: T.inkF, marginBottom: 6 }}>Keine Runs</p>
             <p style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF, opacity: .6 }}>Filter anpassen oder neuen Run starten.</p>
@@ -126,7 +167,7 @@ export default function RunsList() {
 
             {/* Table header */}
             <div style={{ ...rowStyle, cursor: 'default', background: 'rgba(255,255,255,.02)', borderBottom: `1px solid ${T.line}` }}>
-              {['Status', 'Quelle / Keywords', 'Erstellt', 'Keep', 'Drop', 'Offen', ''].map((h, i) => (
+              {['Status', 'Quelle / Keywords', 'Erstellt', 'Zeilen', 'Drop', 'Offen', ''].map((h, i) => (
                 <div key={i} style={{ ...cellStyle, color: T.inkF, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', textAlign: i >= 3 ? 'right' : 'left' }}>
                   {h}
                 </div>
@@ -134,7 +175,38 @@ export default function RunsList() {
             </div>
 
             {/* Rows */}
-            {paginated.map(run => {
+            {paginated.map(entry => {
+              if (entry.kind === 'local') {
+                const r = entry.run;
+                return (
+                  <div
+                    key={r.id}
+                    style={rowStyle}
+                    onClick={() => router.push(`/csv/${r.id}`)}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                  >
+                    <div style={{ ...cellStyle }}>
+                      <span style={{
+                        fontFamily: T.mono, fontSize: 9, letterSpacing: '.07em',
+                        padding: '2px 8px', borderRadius: 10,
+                        background: r.isScrape ? 'rgba(232,176,75,.08)' : 'rgba(99,129,255,.08)',
+                        border: r.isScrape ? '1px solid rgba(232,176,75,.25)' : '1px solid rgba(99,129,255,.25)',
+                        color: r.isScrape ? '#e8b04b' : '#6381ff',
+                      }}>{r.isScrape ? 'Scrape' : 'CSV'}</span>
+                    </div>
+                    <div style={{ ...cellStyle, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.filename}
+                    </div>
+                    <div style={{ ...cellStyle, color: T.inkF }}>{r.createdAt ? fmt(r.createdAt) : '—'}</div>
+                    <div style={{ ...cellStyle, color: '#4fd1c5', fontWeight: 600, fontSize: 13, textAlign: 'right' }}>{r.rowCount}</div>
+                    <div style={{ ...cellStyle, color: T.inkF, textAlign: 'right' }}>—</div>
+                    <div style={{ ...cellStyle, color: T.inkF, textAlign: 'right' }}>—</div>
+                    <div style={{ ...cellStyle, color: T.inkF, textAlign: 'right' }}>→</div>
+                  </div>
+                );
+              }
+              const run = entry.run;
               const s  = STATUS[run.status];
               const cr = Object.values(run.classification_results)[0];
               const keywords = (run.scraper_config as any)?.keywords;
