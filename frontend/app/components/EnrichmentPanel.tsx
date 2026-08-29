@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { getApiKey } from '@/lib/settings';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { getApiKey, loadSettings } from '@/lib/settings';
 import { apiFetch } from '@/lib/api';
+import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { useToast } from './Toast';
 
 interface Props {
@@ -14,11 +16,13 @@ interface Props {
   resolveRunId?: () => Promise<string>;
   /** Called with the enriched email values so the caller can add a table column */
   onEmailColumn?: (values: { email: string }[]) => void;
+  /** When provided, enrichment runs directly via the Vercel route /api/enrich */
+  rows?: Record<string, string>[];
 }
 
 type ProviderStatus = 'idle' | 'running' | 'done' | 'error';
 
-const PROVIDERS = [
+const ALL_PROVIDERS = [
   { id: 'hunter_io', label: 'Hunter.io', desc: 'E-Mail Finder' },
   { id: 'findymail', label: 'FindyMail', desc: 'E-Mail Verifikation' },
 ] as const;
@@ -36,20 +40,40 @@ const T = {
   inkF:   'var(--th-ink-f)',
 };
 
-export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, availableColumns, resolveRunId, onEmailColumn }: Props) {
+export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, availableColumns, resolveRunId, onEmailColumn, rows }: Props) {
   const { showToast } = useToast();
+  const router = useRouter();
   const [running, setRunning] = useState(false);
-  const [selected, setSelected] = useState<string>('hunter_io');
+  const [selected, setSelected] = useState<string>('');
   const [status, setStatus] = useState<Record<string, ProviderStatus>>({});
   const [result, setResult] = useState<{ enriched: number; total: number } | null>(null);
   const [nameCol,    setNameCol]    = useState('');
   const [companyCol, setCompanyCol] = useState('');
+  const [available,  setAvailable]  = useState<Record<string, boolean>>({});
+  const [keysReady,  setKeysReady]  = useState(false);
+
+  useEffect(() => {
+    fetchKeyAvailability().then(server => {
+      const local = loadSettings().apiKeys as Record<string, string>;
+      const merged: Record<string, boolean> = {};
+      for (const p of ALL_PROVIDERS) merged[p.id] = !!local[p.id] || !!server[p.id];
+      setAvailable(merged);
+      setKeysReady(true);
+      // Preselect the first configured provider
+      const first = ALL_PROVIDERS.find(p => merged[p.id]);
+      if (first) setSelected(prev => prev && merged[prev] ? prev : first.id);
+    });
+  }, []);
+
+  // Only show providers that are actually configured (browser key or server env)
+  const PROVIDERS = ALL_PROVIDERS.filter(p => available[p.id]);
 
   const needsMapping = !!availableColumns?.length;
 
   const start = async () => {
-    // Key from browser settings if present — otherwise the server proxy
-    // injects it from env vars, so don't block when it's missing locally.
+    if (!selected) return showToast('Kein Enrichment-Provider konfiguriert', 'warning');
+    // Key from browser settings if present — otherwise the server reads
+    // it from its env vars, so don't block when it's missing locally.
     const apiKey = getApiKey(selected as any);
     if (leadsCount === 0) return showToast('Keine Leads zum Enrichment', 'warning');
     if (needsMapping && (!nameCol || !companyCol)) {
@@ -60,18 +84,35 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
     setStatus(p => ({ ...p, [selected]: 'running' }));
 
     try {
-      const rid = runId || (resolveRunId ? await resolveRunId() : '');
-      if (!rid) throw new Error('Kein Backend verbunden');
+      // Backend run id only needed when no rows were passed (backend mode)
+      let rid = '';
+      if (!rows?.length) {
+        rid = runId || (resolveRunId ? await resolveRunId() : '');
+        if (!rid) throw new Error('Kein Backend verbunden');
+      }
 
-      const res = await apiFetch(`/api/runs/${rid}/enrich`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: selected,
-          ...(apiKey && { apiKey }),
-          ...(needsMapping && { nameColumn: nameCol, companyColumn: companyCol }),
-        }),
-      });
+      // Direct mode (rows given): Vercel route, no Python backend needed
+      const res = rows?.length
+        ? await fetch('/api/enrich', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              provider: selected,
+              rows,
+              nameColumn: nameCol,
+              companyColumn: companyCol,
+              ...(apiKey && { apiKey }),
+            }),
+          })
+        : await apiFetch(`/api/runs/${rid}/enrich`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              provider: selected,
+              ...(apiKey && { apiKey }),
+              ...(needsMapping && { nameColumn: nameCol, companyColumn: companyCol }),
+            }),
+          });
 
       if (!res.ok) {
         let msg = await res.text();
@@ -111,7 +152,19 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
 
       <div style={{ padding: '16px', background: T.panel2, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-        {/* Provider selector */}
+        {/* No provider configured */}
+        {keysReady && PROVIDERS.length === 0 && (
+          <div style={{ padding: '14px 16px', border: '1px dashed rgba(255,255,255,.09)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <p style={{ ...mono, fontSize: 11, color: T.inkF }}>Kein Enrichment-Provider konfiguriert. Hunter.io- oder FindyMail-Key in den Einstellungen bzw. in Vercel hinterlegen.</p>
+            <button
+              onClick={() => router.push('/settings')}
+              style={{ ...mono, fontSize: 10, alignSelf: 'flex-start', padding: '3px 10px', borderRadius: 4, border: '1px solid rgba(99,129,255,.3)', background: 'rgba(99,129,255,.08)', color: '#6381ff', cursor: 'pointer' }}
+            >→ Einstellungen</button>
+          </div>
+        )}
+
+        {/* Provider selector — only configured providers are shown */}
+        {PROVIDERS.length > 0 && (
         <div>
           <p style={{ ...mono, fontSize: 9, letterSpacing: '.1em', color: T.inkF, textTransform: 'uppercase', marginBottom: 8 }}>Provider</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -142,9 +195,10 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
             })}
           </div>
         </div>
+        )}
 
         {/* Column mapping (CSV imports) */}
-        {needsMapping && (
+        {PROVIDERS.length > 0 && needsMapping && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <p style={{ ...mono, fontSize: 9, letterSpacing: '.1em', color: T.inkF, textTransform: 'uppercase' }}>Spalten-Zuordnung</p>
             {[
@@ -188,6 +242,7 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
         )}
 
         {/* Run button */}
+        {PROVIDERS.length > 0 && (
         <button
           onClick={start}
           disabled={running || leadsCount === 0}
@@ -200,6 +255,7 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
         >
           {running ? '↻ Läuft…' : '▶ Enrichment starten'}
         </button>
+        )}
 
       </div>
     </div>

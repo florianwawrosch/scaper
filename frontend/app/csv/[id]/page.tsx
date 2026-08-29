@@ -158,32 +158,24 @@ export default function CsvViewer() {
               importiert {fmt(run.createdAt)}
             </p>
           </div>
+          <button
+            onClick={() => router.push(`/csv/${id}/enrich`)}
+            style={{
+              fontFamily: T.ffMono, fontSize: 11, padding: '7px 16px', borderRadius: 6,
+              border: '1px solid rgba(79,209,197,.35)', background: 'rgba(79,209,197,.07)',
+              color: '#4fd1c5', cursor: 'pointer', flexShrink: 0, marginTop: 2, letterSpacing: '.04em',
+            }}
+          >Enrichment starten →</button>
         </div>
 
-        {/* Main grid: table + analysis panel */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, alignItems: 'start' }}>
-
-          {/* Table */}
-          <div style={{ minWidth: 0 }}>
-            <DataTable
-              data={run.data}
-              rawColumns={run.fields}
-              aiColumns={aiColumns}
-              excludedRows={excludedRows}
-              onExcludeChange={setExcludedRows}
-            />
-          </div>
-
-          {/* Right panel: AI analysis */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 20 }}>
-
-            {uploadingToBackend && (
-              <div style={{ background: T.panel2, border: `1px solid ${T.lineS}`, borderRadius: 7, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 7, height: 7, borderRadius: '50%', background: T.gold, flexShrink: 0 }} />
-                <p style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkD }}>Daten werden zum Backend übertragen…</p>
-              </div>
-            )}
-
+        {/* Full-width table; AI column config lives in the "+ KI-Spalte" popover */}
+        <DataTable
+          data={run.data}
+          rawColumns={run.fields}
+          aiColumns={aiColumns}
+          excludedRows={excludedRows}
+          onExcludeChange={setExcludedRows}
+          aiSlot={
             <AnalysisPanel
               runId={backendRunId ?? ''}
               resolveRunId={resolveBackendRunId}
@@ -201,28 +193,8 @@ export default function CsvViewer() {
                 });
               }}
             />
-
-            <EnrichmentPanel
-              runId={backendRunId ?? ''}
-              resolveRunId={resolveBackendRunId}
-              leadsCount={run.data.length}
-              availableColumns={run.fields}
-              onEmailColumn={(results) => {
-                const values = results.map(r => r.email ?? '');
-                setAiColumns(prev => {
-                  const idx = prev.findIndex(c => c.name === 'E-Mail (enriched)');
-                  if (idx >= 0) {
-                    const next = [...prev];
-                    next[idx] = { name: 'E-Mail (enriched)', values };
-                    return next;
-                  }
-                  return [...prev, { name: 'E-Mail (enriched)', values }];
-                });
-              }}
-            />
-
-          </div>
-        </div>
+          }
+        />
 
       </div>
     </div>

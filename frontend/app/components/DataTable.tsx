@@ -10,6 +10,8 @@ interface DataTableProps {
   aiColumns?: AiColumn[];
   excludedRows?: Set<number>;
   onExcludeChange?: (indices: Set<number>) => void;
+  /** Rendered in a popover opened from the "+ KI-Spalte" header cell */
+  aiSlot?: React.ReactNode;
 }
 
 interface ColFilter { text: string; values: Set<string> | null }
@@ -135,7 +137,7 @@ function FilterDropdown({
 }
 
 export function DataTable({
-  data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange,
+  data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange, aiSlot,
 }: DataTableProps) {
   const [globalSearch, setGlobalSearch]   = useState('');
   const [colFilters,   setColFilters]     = useState<Record<string, ColFilter>>({});
@@ -143,6 +145,7 @@ export function DataTable({
   const [sortAsc,      setSortAsc]        = useState(true);
   const [page,         setPage]           = useState(1);
   const [openFilter,   setOpenFilter]     = useState<{ col: string; rect: DOMRect } | null>(null);
+  const [aiOpen,       setAiOpen]         = useState(false);
 
   const allColumns = [...rawColumns, ...aiColumns.map(c => c.name)];
 
@@ -250,6 +253,24 @@ export function DataTable({
     setOpenFilter(prev => prev?.col === col ? null : { col, rect });
   };
 
+  // URLs become clickable links
+  const renderCell = (val: string) => {
+    if (/^https?:\/\//i.test(val)) {
+      return (
+        <a
+          href={val}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          style={{ color: '#8ab4f8', textDecoration: 'none' }}
+          onMouseEnter={e => ((e.currentTarget as HTMLElement).style.textDecoration = 'underline')}
+          onMouseLeave={e => ((e.currentTarget as HTMLElement).style.textDecoration = 'none')}
+        >{val}</a>
+      );
+    }
+    return val || '—';
+  };
+
   return (
     <div style={{ border: '1px solid rgba(255,255,255,.07)', borderRadius: 10, overflow: 'hidden', fontSize: 11 }}>
 
@@ -338,6 +359,19 @@ export function DataTable({
                   </th>
                 );
               })}
+              {aiSlot && (
+                <th style={{ ...thStyle, width: 120, background: 'rgba(232,176,75,.03)', borderLeft: '1px dashed rgba(232,176,75,.25)' }}>
+                  <button
+                    onClick={() => setAiOpen(o => !o)}
+                    style={{
+                      ...mono, fontSize: 10, padding: '3px 10px', borderRadius: 5, cursor: 'pointer',
+                      border: aiOpen ? '1px solid rgba(232,176,75,.5)' : '1px dashed rgba(232,176,75,.35)',
+                      background: aiOpen ? 'rgba(232,176,75,.12)' : 'transparent',
+                      color: '#e8b04b', whiteSpace: 'nowrap',
+                    }}
+                  >+ KI-Spalte</button>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -353,7 +387,7 @@ export function DataTable({
                   <td style={{ ...tdStyle, color: '#5f6e87', fontSize: 10 }}>{(page - 1) * PAGE + i + 1}</td>
                   {rawColumns.map(col => (
                     <td key={col} title={String(row[col] ?? '')} style={tdStyle}>
-                      {String(row[col] ?? '—')}
+                      {renderCell(String(row[col] ?? ''))}
                     </td>
                   ))}
                   {aiColumns.map(col => {
@@ -366,12 +400,15 @@ export function DataTable({
                       </td>
                     );
                   })}
+                  {aiSlot && (
+                    <td style={{ borderBottom: '1px solid rgba(255,255,255,.04)', borderLeft: '1px dashed rgba(232,176,75,.15)' }} />
+                  )}
                 </tr>
               );
             })}
             {paginated.length === 0 && (
               <tr>
-                <td colSpan={allColumns.length + (onExcludeChange ? 2 : 1)} style={{ ...mono, padding: '28px', textAlign: 'center', fontSize: 11, color: '#5f6e87' }}>
+                <td colSpan={allColumns.length + (onExcludeChange ? 2 : 1) + (aiSlot ? 1 : 0)} style={{ ...mono, padding: '28px', textAlign: 'center', fontSize: 11, color: '#5f6e87' }}>
                   Keine Daten
                 </td>
               </tr>
@@ -394,6 +431,25 @@ export function DataTable({
               >{lbl}</button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* AI column popover */}
+      {aiSlot && aiOpen && (
+        <div style={{
+          position: 'fixed', right: 24, top: 90, zIndex: 9998, width: 340,
+          maxHeight: 'calc(100vh - 120px)', overflowY: 'auto',
+          background: '#10111a', border: '1px solid rgba(232,176,75,.3)',
+          borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,.6)', padding: '14px 16px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ ...mono, fontSize: 11, color: '#e8b04b', letterSpacing: '.08em' }}>KI-Spalte hinzufügen</span>
+            <button
+              onClick={() => setAiOpen(false)}
+              style={{ ...mono, fontSize: 16, color: '#5f6e87', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
+            >×</button>
+          </div>
+          {aiSlot}
         </div>
       )}
 
