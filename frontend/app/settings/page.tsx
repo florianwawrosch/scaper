@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { loadSettings, saveSettings } from '@/lib/settings';
+import { fetchKeyAvailability } from '@/lib/keyAvailability';
 
 interface Service { key: string; label: string; hint: string; desc: string }
 interface Group   { key: string; label: string; desc: string; services: Service[] }
@@ -71,6 +72,7 @@ export default function Settings() {
   const [input,      setInput]      = useState('');
   const [show,       setShow]       = useState<Record<string, boolean>>({});
   const [backendUrl, setBackendUrl] = useState('');
+  const [serverKeys, setServerKeys] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const s = loadSettings();
@@ -82,6 +84,8 @@ export default function Settings() {
       if (raw) setLocalKeys((JSON.parse(raw) as any).apiKeys ?? {});
     } catch {}
     try { setBackendUrl(localStorage.getItem('backendUrl') ?? ''); } catch {}
+    // Which keys exist server-side (Vercel/Railway env vars) — booleans only
+    fetchKeyAvailability().then(setServerKeys);
   }, []);
 
   const saveBackendUrl = () => {
@@ -225,17 +229,20 @@ export default function Settings() {
                       const isConnecting = connecting === svc.key;
                       // Key came from env var if it's present but not saved in localStorage
                       const fromEnv      = connected && !localKeys[svc.key];
+                      // Key lives server-side (Vercel/Railway env) — works via proxy without a browser key
+                      const onServer     = !connected && !!serverKeys[svc.key];
+                      const active       = connected || onServer;
 
                       return (
                         <div key={svc.key} style={{
-                          background: connected ? (fromEnv ? 'rgba(99,129,255,.04)' : 'rgba(79,209,197,.04)') : T.panel2,
-                          border: `1px solid ${connected ? (fromEnv ? 'rgba(99,129,255,.2)' : 'rgba(79,209,197,.18)') : 'rgba(255,255,255,.06)'}`,
+                          background: active ? ((fromEnv || onServer) ? 'rgba(99,129,255,.04)' : 'rgba(79,209,197,.04)') : T.panel2,
+                          border: `1px solid ${active ? ((fromEnv || onServer) ? 'rgba(99,129,255,.2)' : 'rgba(79,209,197,.18)') : 'rgba(255,255,255,.06)'}`,
                           borderRadius: 7, overflow: 'hidden',
                           transition: 'background .2s, border-color .2s',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
                             {/* Status dot */}
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: connected ? (fromEnv ? '#6381ff' : T.teal) : 'rgba(255,255,255,.15)', transition: 'background .2s' }} />
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: connected ? (fromEnv ? '#6381ff' : T.teal) : onServer ? '#6381ff' : 'rgba(255,255,255,.15)', transition: 'background .2s' }} />
 
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 500, color: connected ? T.ink : T.inkD }}>{svc.label}</p>
@@ -266,6 +273,11 @@ export default function Settings() {
                               </div>
                             ) : (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                {onServer && !isConnecting && (
+                                  <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', color: '#6381ff', background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', borderRadius: 4, padding: '2px 7px' }}>
+                                    ✓ Server-Key aktiv
+                                  </span>
+                                )}
                                 {isConnecting && (
                                   <button type="button" onClick={() => { setConnecting(null); setInput(''); }}
                                     style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6 }}>

@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
 import { saveCsvText, deleteCsvText } from '@/lib/csvStorage';
-import { api, apiFetch, API_URL, type ScrapeRun } from '@/lib/api';
+import { api, API_URL, type ScrapeRun } from '@/lib/api';
+import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from '@/app/components/Toast';
 import { TagInput } from '@/app/components/TagInput';
@@ -121,19 +122,7 @@ export default function Home() {
       const last = runs[0];
       if (last?.scraper_config) applyRunConfig(last.scraper_config as Record<string, any>);
     }).catch(() => {}).finally(() => setLoading(false));
-    // Which providers have keys: Railway backend env + Vercel server env (booleans only)
-    Promise.allSettled([
-      apiFetch(`/api/config/providers`, { signal: AbortSignal.timeout(4000) }).then(r => r.ok ? r.json() : {}),
-      fetch(`/api/keys/available`, { signal: AbortSignal.timeout(4000) }).then(r => r.ok ? r.json() : {}),
-    ]).then(results => {
-      const merged: Record<string, boolean> = {};
-      for (const r of results) {
-        if (r.status === 'fulfilled' && r.value && typeof r.value === 'object') {
-          for (const [k, v] of Object.entries(r.value)) if (v) merged[k] = true;
-        }
-      }
-      setBackendKeys(merged);
-    });
+    fetchKeyAvailability().then(setBackendKeys);
     const saved = localStorage.getItem('presets');
     if (saved) setPresets(JSON.parse(saved));
 
