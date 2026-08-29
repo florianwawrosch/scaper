@@ -1,46 +1,78 @@
-# Lead-Pipeline Dashboard
+# Lead Pipeline
 
-Drei-Module-Pipeline fuer High-Ticket-Coach-Leads:
+Scrape → Filter → Enrich → Export für High-Ticket-Coach-Leads.
+Die komplette App läuft als **Next.js-App auf Vercel** — Scraping, KI-Analyse
+und Enrichment laufen serverseitig in Vercel-Routen, ein separates Backend ist
+nicht nötig.
 
-1. **Scraping** -- Meta Ads Library (bestehender Python-Scraper), PhantomBuster (LinkedIn), spaeter Job-Portale.
-2. **Validierung & Filterung** -- Gemini-Klassifizierung gegen editierbare, quellenabhaengige Kriterien.
-3. **Anreicherung** -- E-Mail-/Kontaktdaten via Hunter.io / FindyMail.
+## Wichtig: Wo die API-Keys liegen
 
-## Stand
+**Alle Keys stehen als Umgebungsvariablen in Vercel** (Project → Settings →
+Environments → Environment Variables). Sie stehen bewusst NICHT im Code —
+Code liegt auf GitHub, dort eingecheckte Keys gelten als geleakt und werden
+von Meta/OpenAI automatisch gesperrt.
 
-Modul 2 ist als Streamlit-Seite nutzbar. Modul 1 (Anbindung an den bestehenden Meta-Scraper,
-`_ad_library_common.py`) und Modul 3 (Hunter.io/FindyMail) folgen.
+Der Server liest die Variablen zur Laufzeit (`frontend/lib/serverKeys.ts`
+definiert alle akzeptierten Namen). Aktuell verwendete Namen:
 
-## Setup
+| Dienst | Variable (weitere Varianten werden akzeptiert) |
+|---|---|
+| Meta Ads Library | `META_API_KEY` |
+| OpenAI / ChatGPT | `OPENAI_API_KEY` |
+| Google Gemini | `GEMINI_API_KEY` |
+| Anthropic Claude | `ANTHROPIC_API_KEY` |
+| FindyMail | `FINDYMAIL_API_KEY` |
+| Hunter.io | `HUNTER_IO_API_KEY` |
+| App-Passwortschutz | `APP_PASSWORD` (optional) |
+
+Nach dem Anlegen/Ändern einer Variable: einmal **Redeploy** — Vercel übernimmt
+Variablen erst beim nächsten Deploy. Kontrolle im Browser:
+`/api/keys/available` zeigt als JSON, welche Keys der Server sieht (nur
+Booleans, nie die Werte). In den App-Einstellungen erscheint für serverseitige
+Keys das blaue Badge „✓ Server-Key aktiv". Keys, die man in den
+App-Einstellungen einträgt, liegen nur im jeweiligen Browser (localStorage)
+und haben Vorrang vor den Server-Keys.
+
+## Architektur
+
+```
+frontend/                    Next.js-App (deployt auf Vercel)
+  app/api/scrape/            Meta Ads Library Scraper (TypeScript-Port)
+  app/api/ai/analyze/        KI-Analyse: Gemini / Claude / OpenAI via REST
+  app/api/enrich/            E-Mail-Enrichment: Hunter.io + FindyMail
+  app/api/keys/              Keys für eingeloggte Browser (nur mit APP_PASSWORD)
+  app/api/keys/available/    Welche Keys der Server hat (Booleans)
+  app/api/backend/[...path]/ Proxy zu einem optionalen Python-Backend
+  lib/serverKeys.ts          Env-Variablen-Namen ↔ Provider-Zuordnung
+  lib/blocklist.ts           Blockliste (immer ausgeschlossene Seiten)
+  lib/csvStorage.ts          IndexedDB-Speicher für Scrape-/CSV-Daten
+
+main.py + core/              Optionales FastAPI-Backend (Railway) — wird nur
+                             gebraucht, wenn ein separater Server läuft; die
+                             App funktioniert komplett ohne.
+pages/ + app.py              Alte Streamlit-Oberfläche (Vorgänger, ungenutzt)
+```
+
+## Datenfluss
+
+1. **Scrapen**: Suchmaske → `/api/scrape` (Server hängt `META_API_KEY` an) →
+   Ergebnis landet als CSV in IndexedDB im Browser → Datentabelle.
+2. **KI-Spalten**: „+ KI-Spalte" in der Tabelle → Spalte speichern →
+   Analysieren → `/api/ai/analyze` in 20er-Chunks → Ergebnisse werden in die
+   gespeicherte CSV geschrieben (überleben Reload).
+3. **Enrichment**: „Enrichment starten →" → eigene Seite, nur konfigurierte
+   Provider → `/api/enrich` → E-Mails als Spalte `email_enriched`.
+4. **Export**: ↓ CSV / ↓ XLSX direkt aus der Tabelle.
+
+Die Blockliste (Einstellungen → Blockliste, 🚫 in der Tabelle) filtert
+unerwünschte Seiten aus allen künftigen Scrapes.
+
+## Lokal entwickeln
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # GEMINI_API_KEY eintragen
+cd frontend
+npm install
+npm run dev    # http://localhost:3000
 ```
 
-## Starten
-
-```bash
-streamlit run app.py
-```
-
-## Struktur
-
-```
-app.py                      Dashboard-Startseite
-pages/1_Filterung.py        Modul 2: Upload -> Spalten-Mapping -> Gemini-Klassifizierung -> Export
-pages/2_Kriterien.py        Modul 2: Ausschlussregeln pro Quelle verwalten (ohne Code-Aenderung)
-core/schema.py              Vereinheitlichtes Lead-Schema + Spalten-Mapping-Vorschlaege
-core/criteria_store.py      Laden/Speichern der Kriterien (criteria/*.yaml)
-core/gemini_classifier.py   Prompt-Bau + Gemini-Aufruf + Antwort-Parsing
-core/loaders.py             CSV/XLSX-Upload einlesen
-criteria/*.yaml             Editierbare Zielprofile + Ausschlussregeln je Quelle
-```
-
-## Kriterien erweitern
-
-Neue Ausschlussmuster (z.B. wenn ein neuer Typ von "Fehlläufern" auffaellt) werden auf der Seite
-"Kriterien" hinzugefuegt -- landet als neue Regel in `criteria/<quelle>.yaml`, sofort wirksam,
-kein Redeploy noetig.
+Keys lokal: `frontend/.env.local` mit denselben Variablennamen wie oben.
