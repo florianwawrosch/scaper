@@ -13,6 +13,18 @@ const API_BASE = getApiBase();
 
 export const API_URL = API_BASE;
 
+/**
+ * All backend calls go through the Next.js server proxy (/api/backend/...):
+ * same-origin (no CORS) and the server injects API keys from its env vars
+ * whenever the browser didn't send one. The real backend URL travels in a
+ * header so the runtime override from Settings keeps working.
+ */
+export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  headers.set('x-backend-url', getApiBase());
+  return fetch(`/api/backend${path}`, { ...init, headers });
+}
+
 async function extractError(res: Response, fallback: string): Promise<never> {
   let msg = `${fallback} (HTTP ${res.status})`;
   try {
@@ -50,26 +62,26 @@ export interface Preset {
 
 export const api = {
   health: async () => {
-    const res = await fetch(`${getApiBase()}/api/health`);
+    const res = await apiFetch(`/api/health`);
     if (!res.ok) return extractError(res, 'Health check fehlgeschlagen');
     return res.json();
   },
 
   runs: {
     list: async () => {
-      const res = await fetch(`${getApiBase()}/api/runs`);
+      const res = await apiFetch(`/api/runs`);
       if (!res.ok) return extractError(res, 'Runs konnten nicht geladen werden');
       return res.json() as Promise<ScrapeRun[]>;
     },
 
     get: async (runId: string) => {
-      const res = await fetch(`${getApiBase()}/api/runs/${runId}`);
+      const res = await apiFetch(`/api/runs/${runId}`);
       if (!res.ok) return extractError(res, 'Run konnte nicht geladen werden');
       return res.json() as Promise<ScrapeRun>;
     },
 
     create: async (source: string, scraperConfig?: Record<string, unknown>) => {
-      const res = await fetch(`${getApiBase()}/api/runs`, {
+      const res = await apiFetch(`/api/runs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source, scraper_config: scraperConfig }),
@@ -79,7 +91,7 @@ export const api = {
     },
 
     update: async (runId: string, data: Partial<ScrapeRun>) => {
-      const res = await fetch(`${getApiBase()}/api/runs/${runId}`, {
+      const res = await apiFetch(`/api/runs/${runId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -89,13 +101,13 @@ export const api = {
     },
 
     getDataset: async (runId: string) => {
-      const res = await fetch(`${getApiBase()}/api/runs/${runId}/dataset`);
+      const res = await apiFetch(`/api/runs/${runId}/dataset`);
       if (!res.ok) return extractError(res, 'Datensatz konnte nicht geladen werden');
       return res.json();
     },
 
     saveDataset: async (runId: string, dfData: unknown[], mapping: Record<string, unknown>) => {
-      const res = await fetch(`${getApiBase()}/api/runs/${runId}/dataset`, {
+      const res = await apiFetch(`/api/runs/${runId}/dataset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ df_data: dfData, mapping }),
@@ -105,7 +117,7 @@ export const api = {
     },
 
     upload: async (runId: string, formData: FormData) => {
-      const res = await fetch(`${getApiBase()}/api/runs/${runId}/upload`, {
+      const res = await apiFetch(`/api/runs/${runId}/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -114,7 +126,7 @@ export const api = {
     },
 
     classify: async (runId: string, aiProvider: string, aiModel: string, dfData?: unknown[], mapping?: Record<string, unknown>, apiKey?: string) => {
-      const res = await fetch(`${getApiBase()}/api/runs/${runId}/classify`, {
+      const res = await apiFetch(`/api/runs/${runId}/classify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ aiProvider, aiModel, df_data: dfData, mapping, apiKey }),
@@ -124,7 +136,7 @@ export const api = {
     },
 
     analyze: async (runId: string, aiProvider: string, aiModel: string, prompt: string, columnName: string, apiKey?: string) => {
-      const res = await fetch(`${getApiBase()}/api/runs/${runId}/analyze`, {
+      const res = await apiFetch(`/api/runs/${runId}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ aiProvider, aiModel, prompt, column_name: columnName, apiKey }),
@@ -136,19 +148,19 @@ export const api = {
 
   sources: {
     list: async () => {
-      const res = await fetch(`${getApiBase()}/api/sources`);
+      const res = await apiFetch(`/api/sources`);
       if (!res.ok) return extractError(res, 'Quellen konnten nicht geladen werden');
       return res.json() as Promise<Source[]>;
     },
 
     getPresets: async (sourceKey: string) => {
-      const res = await fetch(`${getApiBase()}/api/sources/${sourceKey}/presets`);
+      const res = await apiFetch(`/api/sources/${sourceKey}/presets`);
       if (!res.ok) return extractError(res, 'Presets konnten nicht geladen werden');
       return res.json() as Promise<Preset[]>;
     },
 
     savePreset: async (sourceKey: string, name: string, config: Record<string, unknown>) => {
-      const res = await fetch(`${getApiBase()}/api/sources/${sourceKey}/presets`, {
+      const res = await apiFetch(`/api/sources/${sourceKey}/presets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, config }),

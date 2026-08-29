@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getApiKey, getAiConfig } from '@/lib/settings';
-import { getApiBase } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 
 export function StatusDashboard() {
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
@@ -10,7 +10,7 @@ export function StatusDashboard() {
   useEffect(() => {
     const check = async () => {
       try {
-        const res = await fetch(`${getApiBase()}/api/health`, {
+        const res = await apiFetch(`/api/health`, {
           signal: AbortSignal.timeout(3000),
         });
         setBackendOnline(res.ok);

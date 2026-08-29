@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { getApiKey } from '@/lib/settings';
-import { getApiBase } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import { useToast } from './Toast';
 
 interface Props {
@@ -48,11 +48,9 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
   const needsMapping = !!availableColumns?.length;
 
   const start = async () => {
+    // Key from browser settings if present — otherwise the server proxy
+    // injects it from env vars, so don't block when it's missing locally.
     const apiKey = getApiKey(selected as any);
-    if (!apiKey) {
-      showToast(`Kein API-Key für ${selected} konfiguriert — Einstellungen prüfen`, 'warning');
-      return;
-    }
     if (leadsCount === 0) return showToast('Keine Leads zum Enrichment', 'warning');
     if (needsMapping && (!nameCol || !companyCol)) {
       return showToast('Bitte Name- und Firmen-Spalte auswählen', 'warning');
@@ -65,12 +63,12 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
       const rid = runId || (resolveRunId ? await resolveRunId() : '');
       if (!rid) throw new Error('Kein Backend verbunden');
 
-      const res = await fetch(`${getApiBase()}/api/runs/${rid}/enrich`, {
+      const res = await apiFetch(`/api/runs/${rid}/enrich`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: selected,
-          apiKey,
+          ...(apiKey && { apiKey }),
           ...(needsMapping && { nameColumn: nameCol, companyColumn: companyCol }),
         }),
       });

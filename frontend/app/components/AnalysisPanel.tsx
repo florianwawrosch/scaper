@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, getApiBase } from '@/lib/api';
+import { api, apiFetch } from '@/lib/api';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from './Toast';
 
@@ -46,12 +46,20 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult }:
     readKeys();
     // Re-read when server-side env keys were synced into localStorage
     window.addEventListener('keys-synced', readKeys);
-    // Also check which keys the backend has as env vars
-    fetch(`${getApiBase()}/api/config/providers`, { signal: AbortSignal.timeout(4000) })
-      .then(r => r.ok ? r.json() : {})
-      .then(setBackendKeys)
-      .catch(() => {})
-      .finally(() => setKeysReady(true));
+    // Which providers have keys: Railway backend env + Vercel server env (booleans only)
+    Promise.allSettled([
+      apiFetch(`/api/config/providers`, { signal: AbortSignal.timeout(4000) }).then(r => r.ok ? r.json() : {}),
+      fetch(`/api/keys/available`, { signal: AbortSignal.timeout(4000) }).then(r => r.ok ? r.json() : {}),
+    ]).then(results => {
+      const merged: Record<string, boolean> = {};
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value && typeof r.value === 'object') {
+          for (const [k, v] of Object.entries(r.value)) if (v) merged[k] = true;
+        }
+      }
+      setBackendKeys(merged);
+      setKeysReady(true);
+    });
     return () => window.removeEventListener('keys-synced', readKeys);
   }, []);
 

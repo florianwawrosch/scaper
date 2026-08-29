@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
 import { saveCsvText, deleteCsvText } from '@/lib/csvStorage';
-import { api, API_URL, type ScrapeRun } from '@/lib/api';
+import { api, apiFetch, API_URL, type ScrapeRun } from '@/lib/api';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from '@/app/components/Toast';
 import { TagInput } from '@/app/components/TagInput';
@@ -121,10 +121,19 @@ export default function Home() {
       const last = runs[0];
       if (last?.scraper_config) applyRunConfig(last.scraper_config as Record<string, any>);
     }).catch(() => {}).finally(() => setLoading(false));
-    fetch(`${API_URL}/api/config/providers`, { signal: AbortSignal.timeout(4000) })
-      .then(r => r.ok ? r.json() : {})
-      .then(setBackendKeys)
-      .catch(() => {});
+    // Which providers have keys: Railway backend env + Vercel server env (booleans only)
+    Promise.allSettled([
+      apiFetch(`/api/config/providers`, { signal: AbortSignal.timeout(4000) }).then(r => r.ok ? r.json() : {}),
+      fetch(`/api/keys/available`, { signal: AbortSignal.timeout(4000) }).then(r => r.ok ? r.json() : {}),
+    ]).then(results => {
+      const merged: Record<string, boolean> = {};
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value && typeof r.value === 'object') {
+          for (const [k, v] of Object.entries(r.value)) if (v) merged[k] = true;
+        }
+      }
+      setBackendKeys(merged);
+    });
     const saved = localStorage.getItem('presets');
     if (saved) setPresets(JSON.parse(saved));
 
@@ -296,12 +305,11 @@ export default function Home() {
     setFormError('');
     if (tags.length === 0) { setFormError('Mindestens einen Suchbegriff eingeben'); return; }
     const settings = loadSettings();
+    // Token from browser settings if present. If empty, the Next.js server
+    // proxy injects it from the Vercel env vars (META_API_KEY etc.) — and the
+    // Railway backend falls back to its own env. So never block here; a truly
+    // missing token surfaces as a clear error banner on the run page.
     const token = settings.apiKeys.meta_ads;
-    // Allow start when token exists in browser settings OR on the backend as env var
-    if (!token && !backendKeys.meta_ads) {
-      setFormError('Meta Ads API-Token fehlt — bitte in den Einstellungen dieses Browsers eintragen (Einstellungen → Scraping → Meta Ads Library)');
-      return;
-    }
     setCreating(true);
     try {
       const run = await api.runs.create('meta_ads_library', {
@@ -316,7 +324,7 @@ export default function Home() {
         ...(dateMax && { ad_delivery_date_max: dateMax }),
         limit,
         ...(bylines && { bylines: bylines.split(',').map(s => s.trim()).filter(Boolean) }),
-        meta_ads_token: token,
+        ...(token && { meta_ads_token: token }),
       });
       setRuns(prev => [run, ...prev]);
       router.push(`/runs/${run.id}`);
