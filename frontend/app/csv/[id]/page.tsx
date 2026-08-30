@@ -4,12 +4,18 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Papa from 'papaparse';
 import { loadCsvText, saveCsvText } from '@/lib/csvStorage';
-import { addToBlocklist } from '@/lib/blocklist';
+import { addToBlocklist, removeFromBlocklist } from '@/lib/blocklist';
+import { loadSettings } from '@/lib/settings';
+import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { useToast } from '@/app/components/Toast';
 import { api } from '@/lib/api';
 import { DataTable } from '@/app/components/DataTable';
-import { AnalysisPanel } from '@/app/components/AnalysisPanel';
-import { EnrichmentPanel } from '@/app/components/EnrichmentPanel';
+import { AiColumnEditor } from '@/app/components/AiColumnEditor';
+import type { AnalysisConfig } from '@/app/components/AnalysisPanel';
+
+const DEFAULT_MODELS: Record<string, string> = {
+  gemini: 'gemini-2.0-flash', anthropic: 'claude-sonnet-5', openai: 'gpt-4o',
+};
 
 interface CsvRun {
   data: Record<string, string>[];
@@ -60,6 +66,117 @@ export default function CsvViewer() {
   const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
   const [backendRunId, setBackendRunId] = useState<string | null>(null);
   const [uploadingToBackend, setUploadingToBackend] = useState(false);
+
+  // AI column configs (owned here; edited via the ⚙ side panel)
+  const configsKey = `analysis_configs_${id}`;
+  const [aiConfigs,   setAiConfigs]   = useState<AnalysisConfig[]>([]);
+  const [editingId,   setEditingId]   = useState<string | null>(null);
+  const [colRunning,  setColRunning]  = useState<Record<string, boolean>>({});
+  const [colProgress, setColProgress] = useState<Record<string, number>>({});
+  const [providers,   setProviders]   = useState<string[]>([]);
+  const [blockedIdx,  setBlockedIdx]  = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(configsKey);
+      if (saved) setAiConfigs(JSON.parse(saved));
+    } catch {}
+    fetchKeyAvailability().then(server => {
+      const local = loadSettings().apiKeys as Record<string, string>;
+      setProviders(['gemini', 'anthropic', 'openai'].filter(p => local[p] || server[p]));
+    });
+  }, [configsKey]);
+
+  const persistConfigs = (next: AnalysisConfig[]) => {
+    setAiConfigs(next);
+    try { localStorage.setItem(configsKey, JSON.stringify(next)); } catch {}
+  };
+
+  const upsertAiColumn = (name: string, values: string[]) =>
+    setAiColumns(prev => {
+      const idx = prev.findIndex(c => c.name === name);
+      if (idx >= 0) { const next = [...prev]; next[idx] = { name, values }; return next; }
+      return [...prev, { name, values }];
+    });
+
+  const renameAiColumn = (oldName: string, newName: string) =>
+    setAiColumns(prev => prev.map(c => c.name === oldName ? { ...c, name: newName } : c));
+
+  /** Merge finished values into the stored CSV so the column survives reloads */
+  const persistColumnToCsv = async (name: string, values: string[]) => {
+    if (!run) return;
+    try {
+      const merged = run.data.map((r, i) => ({ ...r, [name]: values[i] ?? '' }));
+      const fields = run.fields.includes(name) ? run.fields : [...run.fields, name];
+      await saveCsvText(id, Papa.unparse(merged));
+      const raw = localStorage.getItem(`csv_run_${id}`);
+      if (raw) {
+        const m = JSON.parse(raw);
+        localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...m, fields }));
+      }
+    } catch {}
+  };
+
+  /** "+ KI-Spalte": column appears in the table immediately, no popup */
+  const addAiColumn = () => {
+    if (!run) return;
+    if (providers.length === 0) return showToast('Kein KI-API Key konfiguriert — Einstellungen prüfen', 'warning');
+    let n = aiConfigs.length + 1;
+    let name = `Analyse ${n}`;
+    while (aiColumns.some(c => c.name === name) || aiConfigs.some(c => c.name === name)) name = `Analyse ${++n}`;
+    const provider = providers[0];
+    const cfg: AnalysisConfig = {
+      id: `cfg_${Date.now()}`, name, provider,
+      model: DEFAULT_MODELS[provider] ?? '', prompt: '',
+    };
+    persistConfigs([...aiConfigs, cfg]);
+    upsertAiColumn(name, Array(run.data.length).fill('·'));
+    showToast(`Spalte «${name}» angelegt — über ⚙ konfigurieren`, 'info');
+  };
+
+  const runColumn = async (cfg: AnalysisConfig) => {
+    if (!run || colRunning[cfg.id]) return;
+    if (!cfg.prompt.trim()) { setEditingId(cfg.id); return showToast('Erst einen Prompt eingeben (⚙)', 'warning'); }
+    setColRunning(p => ({ ...p, [cfg.id]: true }));
+    try {
+      const apiKey = (loadSettings().apiKeys as Record<string, string>)[cfg.provider] || undefined;
+      const buildPrompt = (row: Record<string, string>) => {
+        const rowText = Object.entries(row)
+          .filter(([k, v]) => k !== '_idx' && v && String(v).trim())
+          .map(([k, v]) => `${k}: ${v}`).join('\n');
+        return `${cfg.prompt}\n\nDaten:\n${rowText}\n\nAntworte nur kurz und direkt.`;
+      };
+      const CHUNK = 20;
+      const values: string[] = [];
+      for (let i = 0; i < run.data.length; i += CHUNK) {
+        const prompts = run.data.slice(i, i + CHUNK).map(buildPrompt);
+        const res = await fetch('/api/ai/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: cfg.provider, model: cfg.model, prompts, ...(apiKey && { apiKey }) }),
+        });
+        if (!res.ok) {
+          let msg = `Analyse fehlgeschlagen (HTTP ${res.status})`;
+          try { msg = (await res.json()).detail ?? msg; } catch {}
+          throw new Error(msg);
+        }
+        const data = await res.json();
+        values.push(...(data.values ?? []));
+        setColProgress(p => ({ ...p, [cfg.id]: Math.min(values.length, run.data.length) }));
+        upsertAiColumn(cfg.name, [...values, ...Array(run.data.length - values.length).fill('·')]);
+      }
+      upsertAiColumn(cfg.name, values);
+      await persistColumnToCsv(cfg.name, values);
+      showToast(`Spalte «${cfg.name}» fertig`, 'success');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Fehler', 'error', 8000);
+    } finally {
+      setColRunning(p => ({ ...p, [cfg.id]: false }));
+      setColProgress(p => ({ ...p, [cfg.id]: 0 }));
+    }
+  };
+
+  const editingCfg = aiConfigs.find(c => c.id === editingId) ?? null;
 
   useEffect(() => {
     const load = async () => {
@@ -188,59 +305,70 @@ export default function CsvViewer() {
           >Enrichment starten →</button>
         </div>
 
-        {/* Full-width table; AI column config lives in the "+ KI-Spalte" popover */}
+        {/* Full-width table; AI columns are created in place, ⚙ opens the editor */}
         <DataTable
           data={run.data}
           rawColumns={run.fields}
           aiColumns={aiColumns}
           excludedRows={excludedRows}
           onExcludeChange={setExcludedRows}
+          blockedRows={blockedIdx}
           onBlockRow={run.fields.includes('page_name') ? (row) => {
             const name = String(row.page_name ?? '').trim();
             if (!name) return;
-            addToBlocklist(name, String(row.page_id ?? '') || undefined);
-            showToast(`«${name}» zur Blockliste hinzugefügt`, 'success');
+            const idx = Number(row._idx);
+            const next = new Set(blockedIdx);
+            if (next.has(idx)) {
+              removeFromBlocklist(name);
+              next.delete(idx);
+              showToast(`«${name}» von der Blockliste entfernt`, 'info');
+            } else {
+              addToBlocklist(name, String(row.page_id ?? '') || undefined);
+              next.add(idx);
+              showToast(`«${name}» geblockt — wird bei künftigen Scrapes ausgeschlossen`, 'success');
+            }
+            setBlockedIdx(next);
           } : undefined}
-          aiSlot={
-            <AnalysisPanel
-              runId={backendRunId ?? ''}
-              resolveRunId={resolveBackendRunId}
-              rows={run.data}
-              rowCount={run.data.length}
-              slotMode
-              onColumnRemove={(name) => {
-                setAiColumns(prev => prev.filter(c => c.name !== name));
-              }}
-              onColumnResult={(name, values) => {
-                setAiColumns(prev => {
-                  const idx = prev.findIndex(c => c.name === name);
-                  if (idx >= 0) {
-                    const next = [...prev];
-                    next[idx] = { name, values };
-                    return next;
-                  }
-                  return [...prev, { name, values }];
-                });
-                // Persist real results into the stored CSV so the column
-                // survives reloads ('·' placeholders from Speichern are not saved)
-                if (!values.every(v => v === '·')) {
-                  (async () => {
-                    try {
-                      const merged = run.data.map((r, i) => ({ ...r, [name]: values[i] ?? '' }));
-                      const fields = run.fields.includes(name) ? run.fields : [...run.fields, name];
-                      await saveCsvText(id, Papa.unparse(merged));
-                      const raw = localStorage.getItem(`csv_run_${id}`);
-                      if (raw) {
-                        const m = JSON.parse(raw);
-                        localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...m, fields }));
-                      }
-                    } catch {}
-                  })();
-                }
-              }}
-            />
-          }
+          onAddAiColumn={addAiColumn}
+          onConfigureAiColumn={(name) => {
+            const cfg = aiConfigs.find(c => c.name === name);
+            if (cfg) setEditingId(cfg.id);
+            else showToast('Für diese Spalte gibt es keine Konfiguration', 'warning');
+          }}
+          onRunAiColumn={(name) => {
+            const cfg = aiConfigs.find(c => c.name === name);
+            if (cfg) runColumn(cfg);
+            else showToast('Für diese Spalte gibt es keine Konfiguration', 'warning');
+          }}
         />
+
+        {/* ⚙ side panel for the selected AI column */}
+        {editingCfg && (
+          <AiColumnEditor
+            config={editingCfg}
+            rowCount={run.data.length}
+            providers={providers}
+            running={!!colRunning[editingCfg.id]}
+            progress={colProgress[editingCfg.id] ?? 0}
+            onChange={(patch) => {
+              if (patch.name && patch.name !== editingCfg.name) {
+                renameAiColumn(editingCfg.name, patch.name);
+              }
+              persistConfigs(aiConfigs.map(c => c.id === editingCfg.id ? { ...c, ...patch } : c));
+            }}
+            onSave={() => {
+              setEditingId(null);
+              showToast(`Spalte «${editingCfg.name}» gespeichert`, 'success');
+            }}
+            onRun={() => runColumn(aiConfigs.find(c => c.id === editingCfg.id) ?? editingCfg)}
+            onDelete={() => {
+              setAiColumns(prev => prev.filter(c => c.name !== editingCfg.name));
+              persistConfigs(aiConfigs.filter(c => c.id !== editingCfg.id));
+              setEditingId(null);
+            }}
+            onClose={() => setEditingId(null)}
+          />
+        )}
 
       </div>
     </div>

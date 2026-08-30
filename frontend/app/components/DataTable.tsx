@@ -11,10 +11,16 @@ interface DataTableProps {
   aiColumns?: AiColumn[];
   excludedRows?: Set<number>;
   onExcludeChange?: (indices: Set<number>) => void;
-  /** Rendered in a popover opened from the "+ KI-Spalte" header cell */
-  aiSlot?: React.ReactNode;
+  /** "+ KI-Spalte" header button: creates a new AI column directly in the table */
+  onAddAiColumn?: () => void;
+  /** ⚙ in an AI column header: open the configuration for that column */
+  onConfigureAiColumn?: (name: string) => void;
+  /** ▶ in an AI column header: run the analysis for that column */
+  onRunAiColumn?: (name: string) => void;
   /** When set, each row gets a block button (add page to the Blockliste) */
   onBlockRow?: (row: Record<string, any>) => void;
+  /** Row indices (original _idx) currently on the Blockliste — rendered dimmed */
+  blockedRows?: Set<number>;
 }
 
 interface ColFilter { text: string; values: Set<string> | null }
@@ -140,7 +146,9 @@ function FilterDropdown({
 }
 
 export function DataTable({
-  data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange, aiSlot, onBlockRow,
+  data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange,
+  onAddAiColumn, onConfigureAiColumn, onRunAiColumn, onBlockRow,
+  blockedRows = new Set(),
 }: DataTableProps) {
   const [globalSearch, setGlobalSearch]   = useState('');
   const [colFilters,   setColFilters]     = useState<Record<string, ColFilter>>({});
@@ -148,7 +156,6 @@ export function DataTable({
   const [sortAsc,      setSortAsc]        = useState(true);
   const [page,         setPage]           = useState(1);
   const [openFilter,   setOpenFilter]     = useState<{ col: string; rect: DOMRect } | null>(null);
-  const [aiOpen,       setAiOpen]         = useState(false);
 
   const allColumns = [...rawColumns, ...aiColumns.map(c => c.name)];
 
@@ -338,7 +345,7 @@ export function DataTable({
                 </th>
               )}
               <th style={{ ...thStyle, width: 28, cursor: 'default', color: '#5f6e87' }}>#</th>
-              {onBlockRow && <th style={{ ...thStyle, width: 30, cursor: 'default' }} title="Seite zur Blockliste hinzufügen">🚫</th>}
+              {onBlockRow && <th style={{ ...thStyle, width: 60, cursor: 'default' }} title="Seite auf die Blockliste setzen — wird bei künftigen Scrapes ausgeschlossen">Block</th>}
               {rawColumns.map(col => {
                 const hasFilter = colFilters[col] && (colFilters[col].text || colFilters[col].values !== null);
                 return (
@@ -366,10 +373,24 @@ export function DataTable({
                 const hasFilter = colFilters[col.name] && (colFilters[col.name].text || colFilters[col.name].values !== null);
                 return (
                   <th key={col.name} style={{ ...thStyle, color: '#e8b04b', background: 'rgba(232,176,75,.04)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                       <span style={{ cursor: 'pointer' }} onClick={() => { sort(col.name); }}>
                         ✦ {col.name}{sortCol === col.name ? (sortAsc ? ' ↑' : ' ↓') : ''}
                       </span>
+                      {onConfigureAiColumn && (
+                        <button
+                          onClick={e => { e.stopPropagation(); onConfigureAiColumn(col.name); }}
+                          title="Spalte konfigurieren (Name, Modell, Prompt)"
+                          style={{ ...mono, fontSize: 11, padding: 0, background: 'none', border: 'none', cursor: 'pointer', color: '#e8b04b', opacity: .8, lineHeight: 1 }}
+                        >⚙</button>
+                      )}
+                      {onRunAiColumn && (
+                        <button
+                          onClick={e => { e.stopPropagation(); onRunAiColumn(col.name); }}
+                          title="Analyse für diese Spalte starten"
+                          style={{ ...mono, fontSize: 10, padding: 0, background: 'none', border: 'none', cursor: 'pointer', color: '#4fd1c5', opacity: .85, lineHeight: 1 }}
+                        >▶</button>
+                      )}
                       <button
                         onClick={e => openFilterFor(col.name, e)}
                         style={{
@@ -384,14 +405,14 @@ export function DataTable({
                   </th>
                 );
               })}
-              {aiSlot && (
+              {onAddAiColumn && (
                 <th style={{ ...thStyle, width: 120, background: 'rgba(232,176,75,.03)', borderLeft: '1px dashed rgba(232,176,75,.25)' }}>
                   <button
-                    onClick={() => setAiOpen(o => !o)}
+                    onClick={onAddAiColumn}
+                    title="Neue KI-Spalte direkt in der Tabelle anlegen"
                     style={{
                       ...mono, fontSize: 10, padding: '3px 10px', borderRadius: 5, cursor: 'pointer',
-                      border: aiOpen ? '1px solid rgba(232,176,75,.5)' : '1px dashed rgba(232,176,75,.35)',
-                      background: aiOpen ? 'rgba(232,176,75,.12)' : 'transparent',
+                      border: '1px dashed rgba(232,176,75,.35)', background: 'transparent',
                       color: '#e8b04b', whiteSpace: 'nowrap',
                     }}
                   >+ KI-Spalte</button>
@@ -402,8 +423,13 @@ export function DataTable({
           <tbody>
             {paginated.map((row, i) => {
               const excluded = excludedRows.has(row._idx);
+              const blocked  = blockedRows.has(row._idx);
               return (
-                <tr key={row._idx} style={{ background: excluded ? 'rgba(232,115,107,.04)' : 'transparent', opacity: excluded ? 0.45 : 1, transition: 'opacity .1s' }}>
+                <tr key={row._idx} style={{
+                  background: blocked ? 'rgba(232,115,107,.07)' : excluded ? 'rgba(232,115,107,.04)' : 'transparent',
+                  opacity: blocked ? 0.4 : excluded ? 0.45 : 1,
+                  transition: 'opacity .15s, background .15s',
+                }}>
                   {onExcludeChange && (
                     <td style={{ padding: '5px 8px', borderBottom: '1px solid rgba(255,255,255,.04)' }}>
                       <input type="checkbox" checked={!excluded} onChange={() => toggleExclude(row._idx)} style={{ width: 11, height: 11, cursor: 'pointer' }} />
@@ -414,11 +440,16 @@ export function DataTable({
                     <td style={{ padding: '5px 6px', borderBottom: '1px solid rgba(255,255,255,.04)' }}>
                       <button
                         onClick={() => onBlockRow(row)}
-                        title={`«${String(row.page_name ?? '')}» zur Blockliste hinzufügen`}
-                        style={{ ...mono, fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', opacity: .35, lineHeight: 1, padding: 0 }}
-                        onMouseEnter={e => ((e.currentTarget as HTMLElement).style.opacity = '1')}
-                        onMouseLeave={e => ((e.currentTarget as HTMLElement).style.opacity = '.35')}
-                      >🚫</button>
+                        title={blocked
+                          ? `«${String(row.page_name ?? '')}» von der Blockliste entfernen`
+                          : `«${String(row.page_name ?? '')}» blocken — wird bei künftigen Scrapes ausgeschlossen`}
+                        style={{
+                          ...mono, fontSize: 9, padding: '2px 7px', borderRadius: 4, cursor: 'pointer', lineHeight: 1.2,
+                          border: blocked ? '1px solid rgba(232,115,107,.45)' : '1px solid rgba(255,255,255,.12)',
+                          background: blocked ? 'rgba(232,115,107,.15)' : 'transparent',
+                          color: blocked ? '#e8736b' : '#5f6e87', whiteSpace: 'nowrap',
+                        }}
+                      >{blocked ? 'Geblockt ✓' : 'Block'}</button>
                     </td>
                   )}
                   {rawColumns.map(col => (
@@ -436,7 +467,7 @@ export function DataTable({
                       </td>
                     );
                   })}
-                  {aiSlot && (
+                  {onAddAiColumn && (
                     <td style={{ borderBottom: '1px solid rgba(255,255,255,.04)', borderLeft: '1px dashed rgba(232,176,75,.15)' }} />
                   )}
                 </tr>
@@ -444,7 +475,7 @@ export function DataTable({
             })}
             {paginated.length === 0 && (
               <tr>
-                <td colSpan={allColumns.length + (onExcludeChange ? 2 : 1) + (aiSlot ? 1 : 0) + (onBlockRow ? 1 : 0)} style={{ ...mono, padding: '28px', textAlign: 'center', fontSize: 11, color: '#5f6e87' }}>
+                <td colSpan={allColumns.length + (onExcludeChange ? 2 : 1) + (onAddAiColumn ? 1 : 0) + (onBlockRow ? 1 : 0)} style={{ ...mono, padding: '28px', textAlign: 'center', fontSize: 11, color: '#5f6e87' }}>
                   Keine Daten
                 </td>
               </tr>
@@ -467,25 +498,6 @@ export function DataTable({
               >{lbl}</button>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* AI column popover */}
-      {aiSlot && aiOpen && (
-        <div style={{
-          position: 'fixed', right: 24, top: 90, zIndex: 9998, width: 340,
-          maxHeight: 'calc(100vh - 120px)', overflowY: 'auto',
-          background: '#10111a', border: '1px solid rgba(232,176,75,.3)',
-          borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,.6)', padding: '14px 16px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ ...mono, fontSize: 11, color: '#e8b04b', letterSpacing: '.08em' }}>KI-Spalte hinzufügen</span>
-            <button
-              onClick={() => setAiOpen(false)}
-              style={{ ...mono, fontSize: 16, color: '#5f6e87', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
-            >×</button>
-          </div>
-          {aiSlot}
         </div>
       )}
 

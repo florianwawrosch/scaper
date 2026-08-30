@@ -116,9 +116,12 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
     showToast(`Spalte «${name}» angelegt — jetzt Analysieren klicken`, 'success');
   };
 
-  // slotMode: opening the popover creates the first column right away
+  // slotMode: each opening of the popover works on ONE column. A fresh config
+  // is created when there is none yet, or the previous one is already complete.
   useEffect(() => {
-    if (slotMode && keysReady && configs.length === 0 && PROVIDERS.length > 0) add();
+    if (!slotMode || !keysReady || PROVIDERS.length === 0) return;
+    const last = configs[configs.length - 1];
+    if (!last || (last.name.trim() && last.prompt.trim())) add();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slotMode, keysReady]);
 
@@ -219,7 +222,8 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
         </div>
       )}
 
-      {configs.map(cfg => {
+      {/* slotMode: only the column currently being worked on is shown */}
+      {(slotMode ? configs.slice(-1) : configs).map(cfg => {
         const prov = PROVIDERS.find(p => p.id === cfg.provider) ?? PROVIDERS[0];
         if (!prov) return null;
         const isRunning = running[cfg.id];
@@ -301,23 +305,6 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
         );
       })}
 
-      {/* slotMode: next column only after the current one is complete */}
-      {slotMode && configs.length > 0 && PROVIDERS.length > 0 && (() => {
-        const last = configs[configs.length - 1];
-        const lastComplete = !!last.name.trim() && !!last.prompt.trim();
-        return (
-          <button
-            onClick={add}
-            disabled={!lastComplete}
-            title={lastComplete ? undefined : 'Erst die aktuelle Spalte fertig konfigurieren'}
-            style={{
-              ...mono, fontSize: 10, alignSelf: 'flex-start', padding: '4px 10px', borderRadius: 5,
-              border: '1px dashed rgba(232,176,75,.3)', background: 'transparent', color: '#e8b04b',
-              cursor: lastComplete ? 'pointer' : 'default', opacity: lastComplete ? 1 : 0.35,
-            }}
-          >+ weitere KI-Spalte</button>
-        );
-      })()}
     </div>
   );
 }
