@@ -133,8 +133,6 @@ export default function Settings() {
     persist(keys, t);
   };
 
-  const totalConnected = GROUPS.flatMap(g => g.services).filter(s => keys[s.key]).length;
-
   const exportKeys = () => {
     const data = JSON.stringify(keys, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
@@ -161,11 +159,124 @@ export default function Settings() {
     e.target.value = '';
   };
 
+  const isActive = (svc: Service) => !!keys[svc.key] || !!serverKeys[svc.key];
+  const activeCount = GROUPS.flatMap(g => g.services).filter(isActive).length;
+  const groupName = (svcKey: string) => GROUPS.find(g => g.services.some(s => s.key === svcKey))?.label ?? '';
+
   const NAV: { key: NavKey; label: string; badge?: number }[] = [
-    { key: 'integrations', label: 'Integrationen', badge: totalConnected || undefined },
+    { key: 'integrations', label: 'Integrationen', badge: activeCount || undefined },
     { key: 'blocklist',    label: 'Blockliste', badge: blocklist.length || undefined },
     { key: 'design',       label: 'Design' },
   ];
+
+  // One service row — used both in the "Aktiv" section and the catalog below.
+  const renderServiceCard = (svc: Service, opts?: { showGroup?: boolean }) => {
+    const connected    = !!keys[svc.key];
+    const isConnecting = connecting === svc.key;
+    const fromEnv      = connected && !localKeys[svc.key];
+    const onServer     = !connected && !!serverKeys[svc.key];
+    const active       = connected || onServer;
+
+    return (
+      <div key={svc.key} style={{
+        background: active ? ((fromEnv || onServer) ? 'rgba(99,129,255,.05)' : 'rgba(79,209,197,.05)') : T.panel2,
+        border: `1px solid ${active ? ((fromEnv || onServer) ? 'rgba(99,129,255,.25)' : 'rgba(79,209,197,.22)') : 'rgba(255,255,255,.06)'}`,
+        borderRadius: 7, overflow: 'hidden',
+        transition: 'background .2s, border-color .2s',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: connected ? (fromEnv ? '#6381ff' : T.teal) : onServer ? '#6381ff' : 'rgba(255,255,255,.15)', transition: 'background .2s' }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 500, color: active ? T.ink : T.inkD }}>{svc.label}</p>
+              {opts?.showGroup && (
+                <span style={{ fontFamily: T.mono, fontSize: 8, letterSpacing: '.08em', textTransform: 'uppercase', color: T.inkF, background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 3, padding: '1px 5px' }}>
+                  {groupName(svc.key)}
+                </span>
+              )}
+            </div>
+            <p style={{ fontFamily: T.body, fontSize: 11, color: T.inkF, marginTop: 1 }}>{svc.desc}</p>
+          </div>
+
+          {connected ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              {fromEnv ? (
+                <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', color: '#6381ff', background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', borderRadius: 4, padding: '2px 7px' }}>
+                  via Vercel Env
+                </span>
+              ) : (
+                <>
+                  <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal, letterSpacing: '.04em' }}>
+                    {show[svc.key] ? keys[svc.key] : maskKey(keys[svc.key])}
+                  </span>
+                  <button type="button" onClick={() => setShow(p => ({ ...p, [svc.key]: !p[svc.key] }))}
+                    style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6, lineHeight: 1 }}>
+                    {show[svc.key] ? '◉' : '○'}
+                  </button>
+                  <button type="button" onClick={() => disconnect(svc.key)} title="Key entfernen"
+                    style={{ fontSize: 14, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, opacity: .5 }}>
+                    ×
+                  </button>
+                </>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              {onServer && !isConnecting && (
+                <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', color: '#6381ff', background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', borderRadius: 4, padding: '2px 7px' }}>
+                  ✓ Server-Key aktiv
+                </span>
+              )}
+              {isConnecting && (
+                <button type="button" onClick={() => { setConnecting(null); setInput(''); }}
+                  style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6 }}>
+                  Abbrechen
+                </button>
+              )}
+              {!isConnecting && (
+                <button type="button" onClick={() => { setConnecting(svc.key); setInput(''); }}
+                  style={{
+                    fontFamily: T.mono, fontSize: 10, padding: '3px 9px', borderRadius: 4,
+                    background: onServer ? 'transparent' : 'rgba(232,176,75,.08)',
+                    border: `1px solid ${onServer ? 'rgba(255,255,255,.1)' : 'rgba(232,176,75,.3)'}`,
+                    color: onServer ? T.inkD : T.gold, cursor: 'pointer',
+                  }}>
+                  {onServer ? '+ eigener Key' : '+ Key'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {isConnecting && (
+          <div style={{ display: 'flex', gap: 6, padding: '0 14px 10px', alignItems: 'center' }}>
+            <input autoFocus type="text" value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && connect(svc.key)}
+              placeholder={svc.hint}
+              style={{
+                flex: 1, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 5,
+                padding: '5px 9px', fontFamily: T.mono, fontSize: 11, color: T.ink, outline: 'none',
+              }}
+            />
+            <button type="button" onClick={() => connect(svc.key)} disabled={!input.trim()}
+              style={{
+                fontFamily: T.mono, fontSize: 10, padding: '5px 12px', borderRadius: 5,
+                background: input.trim() ? 'rgba(232,176,75,.12)' : 'transparent',
+                border: `1px solid ${input.trim() ? T.gold : 'rgba(255,255,255,.1)'}`,
+                color: input.trim() ? T.gold : T.inkF,
+                cursor: input.trim() ? 'pointer' : 'default',
+                transition: 'all .12s', flexShrink: 0,
+              }}>
+              Speichern
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const activeServices = GROUPS.flatMap(g => g.services).filter(isActive);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex' }}>
@@ -223,127 +334,54 @@ export default function Settings() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-              {GROUPS.map((group, gi) => (
-                <div key={group.key}>
-                  {/* Group header */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                    <p style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: T.inkF }}>
-                      {group.label}
+
+              {/* ── Aktiv: connected integrations, pulled to the top ── */}
+              {activeServices.length > 0 && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: T.teal, flexShrink: 0 }} />
+                    <p style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: T.teal }}>
+                      Aktiv
                     </p>
-                    <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, opacity: .6 }}>{group.desc}</p>
+                    <span style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF }}>{activeServices.length} verbunden</span>
                   </div>
-
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                    {group.services.map((svc: Service) => {
-                      const connected    = !!keys[svc.key];
-                      const isConnecting = connecting === svc.key;
-                      // Key came from env var if it's present but not saved in localStorage
-                      const fromEnv      = connected && !localKeys[svc.key];
-                      // Key lives server-side (Vercel/Railway env) — works via proxy without a browser key
-                      const onServer     = !connected && !!serverKeys[svc.key];
-                      const active       = connected || onServer;
-
-                      return (
-                        <div key={svc.key} style={{
-                          background: active ? ((fromEnv || onServer) ? 'rgba(99,129,255,.04)' : 'rgba(79,209,197,.04)') : T.panel2,
-                          border: `1px solid ${active ? ((fromEnv || onServer) ? 'rgba(99,129,255,.2)' : 'rgba(79,209,197,.18)') : 'rgba(255,255,255,.06)'}`,
-                          borderRadius: 7, overflow: 'hidden',
-                          transition: 'background .2s, border-color .2s',
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
-                            {/* Status dot */}
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: connected ? (fromEnv ? '#6381ff' : T.teal) : onServer ? '#6381ff' : 'rgba(255,255,255,.15)', transition: 'background .2s' }} />
-
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 500, color: connected ? T.ink : T.inkD }}>{svc.label}</p>
-                              <p style={{ fontFamily: T.body, fontSize: 11, color: T.inkF, marginTop: 1 }}>{svc.desc}</p>
-                            </div>
-
-                            {connected ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                {fromEnv ? (
-                                  <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', color: '#6381ff', background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', borderRadius: 4, padding: '2px 7px' }}>
-                                    via Vercel Env
-                                  </span>
-                                ) : (
-                                  <>
-                                    <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal, letterSpacing: '.04em' }}>
-                                      {show[svc.key] ? keys[svc.key] : maskKey(keys[svc.key])}
-                                    </span>
-                                    <button type="button" onClick={() => setShow(p => ({ ...p, [svc.key]: !p[svc.key] }))}
-                                      style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6, lineHeight: 1 }}>
-                                      {show[svc.key] ? '◉' : '○'}
-                                    </button>
-                                    <button type="button" onClick={() => disconnect(svc.key)}
-                                      style={{ fontSize: 14, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, opacity: .5 }}>
-                                      ×
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                                {onServer && !isConnecting && (
-                                  <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', color: '#6381ff', background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', borderRadius: 4, padding: '2px 7px' }}>
-                                    ✓ Server-Key aktiv
-                                  </span>
-                                )}
-                                {isConnecting && (
-                                  <button type="button" onClick={() => { setConnecting(null); setInput(''); }}
-                                    style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6 }}>
-                                    Abbrechen
-                                  </button>
-                                )}
-                                {!isConnecting && (
-                                  <button type="button"
-                                    onClick={() => { setConnecting(svc.key); setInput(''); }}
-                                    style={{
-                                      fontFamily: T.mono, fontSize: 10, padding: '3px 9px', borderRadius: 4,
-                                      background: 'transparent', border: `1px solid rgba(255,255,255,.1)`,
-                                      color: T.inkD, cursor: 'pointer',
-                                    }}>
-                                    + Key
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          {isConnecting && (
-                            <div style={{ display: 'flex', gap: 6, padding: '0 14px 10px', alignItems: 'center' }}>
-                              <input autoFocus type="text" value={input}
-                                onChange={e => setInput(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && connect(svc.key)}
-                                placeholder={svc.hint}
-                                style={{
-                                  flex: 1, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 5,
-                                  padding: '5px 9px', fontFamily: T.mono, fontSize: 11, color: T.ink, outline: 'none',
-                                }}
-                              />
-                              <button type="button" onClick={() => connect(svc.key)} disabled={!input.trim()}
-                                style={{
-                                  fontFamily: T.mono, fontSize: 10, padding: '5px 12px', borderRadius: 5,
-                                  background: input.trim() ? 'rgba(232,176,75,.12)' : 'transparent',
-                                  border: `1px solid ${input.trim() ? T.gold : 'rgba(255,255,255,.1)'}`,
-                                  color: input.trim() ? T.gold : T.inkF,
-                                  cursor: input.trim() ? 'pointer' : 'default',
-                                  transition: 'all .12s', flexShrink: 0,
-                                }}>
-                                Speichern
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                    {activeServices.map(svc => renderServiceCard(svc, { showGroup: true }))}
                   </div>
-
-                  {/* Divider between groups */}
-                  {gi < GROUPS.length - 1 && (
-                    <div style={{ height: 1, background: T.lineS, marginTop: 24 }} />
-                  )}
                 </div>
-              ))}
+              )}
+
+              {/* ── Katalog: available integrations grouped, active ones removed ── */}
+              {(() => {
+                const catalogGroups = GROUPS
+                  .map(g => ({ ...g, services: g.services.filter(s => !isActive(s)) }))
+                  .filter(g => g.services.length > 0);
+                if (catalogGroups.length === 0) return null;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
+                    {activeServices.length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ flex: 1, height: 1, background: T.lineS }} />
+                        <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF }}>Verfügbar</span>
+                        <div style={{ flex: 1, height: 1, background: T.lineS }} />
+                      </div>
+                    )}
+                    {catalogGroups.map(group => (
+                      <div key={group.key}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                          <p style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: T.inkD }}>
+                            {group.label}
+                          </p>
+                          <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, opacity: .6 }}>{group.desc}</p>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {group.services.map(svc => renderServiceCard(svc))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* ── Backend URL ── */}
               <div>
