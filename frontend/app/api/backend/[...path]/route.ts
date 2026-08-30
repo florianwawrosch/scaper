@@ -12,21 +12,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import { envKey } from '@/lib/serverKeys';
 
 const isLocalhost = (u: string) => /^https?:\/\/(localhost|127\.|0\.0\.0\.0)/i.test(u);
+const norm = (u: string) => u.replace(/\/+$/, '');
+
+function serverBackend(): string {
+  return norm(process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || '');
+}
 
 function backendBase(req: NextRequest): string | null {
-  const fromClient = req.headers.get('x-backend-url') ?? '';
-  const serverEnv  = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || '';
+  const fromClient = norm(req.headers.get('x-backend-url') ?? '');
+  const serverEnv  = serverBackend();
   // A real user override wins — but the client's localhost build-time fallback
   // must never shadow a proper URL configured server-side.
   let base = fromClient;
   if (!base || (isLocalhost(base) && serverEnv && !isLocalhost(serverEnv))) base = serverEnv;
   if (!/^https?:\/\//.test(base)) return null;
-  return base.replace(/\/+$/, '');
+  return norm(base);
 }
 
-/** Fill in API keys server-side where the browser sent none. */
-function injectKeys(path: string, body: any): any {
+/**
+ * Fill in API keys server-side where the browser sent none.
+ * SECURITY: only ever inject secrets when forwarding to the backend the
+ * server itself configured — never to a client-supplied host, which could
+ * otherwise exfiltrate the keys. When no server BACKEND_URL is set, keys are
+ * never injected here (the dedicated /api/scrape, /api/ai, /api/enrich routes
+ * handle key injection to fixed provider hosts instead).
+ */
+function injectKeys(path: string, body: any, destination: string): any {
   if (!body || typeof body !== 'object') return body;
+  const trusted = serverBackend();
+  if (!trusted || norm(destination) !== trusted) return body;
 
   if (path === 'api/runs' && body.source === 'meta_ads_library') {
     body.scraper_config = body.scraper_config ?? {};
@@ -66,7 +80,7 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
     if (contentType.includes('application/json')) {
       let body: any = null;
       try { body = await req.json(); } catch {}
-      init.body = JSON.stringify(injectKeys(path, body));
+      init.body = JSON.stringify(injectKeys(path, body, base));
       init.headers = { 'Content-Type': 'application/json' };
     } else {
       // FormData / binary: stream through untouched

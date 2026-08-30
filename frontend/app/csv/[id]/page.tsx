@@ -97,7 +97,9 @@ export default function CsvViewer() {
       const raw = localStorage.getItem(`csv_run_${id}`);
       if (raw) {
         const m = JSON.parse(raw);
-        localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...m, fields }));
+        // Drop legacy inline rows so the freshly written IndexedDB CSV wins on reload
+        delete m.data; delete m.csv;
+        localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...m, fields, rowCount: merged.length }));
       }
     } catch {}
   };

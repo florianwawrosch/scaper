@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
 import { saveCsvText, deleteCsvText } from '@/lib/csvStorage';
-import { api, API_URL, type ScrapeRun } from '@/lib/api';
+import { api, type ScrapeRun } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
@@ -194,51 +194,72 @@ export default function Home() {
   const uploadCsv = useCallback((file: File) => {
     setUploading(true);
     setFormError('');
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const rawText = e.target?.result as string;
-      Papa.parse<Record<string, string>>(rawText, {
-        header: true,
-        skipEmptyLines: true,
-        complete: async (results) => {
-          if (!results.data || results.data.length === 0) {
-            setUploading(false);
-            setFormError('CSV enthält keine Zeilen.');
-            setCsvFile(null);
-            return;
-          }
-          const id = `csv_${Date.now()}`;
-          try {
-            // Save raw CSV text in IndexedDB (no size limit) and lightweight metadata in localStorage
-            await saveCsvText(id, rawText);
-            localStorage.setItem(`csv_run_${id}`, JSON.stringify({
-              fields: results.meta.fields ?? [],
-              filename: file.name,
-              createdAt: new Date().toISOString(),
-              rowCount: results.data.length,
-            }));
-          } catch (err) {
-            setUploading(false);
-            setFormError('Datei konnte nicht gespeichert werden. Bitte Browser-Speicher prüfen.');
-            setCsvFile(null);
-            return;
-          }
-          setUploading(false);
-          router.push(`/csv/${id}`);
-        },
-        error: (err: Error) => {
-          setUploading(false);
-          setFormError(`CSV konnte nicht gelesen werden: ${err.message}`);
-          setCsvFile(null);
-        },
-      });
+
+    // Persist parsed rows through the shared CSV pipeline (IndexedDB + viewer)
+    const store = async (fields: string[], csvText: string, rowCount: number) => {
+      if (rowCount === 0) {
+        setUploading(false);
+        setFormError('Datei enthält keine Zeilen.');
+        setCsvFile(null);
+        return;
+      }
+      const id = `csv_${Date.now()}`;
+      try {
+        await saveCsvText(id, csvText);
+        localStorage.setItem(`csv_run_${id}`, JSON.stringify({
+          fields, filename: file.name, createdAt: new Date().toISOString(), rowCount,
+        }));
+      } catch {
+        setUploading(false);
+        setFormError('Datei konnte nicht gespeichert werden. Bitte Browser-Speicher prüfen.');
+        setCsvFile(null);
+        return;
+      }
+      setUploading(false);
+      router.push(`/csv/${id}`);
     };
+
+    const isExcel = /\.xlsx?$/i.test(file.name);
+    const reader = new FileReader();
     reader.onerror = () => {
       setUploading(false);
       setFormError('Datei konnte nicht gelesen werden.');
       setCsvFile(null);
     };
-    reader.readAsText(file, 'UTF-8');
+
+    if (isExcel) {
+      // Excel is binary — read as ArrayBuffer, convert to rows via the xlsx lib
+      reader.onload = async (e) => {
+        try {
+          const XLSX = await import('xlsx');
+          const wb = XLSX.read(e.target?.result as ArrayBuffer, { type: 'array' });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' });
+          const fields = rows.length ? Object.keys(rows[0]) : [];
+          await store(fields, Papa.unparse(rows), rows.length);
+        } catch (err) {
+          setUploading(false);
+          setFormError(`Excel-Datei konnte nicht gelesen werden: ${err instanceof Error ? err.message : ''}`);
+          setCsvFile(null);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (e) => {
+        const rawText = e.target?.result as string;
+        Papa.parse<Record<string, string>>(rawText, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => store(results.meta.fields ?? [], rawText, results.data.length),
+          error: (err: Error) => {
+            setUploading(false);
+            setFormError(`CSV konnte nicht gelesen werden: ${err.message}`);
+            setCsvFile(null);
+          },
+        });
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
   }, [router]);
 
   // Global drag-to-drop listeners

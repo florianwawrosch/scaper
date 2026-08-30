@@ -41,7 +41,9 @@ export default function EnrichPage() {
       const merged = rows.map((r, i) => ({ ...r, email_enriched: results[i]?.email ?? r.email_enriched ?? '' }));
       const fields = meta.fields.includes('email_enriched') ? meta.fields : [...meta.fields, 'email_enriched'];
       await saveCsvText(id, Papa.unparse(merged));
-      localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...meta, fields, rowCount: merged.length }));
+      // Drop legacy inline rows so the freshly written IndexedDB CSV wins on reload
+      const { data: _d, csv: _c, ...cleanMeta } = meta;
+      localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...cleanMeta, fields, rowCount: merged.length }));
       setRows(merged);
       setSaved(true);
     } catch {}

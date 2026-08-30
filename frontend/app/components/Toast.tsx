@@ -25,7 +25,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const showToast = useCallback(
     (message: string, type: ToastType = 'info', duration = 3000) => {
-      const id = Date.now().toString();
+      // Unique even for toasts fired in the same millisecond
+      const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const newToast: Toast = { id, message, type, duration };
       setToasts((prev) => [...prev, newToast]);
 

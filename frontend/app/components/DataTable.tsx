@@ -154,7 +154,10 @@ export function DataTable({
   const [page,         setPage]           = useState(1);
   const [openFilter,   setOpenFilter]     = useState<{ col: string; rect: DOMRect } | null>(null);
 
-  const allColumns = [...rawColumns, ...aiColumns.map(c => c.name)];
+  const allColumns = useMemo(
+    () => [...rawColumns, ...aiColumns.map(c => c.name)],
+    [rawColumns, aiColumns],
+  );
 
   const extended = useMemo(() =>
     data.map((row, i) => {
@@ -282,19 +285,24 @@ export function DataTable({
     setOpenFilter(prev => prev?.col === col ? null : { col, rect });
   };
 
-  // URLs become clickable links
+  // URLs and bare domains (e.g. "app.quiz-akademie.de") become clickable links
   const renderCell = (val: string) => {
-    if (/^https?:\/\//i.test(val)) {
+    const v = val.trim();
+    // Full URL, or a bare domain: label.tld optionally with a path, no spaces
+    const isUrl    = /^https?:\/\/\S+$/i.test(v);
+    const isDomain = /^(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/\S*)?$/i.test(v) && v.includes('.') && !v.includes('@');
+    if (isUrl || isDomain) {
+      const href = isUrl ? v : `https://${v}`;
       return (
         <a
-          href={val}
+          href={href}
           target="_blank"
           rel="noopener noreferrer"
           onClick={e => e.stopPropagation()}
           style={{ color: '#8ab4f8', textDecoration: 'none' }}
           onMouseEnter={e => ((e.currentTarget as HTMLElement).style.textDecoration = 'underline')}
           onMouseLeave={e => ((e.currentTarget as HTMLElement).style.textDecoration = 'none')}
-        >{val}</a>
+        >{v}</a>
       );
     }
     return val || '—';
@@ -372,11 +380,34 @@ export function DataTable({
                 </th>
               )}
               <th style={{ ...thStyle, width: 28, cursor: 'default', color: '#5f6e87' }}>#</th>
-              {/* AI columns come FIRST so results are visible without scrolling */}
+              {rawColumns.map(col => {
+                const hasFilter = colFilters[col] && (colFilters[col].text || colFilters[col].values !== null);
+                return (
+                  <th key={col} style={{ ...thStyle, position: 'relative' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ cursor: 'pointer' }} onClick={() => { sort(col); }}>
+                        {col}{sortCol === col ? (sortAsc ? ' ↑' : ' ↓') : ''}
+                      </span>
+                      <button
+                        onClick={e => openFilterFor(col, e)}
+                        title="Filter"
+                        style={{
+                          ...mono, fontSize: 9, padding: '1px 4px', borderRadius: 3, cursor: 'pointer',
+                          background: hasFilter ? 'rgba(79,209,197,.2)' : 'rgba(255,255,255,.06)',
+                          border: hasFilter ? '1px solid rgba(79,209,197,.4)' : '1px solid rgba(255,255,255,.1)',
+                          color: hasFilter ? '#4fd1c5' : '#5f6e87',
+                          lineHeight: 1,
+                        }}
+                      >▼</button>
+                    </div>
+                  </th>
+                );
+              })}
+              {/* AI columns at the end, in creation order */}
               {aiColumns.map(col => {
                 const hasFilter = colFilters[col.name] && (colFilters[col.name].text || colFilters[col.name].values !== null);
                 return (
-                  <th key={col.name} style={{ ...thStyle, color: '#e8b04b', background: 'rgba(232,176,75,.04)', minWidth: 170, borderRight: '1px dashed rgba(232,176,75,.2)' }}>
+                  <th key={col.name} style={{ ...thStyle, color: '#e8b04b', background: 'rgba(232,176,75,.04)', minWidth: 170, borderLeft: '1px dashed rgba(232,176,75,.2)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <span style={{ cursor: 'pointer' }} onClick={() => { sort(col.name); }}>
                         ✦ {col.name}{sortCol === col.name ? (sortAsc ? ' ↑' : ' ↓') : ''}
@@ -414,29 +445,6 @@ export function DataTable({
                   </th>
                 );
               })}
-              {rawColumns.map(col => {
-                const hasFilter = colFilters[col] && (colFilters[col].text || colFilters[col].values !== null);
-                return (
-                  <th key={col} style={{ ...thStyle, position: 'relative' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ cursor: 'pointer' }} onClick={() => { sort(col); }}>
-                        {col}{sortCol === col ? (sortAsc ? ' ↑' : ' ↓') : ''}
-                      </span>
-                      <button
-                        onClick={e => openFilterFor(col, e)}
-                        title="Filter"
-                        style={{
-                          ...mono, fontSize: 9, padding: '1px 4px', borderRadius: 3, cursor: 'pointer',
-                          background: hasFilter ? 'rgba(79,209,197,.2)' : 'rgba(255,255,255,.06)',
-                          border: hasFilter ? '1px solid rgba(79,209,197,.4)' : '1px solid rgba(255,255,255,.1)',
-                          color: hasFilter ? '#4fd1c5' : '#5f6e87',
-                          lineHeight: 1,
-                        }}
-                      >▼</button>
-                    </div>
-                  </th>
-                );
-              })}
             </tr>
           </thead>
           <tbody>
@@ -454,12 +462,17 @@ export function DataTable({
                     </td>
                   )}
                   <td style={{ ...tdStyle, color: '#5f6e87', fontSize: 10 }}>{(page - 1) * PAGE + i + 1}</td>
+                  {rawColumns.map(col => (
+                    <td key={col} title={String(row[col] ?? '')} style={tdStyle}>
+                      {renderCell(String(row[col] ?? ''))}
+                    </td>
+                  ))}
                   {aiColumns.map(col => {
                     const val = String(row[col.name] ?? '—');
                     const isPlaceholder = val === '·';
                     const isError = val.startsWith('Fehler');
                     return (
-                      <td key={col.name} title={val} style={{ ...tdStyle, background: 'rgba(232,176,75,.02)', minWidth: 170, maxWidth: 300, borderRight: '1px dashed rgba(232,176,75,.12)' }}>
+                      <td key={col.name} title={val} style={{ ...tdStyle, background: 'rgba(232,176,75,.02)', minWidth: 170, maxWidth: 300, borderLeft: '1px dashed rgba(232,176,75,.12)' }}>
                         {isPlaceholder ? (
                           <span style={{ ...mono, fontSize: 11, color: '#5f6e87' }}>—</span>
                         ) : (
@@ -474,11 +487,6 @@ export function DataTable({
                       </td>
                     );
                   })}
-                  {rawColumns.map(col => (
-                    <td key={col} title={String(row[col] ?? '')} style={tdStyle}>
-                      {renderCell(String(row[col] ?? ''))}
-                    </td>
-                  ))}
                 </tr>
               );
             })}

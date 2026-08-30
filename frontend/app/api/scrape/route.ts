@@ -15,6 +15,12 @@ export const maxDuration = 60;
 
 const API_URL = 'https://graph.facebook.com/v21.0/ads_archive';
 
+// "Alle Länder" → broad market list (Meta requires ad_reached_countries)
+const ALL_COUNTRIES = [
+  'DE', 'AT', 'CH', 'US', 'GB', 'FR', 'IT', 'ES', 'NL', 'BE', 'PL', 'SE',
+  'DK', 'NO', 'FI', 'IE', 'PT', 'CZ', 'GR', 'CA', 'AU', 'NZ', 'BR', 'MX',
+];
+
 const FIELDS = [
   'id', 'page_name', 'page_id',
   'ad_creative_bodies', 'ad_creative_link_captions',
@@ -66,8 +72,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ detail: 'Keine Suchbegriffe angegeben.' }, { status: 400 });
   }
 
-  const countries: string[] = (cfg.countries?.length ? cfg.countries : ['DE', 'AT'])
-    .filter((c: string) => c && c !== 'ALL');
+  // Meta's ad_reached_countries is required, so "ALL" expands to a broad
+  // country list rather than silently collapsing to the DE/AT default.
+  const requested: string[] = cfg.countries?.length ? cfg.countries : ['DE', 'AT'];
+  const countries: string[] = requested.includes('ALL') ? ALL_COUNTRIES : requested.filter(Boolean);
   const platforms: string[] = cfg.platforms?.length ? cfg.platforms : ['FACEBOOK', 'INSTAGRAM'];
   const limit = Math.max(1, Math.min(Number(cfg.limit) || 50, 1000));
 
