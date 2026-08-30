@@ -1,16 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { modelsFor, providerLabel } from '@/lib/ai';
 import type { AnalysisConfig } from './AnalysisPanel';
 
 const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
-
-const MODELS: Record<string, string[]> = {
-  gemini:    ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-  anthropic: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'],
-  openai:    ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-};
-const LABELS: Record<string, string> = { gemini: 'Gemini', anthropic: 'Claude', openai: 'GPT' };
 
 interface Props {
   config: AnalysisConfig;
@@ -58,21 +52,21 @@ export function AiColumnEditor({ config, rowCount, providers, running, progress,
         {providers.map(p => (
           <button
             key={p}
-            onClick={() => onChange({ provider: p, model: MODELS[p]?.[0] ?? '' })}
+            onClick={() => onChange({ provider: p, model: modelsFor(p)[0] ?? '' })}
             style={{
               ...mono, fontSize: 10, padding: '3px 9px', borderRadius: 5, cursor: 'pointer',
               border: config.provider === p ? '1px solid rgba(232,176,75,.4)' : '1px solid rgba(255,255,255,.07)',
               background: config.provider === p ? 'rgba(232,176,75,.08)' : 'transparent',
               color: config.provider === p ? '#f5cc77' : '#5f6e87',
             }}
-          >{LABELS[p] ?? p}</button>
+          >{providerLabel(p)}</button>
         ))}
         <select
           value={config.model}
           onChange={e => onChange({ model: e.target.value })}
           style={{ ...mono, marginLeft: 'auto', fontSize: 10, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.09)', borderRadius: 5, color: '#9aa7bd', padding: '3px 6px', outline: 'none' }}
         >
-          {(MODELS[config.provider] ?? []).map(m => <option key={m} value={m}>{m}</option>)}
+          {modelsFor(config.provider).map(m => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
 

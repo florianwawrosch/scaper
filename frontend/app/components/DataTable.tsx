@@ -159,6 +159,18 @@ export function DataTable({
     [rawColumns, aiColumns],
   );
 
+  // When an AI column is added it appears at the right end — auto-scroll there
+  // so the user sees it appear (otherwise the button feels like it did nothing).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const prevAiCount = useRef(aiColumns.length);
+  useEffect(() => {
+    if (aiColumns.length > prevAiCount.current && scrollRef.current) {
+      const el = scrollRef.current;
+      requestAnimationFrame(() => { el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }); });
+    }
+    prevAiCount.current = aiColumns.length;
+  }, [aiColumns.length]);
+
   const extended = useMemo(() =>
     data.map((row, i) => {
       const r: Record<string, any> = { ...row, _idx: i };
@@ -370,7 +382,7 @@ export function DataTable({
       </div>
 
       {/* Table */}
-      <div style={{ overflowX: 'auto' }}>
+      <div ref={scrollRef} style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: 'rgba(255,255,255,.03)' }}>

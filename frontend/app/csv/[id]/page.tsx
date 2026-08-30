@@ -8,14 +8,11 @@ import { loadCsvRun } from '@/lib/csvRuns';
 import { addToBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
+import { runAiColumn, defaultModel, providerLabel } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
 import { DataTable } from '@/app/components/DataTable';
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
 import type { AnalysisConfig } from '@/app/components/AnalysisPanel';
-
-const DEFAULT_MODELS: Record<string, string> = {
-  gemini: 'gemini-2.0-flash', anthropic: 'claude-sonnet-5', openai: 'gpt-4o',
-};
 
 interface CsvRun {
   data: Record<string, string>[];
@@ -114,11 +111,13 @@ export default function CsvViewer() {
     const provider = providers[0];
     const cfg: AnalysisConfig = {
       id: `cfg_${Date.now()}`, name, provider,
-      model: DEFAULT_MODELS[provider] ?? '', prompt: '',
+      model: defaultModel(provider), prompt: '',
     };
     persistConfigs([...aiConfigs, cfg]);
     upsertAiColumn(name, Array(run.data.length).fill('·'));
-    showToast(`Spalte «${name}» angelegt — über ⚙ konfigurieren`, 'info');
+    // Open the editor right away so it's obvious the column was created
+    setEditingId(cfg.id);
+    showToast(`Spalte «${name}» angelegt — Prompt eingeben und Analysieren`, 'info');
   };
 
   const runColumn = async (cfg: AnalysisConfig) => {
@@ -127,31 +126,17 @@ export default function CsvViewer() {
     setColRunning(p => ({ ...p, [cfg.id]: true }));
     try {
       const apiKey = (loadSettings().apiKeys as Record<string, string>)[cfg.provider] || undefined;
-      const buildPrompt = (row: Record<string, string>) => {
-        const rowText = Object.entries(row)
-          .filter(([k, v]) => k !== '_idx' && v && String(v).trim())
-          .map(([k, v]) => `${k}: ${v}`).join('\n');
-        return `${cfg.prompt}\n\nDaten:\n${rowText}\n\nAntworte nur kurz und direkt.`;
-      };
-      const CHUNK = 20;
-      const values: string[] = [];
-      for (let i = 0; i < run.data.length; i += CHUNK) {
-        const prompts = run.data.slice(i, i + CHUNK).map(buildPrompt);
-        const res = await fetch('/api/ai/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider: cfg.provider, model: cfg.model, prompts, ...(apiKey && { apiKey }) }),
-        });
-        if (!res.ok) {
-          let msg = `Analyse fehlgeschlagen (HTTP ${res.status})`;
-          try { msg = (await res.json()).detail ?? msg; } catch {}
-          throw new Error(msg);
-        }
-        const data = await res.json();
-        values.push(...(data.values ?? []));
-        setColProgress(p => ({ ...p, [cfg.id]: Math.min(values.length, run.data.length) }));
-        upsertAiColumn(cfg.name, [...values, ...Array(run.data.length - values.length).fill('·')]);
-      }
+      const values = await runAiColumn({
+        rows: run.data,
+        provider: cfg.provider,
+        model: cfg.model,
+        prompt: cfg.prompt,
+        apiKey,
+        onProgress: (partial) => {
+          setColProgress(p => ({ ...p, [cfg.id]: partial.filter(v => v !== '·').length }));
+          upsertAiColumn(cfg.name, partial);
+        },
+      });
       upsertAiColumn(cfg.name, values);
       await persistColumnToCsv(cfg.name, values);
       showToast(`Spalte «${cfg.name}» fertig`, 'success');
@@ -242,7 +227,7 @@ export default function CsvViewer() {
           rawColumns={run.fields}
           aiColumns={aiColumns.map(c => {
             const cfg = aiConfigs.find(x => x.name === c.name);
-            return cfg ? { ...c, label: `${{ gemini: 'Gemini', anthropic: 'Claude', openai: 'GPT' }[cfg.provider] ?? cfg.provider} · ${cfg.model}` } : c;
+            return cfg ? { ...c, label: `${providerLabel(cfg.provider)} · ${cfg.model}` } : c;
           })}
           excludedRows={excludedRows}
           onExcludeChange={setExcludedRows}

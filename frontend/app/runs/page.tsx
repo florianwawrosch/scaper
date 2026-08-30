@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type ScrapeRun } from '@/lib/api';
 import { deleteCsvText } from '@/lib/csvStorage';
@@ -42,6 +42,19 @@ interface LocalRun {
   createdAt: string;
   rowCount: number;
   isScrape: boolean;
+  configSummary?: string;
+}
+
+/** One-line human summary of the settings a scrape was run with. */
+function summarizeConfig(c: any): string {
+  if (!c) return '';
+  const parts: string[] = [];
+  const country = c.country ?? (Array.isArray(c.countries) ? c.countries[0] : undefined);
+  if (country) parts.push(country === 'ALL' ? 'Alle Länder' : country);
+  if (Array.isArray(c.platforms) && c.platforms.length) parts.push(c.platforms.map((p: string) => p[0] + p.slice(1).toLowerCase()).join('+'));
+  if (c.adStatus) parts.push(c.adStatus === 'ACTIVE' ? 'Aktiv' : c.adStatus);
+  if (c.limit) parts.push(`max ${c.limit}`);
+  return parts.join(' · ');
 }
 
 export default function RunsList() {
@@ -51,7 +64,20 @@ export default function RunsList() {
   const [loading,   setLoading]   = useState(true);
   const [filter,    setFilter]    = useState<Filter>('all');
   const [page,      setPage]      = useState(1);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const PAGE_SIZE = 25;
+
+  const armDelete = (id: string) => {
+    setConfirmDelete(id);
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    confirmTimer.current = setTimeout(() => setConfirmDelete(null), 3000);
+  };
+  const deleteLocal = async (id: string) => {
+    try { localStorage.removeItem(`csv_run_${id}`); await deleteCsvText(id); } catch {}
+    setLocalRuns(prev => prev.filter(x => x.id !== id));
+    setConfirmDelete(null);
+  };
 
   useEffect(() => {
     // Local entries (scrapes + CSV imports) render instantly
@@ -67,6 +93,7 @@ export default function RunsList() {
             createdAt: val.createdAt ?? '',
             rowCount: val.rowCount ?? val.data?.length ?? 0,
             isScrape: String(val.filename ?? '').startsWith('Meta:'),
+            configSummary: summarizeConfig(val.scrapeConfig),
           });
         } catch {}
       }
@@ -196,8 +223,11 @@ export default function RunsList() {
                         color: r.isScrape ? '#e8b04b' : '#6381ff',
                       }}>{r.isScrape ? 'Scrape' : 'CSV'}</span>
                     </div>
-                    <div style={{ ...cellStyle, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {r.filename}
+                    <div style={{ ...cellStyle, overflow: 'hidden' }}>
+                      <div style={{ color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.filename}</div>
+                      {r.configSummary && (
+                        <div style={{ fontSize: 9, color: T.inkF, opacity: .7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{r.configSummary}</div>
+                      )}
                     </div>
                     <div style={{ ...cellStyle, color: T.inkF }}>{r.createdAt ? fmt(r.createdAt) : '—'}</div>
                     <div style={{ ...cellStyle, color: '#4fd1c5', fontWeight: 600, fontSize: 13, textAlign: 'right' }}>{r.rowCount}</div>
@@ -205,17 +235,19 @@ export default function RunsList() {
                     <div style={{ ...cellStyle, color: T.inkF, textAlign: 'right' }}>—</div>
                     <div style={{ ...cellStyle, textAlign: 'right' }}>
                       <button
-                        onClick={async (e) => {
+                        onClick={(e) => {
                           e.stopPropagation();
-                          try {
-                            localStorage.removeItem(`csv_run_${r.id}`);
-                            await deleteCsvText(r.id);
-                          } catch {}
-                          setLocalRuns(prev => prev.filter(x => x.id !== r.id));
+                          if (confirmDelete === r.id) deleteLocal(r.id);
+                          else armDelete(r.id);
                         }}
-                        title="Eintrag löschen"
-                        style={{ fontFamily: T.mono, fontSize: 13, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, opacity: .5, padding: 0 }}
-                      >×</button>
+                        title={confirmDelete === r.id ? 'Klicken zum endgültigen Löschen' : 'Eintrag löschen'}
+                        style={{
+                          fontFamily: T.mono, cursor: 'pointer', background: 'none', border: 'none', lineHeight: 1, padding: 0,
+                          fontSize: confirmDelete === r.id ? 9 : 13,
+                          color: confirmDelete === r.id ? '#e8736b' : T.inkF,
+                          opacity: confirmDelete === r.id ? 1 : .5, whiteSpace: 'nowrap',
+                        }}
+                      >{confirmDelete === r.id ? 'Löschen?' : '×'}</button>
                     </div>
                   </div>
                 );

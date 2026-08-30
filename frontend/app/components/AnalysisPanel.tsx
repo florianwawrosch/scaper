@@ -5,13 +5,8 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadSettings } from '@/lib/settings';
+import { AI_PROVIDERS as ALL_PROVIDERS, runAiColumn } from '@/lib/ai';
 import { useToast } from './Toast';
-
-const ALL_PROVIDERS = [
-  { id: 'gemini',    label: 'Gemini', models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
-  { id: 'anthropic', label: 'Claude', models: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'] },
-  { id: 'openai',    label: 'GPT',    models: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
-] as const;
 
 export interface AnalysisConfig {
   id: string;
@@ -66,8 +61,7 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
   }, [storageKey]);
 
   // Only show providers with a key: frontend (localStorage / NEXT_PUBLIC_*) or backend env var
-  const PROVIDERS = (ALL_PROVIDERS as readonly { id: string; label: string; models: readonly string[] }[])
-    .filter(p => !!apiKeys[p.id] || !!backendKeys[p.id]);
+  const PROVIDERS = ALL_PROVIDERS.filter(p => !!apiKeys[p.id] || !!backendKeys[p.id]);
   const missingCount = ALL_PROVIDERS.length - PROVIDERS.length;
 
   const persist = (next: AnalysisConfig[]) => {
@@ -90,15 +84,6 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
 
   const remove = (id: string) => persist(configs.filter(c => c.id !== id));
 
-  // Same prompt format as the Python backend (main.py analyze_run)
-  const buildPrompt = (row: Record<string, string>, userPrompt: string) => {
-    const rowText = Object.entries(row)
-      .filter(([k, v]) => k !== '_idx' && v && String(v).trim())
-      .map(([k, v]) => `${k}: ${v}`)
-      .join('\n');
-    return `${userPrompt}\n\nDaten:\n${rowText}\n\nAntworte nur kurz und direkt.`;
-  };
-
   const runAnalysis = async (cfg: AnalysisConfig) => {
     if (!cfg.prompt.trim()) return showToast('Kein Prompt angegeben', 'warning');
     if (rowCount === 0)      return showToast('Keine Daten vorhanden', 'warning');
@@ -108,24 +93,10 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
 
       if (rows?.length) {
         // Direct mode: analyze via the Vercel route, chunked (no Python backend)
-        const CHUNK = 20;
-        const values: string[] = [];
-        for (let i = 0; i < rows.length; i += CHUNK) {
-          const prompts = rows.slice(i, i + CHUNK).map(r => buildPrompt(r, cfg.prompt));
-          const res = await fetch('/api/ai/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ provider: cfg.provider, model: cfg.model, prompts, ...(apiKey && { apiKey }) }),
-          });
-          if (!res.ok) {
-            let msg = `Analyse fehlgeschlagen (HTTP ${res.status})`;
-            try { msg = (await res.json()).detail ?? msg; } catch {}
-            throw new Error(msg);
-          }
-          const data = await res.json();
-          values.push(...(data.values ?? []));
-          setProgress(p => ({ ...p, [cfg.id]: Math.min(values.length, rows.length) }));
-        }
+        const values = await runAiColumn({
+          rows, provider: cfg.provider, model: cfg.model, prompt: cfg.prompt, apiKey,
+          onProgress: partial => setProgress(p => ({ ...p, [cfg.id]: partial.filter(v => v !== '·').length })),
+        });
         onColumnResult(cfg.name, values);
       } else {
         // Backend mode: existing scrape runs stored on the Python backend

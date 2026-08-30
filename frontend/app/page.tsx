@@ -458,31 +458,31 @@ export default function Home() {
           {/* ── Left: Scraper config ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-            {/* ① Source row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontFamily: T.ffMono, fontSize: 10, letterSpacing: '.14em', color: T.inkF, textTransform: 'uppercase', flexShrink: 0 }}>Quelle</span>
-              <div style={{ display: 'flex', background: T.panel2, borderRadius: 6, border: `1px solid ${T.lineS}`, padding: 2, gap: 2 }}>
-                <button style={{ padding: '4px 12px', borderRadius: 4, background: T.panel, border: `1px solid ${T.line}`, fontFamily: T.ffMono, fontSize: 11, color: T.ink, cursor: 'default' }}>
-                  Meta Ads Library
-                </button>
-                <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, padding: '4px 4px', alignSelf: 'center' }}>oder</span>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{ padding: '4px 12px', borderRadius: 4, background: 'transparent', border: '1px solid transparent', fontFamily: T.ffMono, fontSize: 11, color: csvFile ? T.gold : T.inkD, cursor: 'pointer', transition: 'all .12s' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = T.gold; e.currentTarget.style.background = T.goldD; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = csvFile ? T.gold : T.inkD; e.currentTarget.style.background = 'transparent'; }}
-                >
-                  {csvFile ? `✓ ${csvFile.name.slice(0, 20)}` : uploading ? 'Lädt…' : '↑ CSV / Excel hier ablegen'}
-                </button>
-              </div>
-            </div>
-
-            {/* ② Filter-Box — Preset-Header rechts oben, Keywords + Filter + Save darin */}
+            {/* ① Unified panel: source + filter headers align on the same left column */}
             <div style={{ background: T.panel2, border: `1px solid ${T.lineS}`, borderRadius: 8, display: 'flex', flexDirection: 'column' }}>
 
-              {/* Box-Header: Filter label + Saved searches + Save input */}
+              {/* Source header row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: `1px solid ${T.lineS}` }}>
+                <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, flexShrink: 0, width: 42 }}>Quelle</span>
+                <div style={{ display: 'flex', background: T.panel, borderRadius: 6, border: `1px solid ${T.line}`, padding: 2, gap: 2 }}>
+                  <button style={{ padding: '4px 12px', borderRadius: 4, background: T.panel2, border: `1px solid ${T.line}`, fontFamily: T.ffMono, fontSize: 11, color: T.ink, cursor: 'default' }}>
+                    Meta Ads Library
+                  </button>
+                  <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, padding: '4px 4px', alignSelf: 'center' }}>oder</span>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{ padding: '4px 12px', borderRadius: 4, background: 'transparent', border: '1px solid transparent', fontFamily: T.ffMono, fontSize: 11, color: csvFile ? T.gold : T.inkD, cursor: 'pointer', transition: 'all .12s' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = T.gold; e.currentTarget.style.background = T.goldD; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = csvFile ? T.gold : T.inkD; e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    {csvFile ? `✓ ${csvFile.name.slice(0, 20)}` : uploading ? 'Lädt…' : '↑ CSV / Excel hier ablegen'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter header row: label + saved searches + save input */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderBottom: `1px solid ${T.lineS}` }}>
-                <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, flexShrink: 0 }}>Filter</span>
+                <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, flexShrink: 0, width: 42 }}>Filter</span>
                 <button
                   onClick={() => setShowPresets(true)}
                   style={{
