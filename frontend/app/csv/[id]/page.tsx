@@ -238,7 +238,10 @@ export default function CsvViewer() {
         <DataTable
           data={run.data}
           rawColumns={run.fields}
-          aiColumns={aiColumns}
+          aiColumns={aiColumns.map(c => {
+            const cfg = aiConfigs.find(x => x.name === c.name);
+            return cfg ? { ...c, label: `${{ gemini: 'Gemini', anthropic: 'Claude', openai: 'GPT' }[cfg.provider] ?? cfg.provider} · ${cfg.model}` } : c;
+          })}
           excludedRows={excludedRows}
           onExcludeChange={setExcludedRows}
           onBlockPages={run.fields.includes('page_name') ? (rows) => {

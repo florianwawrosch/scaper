@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
   const limit = Math.max(1, Math.min(Number(cfg.limit) || 50, 1000));
 
   const allRows: Record<string, string>[] = [];
+  const seenAdIds = new Set<string>();
 
   try {
     for (const term of keywords) {
@@ -115,6 +116,10 @@ export async function POST(req: NextRequest) {
 
         for (const ad of data.data ?? []) {
           if (collected >= limit) break;
+          // Same ad can match several keywords — keep it once
+          const adId = String(ad.id ?? '');
+          if (adId && seenAdIds.has(adId)) continue;
+          if (adId) seenAdIds.add(adId);
           allRows.push(flatten(ad, term));
           collected++;
         }

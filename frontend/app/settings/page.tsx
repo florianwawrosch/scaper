@@ -90,6 +90,11 @@ export default function Settings() {
     // Which keys exist server-side (Vercel/Railway env vars) — booleans only
     fetchKeyAvailability().then(setServerKeys);
     setBlocklist(loadBlocklist());
+    // Deep link: /settings?tab=blocklist
+    try {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab === 'blocklist' || tab === 'design' || tab === 'integrations') setNav(tab as NavKey);
+    } catch {}
   }, []);
 
   const saveBackendUrl = () => {

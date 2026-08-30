@@ -118,6 +118,7 @@ export default function Home() {
   const [backendKeys,    setBackendKeys]    = useState<Record<string, boolean>>({});
   const [useBlocklist,   setUseBlocklist]   = useState(true);
   const [blockCount,     setBlockCount]     = useState(0);
+  const [groupByPage,    setGroupByPage]    = useState(true);
   // Two-step delete: first click arms ("Wirklich löschen?"), second deletes;
   // auto-disarms after 3 seconds
   const [confirmDelete,  setConfirmDelete]  = useState<string | null>(null);
@@ -378,6 +379,30 @@ export default function Home() {
         finalRows = kept;
       }
 
+      // One row per page: the lead is the fanpage, not each individual ad
+      if (groupByPage) {
+        const byPage = new Map<string, Record<string, string> & { ads_count: string }>();
+        for (const row of finalRows) {
+          const key = String(row.page_id || row.page_name || '').trim();
+          if (!key) continue;
+          const existing = byPage.get(key);
+          if (existing) {
+            existing.ads_count = String(Number(existing.ads_count) + 1);
+            // Keep the longest ad text as the representative one
+            if ((row.ad_text?.length ?? 0) > (existing.ad_text?.length ?? 0)) {
+              existing.ad_text = row.ad_text;
+            }
+          } else {
+            byPage.set(key, { ...row, ads_count: '1' });
+          }
+        }
+        const grouped = [...byPage.values()];
+        if (grouped.length > 0 && grouped.length < finalRows.length) {
+          showToast(`${finalRows.length} Ads → ${grouped.length} Seiten zusammengefasst`, 'info');
+        }
+        if (grouped.length > 0) finalRows = grouped;
+      }
+
       // Store the result through the proven CSV pipeline (IndexedDB + viewer)
       const id = `csv_${Date.now()}`;
       const csvText = Papa.unparse(finalRows);
@@ -538,18 +563,34 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Blockliste toggle */}
-            {blockCount > 0 && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', alignSelf: 'flex-start' }}>
+            {/* Ergebnis-Optionen */}
+            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input
-                  type="checkbox" checked={useBlocklist} onChange={e => setUseBlocklist(e.target.checked)}
+                  type="checkbox" checked={groupByPage} onChange={e => setGroupByPage(e.target.checked)}
                   style={{ width: 13, height: 13, cursor: 'pointer', accentColor: '#e8b04b' }}
                 />
-                <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkD }}>
-                  Blockliste anwenden <span style={{ color: T.inkF }}>({blockCount} Seiten)</span>
+                <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkD }} title="Mehrere Anzeigen derselben Fanpage werden zu einer Zeile zusammengefasst (Spalte ads_count zeigt die Anzahl)">
+                  1 Zeile pro Seite <span style={{ color: T.inkF }}>(Ads zusammenfassen)</span>
                 </span>
               </label>
-            )}
+              {blockCount > 0 && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox" checked={useBlocklist} onChange={e => setUseBlocklist(e.target.checked)}
+                    style={{ width: 13, height: 13, cursor: 'pointer', accentColor: '#e8b04b' }}
+                  />
+                  <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkD }}>
+                    Blockliste anwenden{' '}
+                    <span
+                      onClick={e => { e.preventDefault(); router.push('/settings?tab=blocklist'); }}
+                      style={{ color: '#6381ff', textDecoration: 'underline', cursor: 'pointer' }}
+                      title="Blockliste ansehen und verwalten"
+                    >({blockCount} Seiten)</span>
+                  </span>
+                </label>
+              )}
+            </div>
 
             {/* Inline error */}
             {formError && (

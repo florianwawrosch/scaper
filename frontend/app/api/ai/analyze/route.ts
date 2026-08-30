@@ -63,8 +63,26 @@ async function callAi(provider: string, model: string, prompt: string, key: stri
     }
     return `Fehler: Unbekannter Provider ${provider}`;
   } catch (e) {
-    return `Fehler: ${e instanceof Error ? e.message : e}`;
+    return `Fehler: ${friendlyAiError(e instanceof Error ? e.message : String(e))}`;
   }
+}
+
+/** Translate common provider errors into actionable German messages. */
+function friendlyAiError(msg: string): string {
+  const m = msg.toLowerCase();
+  if (m.includes('exceeded your current quota') || m.includes('insufficient_quota')) {
+    return 'OpenAI-Guthaben aufgebraucht — unter platform.openai.com → Billing aufladen.';
+  }
+  if (m.includes('incorrect api key') || m.includes('invalid api key') || m.includes('invalid x-api-key') || m.includes('api key not valid')) {
+    return 'API-Key ungültig — Key in Vercel/Einstellungen prüfen.';
+  }
+  if (m.includes('rate limit') || m.includes('429') || m.includes('overloaded')) {
+    return 'Rate-Limit erreicht — kurz warten und erneut versuchen.';
+  }
+  if (m.includes('model') && (m.includes('not found') || m.includes('does not exist') || m.includes('not_found'))) {
+    return 'Modell nicht verfügbar — anderes Modell im ⚙-Panel wählen.';
+  }
+  return msg;
 }
 
 export async function POST(req: NextRequest) {

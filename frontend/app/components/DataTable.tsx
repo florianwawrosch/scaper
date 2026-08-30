@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 
-interface AiColumn { name: string; values: string[] }
+interface AiColumn { name: string; values: string[]; label?: string }
 
 interface DataTableProps {
   data: Record<string, any>[];
@@ -191,7 +191,14 @@ export function DataTable({
   const sorted = useMemo(() => {
     if (!sortCol) return filtered;
     return [...filtered].sort((a, b) => {
-      const cmp = String(a[sortCol] ?? '').localeCompare(String(b[sortCol] ?? ''), 'de');
+      const av = String(a[sortCol] ?? '').trim();
+      const bv = String(b[sortCol] ?? '').trim();
+      // Empty cells always sort last, regardless of direction
+      if (!av && bv) return 1;
+      if (av && !bv) return -1;
+      if (!av && !bv) return 0;
+      // numeric:true makes "9" < "104" instead of lexicographic order
+      const cmp = av.localeCompare(bv, 'de', { numeric: true, sensitivity: 'base' });
       return sortAsc ? cmp : -cmp;
     });
   }, [filtered, sortCol, sortAsc]);
@@ -365,6 +372,48 @@ export function DataTable({
                 </th>
               )}
               <th style={{ ...thStyle, width: 28, cursor: 'default', color: '#5f6e87' }}>#</th>
+              {/* AI columns come FIRST so results are visible without scrolling */}
+              {aiColumns.map(col => {
+                const hasFilter = colFilters[col.name] && (colFilters[col.name].text || colFilters[col.name].values !== null);
+                return (
+                  <th key={col.name} style={{ ...thStyle, color: '#e8b04b', background: 'rgba(232,176,75,.04)', minWidth: 170, borderRight: '1px dashed rgba(232,176,75,.2)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <span style={{ cursor: 'pointer' }} onClick={() => { sort(col.name); }}>
+                        ✦ {col.name}{sortCol === col.name ? (sortAsc ? ' ↑' : ' ↓') : ''}
+                        {col.label && (
+                          <span style={{ display: 'block', fontSize: 8, letterSpacing: '.05em', color: '#9aa7bd', textTransform: 'none', fontWeight: 400, marginTop: 1 }}>
+                            {col.label}
+                          </span>
+                        )}
+                      </span>
+                      {onConfigureAiColumn && (
+                        <button
+                          onClick={e => { e.stopPropagation(); onConfigureAiColumn(col.name); }}
+                          title="Spalte konfigurieren (Name, Modell, Prompt)"
+                          style={{ fontSize: 16, padding: '3px 8px', borderRadius: 5, background: 'rgba(232,176,75,.12)', border: '1px solid rgba(232,176,75,.35)', cursor: 'pointer', color: '#e8b04b', lineHeight: 1 }}
+                        >⚙</button>
+                      )}
+                      {onRunAiColumn && (
+                        <button
+                          onClick={e => { e.stopPropagation(); onRunAiColumn(col.name); }}
+                          title="Analyse für diese Spalte starten"
+                          style={{ fontSize: 14, padding: '4px 9px', borderRadius: 5, background: 'rgba(79,209,197,.12)', border: '1px solid rgba(79,209,197,.35)', cursor: 'pointer', color: '#4fd1c5', lineHeight: 1 }}
+                        >▶</button>
+                      )}
+                      <button
+                        onClick={e => openFilterFor(col.name, e)}
+                        style={{
+                          ...mono, fontSize: 9, padding: '1px 4px', borderRadius: 3, cursor: 'pointer',
+                          background: hasFilter ? 'rgba(79,209,197,.2)' : 'rgba(255,255,255,.06)',
+                          border: hasFilter ? '1px solid rgba(79,209,197,.4)' : '1px solid rgba(255,255,255,.1)',
+                          color: hasFilter ? '#4fd1c5' : '#5f6e87',
+                          lineHeight: 1,
+                        }}
+                      >▼</button>
+                    </div>
+                  </th>
+                );
+              })}
               {rawColumns.map(col => {
                 const hasFilter = colFilters[col] && (colFilters[col].text || colFilters[col].values !== null);
                 return (
@@ -388,55 +437,6 @@ export function DataTable({
                   </th>
                 );
               })}
-              {aiColumns.map(col => {
-                const hasFilter = colFilters[col.name] && (colFilters[col.name].text || colFilters[col.name].values !== null);
-                return (
-                  <th key={col.name} style={{ ...thStyle, color: '#e8b04b', background: 'rgba(232,176,75,.04)', minWidth: 160 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ cursor: 'pointer' }} onClick={() => { sort(col.name); }}>
-                        ✦ {col.name}{sortCol === col.name ? (sortAsc ? ' ↑' : ' ↓') : ''}
-                      </span>
-                      {onConfigureAiColumn && (
-                        <button
-                          onClick={e => { e.stopPropagation(); onConfigureAiColumn(col.name); }}
-                          title="Spalte konfigurieren (Name, Modell, Prompt)"
-                          style={{ fontSize: 14, padding: '2px 5px', borderRadius: 4, background: 'rgba(232,176,75,.1)', border: '1px solid rgba(232,176,75,.3)', cursor: 'pointer', color: '#e8b04b', lineHeight: 1 }}
-                        >⚙</button>
-                      )}
-                      {onRunAiColumn && (
-                        <button
-                          onClick={e => { e.stopPropagation(); onRunAiColumn(col.name); }}
-                          title="Analyse für diese Spalte starten"
-                          style={{ fontSize: 12, padding: '3px 6px', borderRadius: 4, background: 'rgba(79,209,197,.1)', border: '1px solid rgba(79,209,197,.3)', cursor: 'pointer', color: '#4fd1c5', lineHeight: 1 }}
-                        >▶</button>
-                      )}
-                      <button
-                        onClick={e => openFilterFor(col.name, e)}
-                        style={{
-                          ...mono, fontSize: 9, padding: '1px 4px', borderRadius: 3, cursor: 'pointer',
-                          background: hasFilter ? 'rgba(79,209,197,.2)' : 'rgba(255,255,255,.06)',
-                          border: hasFilter ? '1px solid rgba(79,209,197,.4)' : '1px solid rgba(255,255,255,.1)',
-                          color: hasFilter ? '#4fd1c5' : '#5f6e87',
-                          lineHeight: 1,
-                        }}
-                      >▼</button>
-                    </div>
-                  </th>
-                );
-              })}
-              {onAddAiColumn && (
-                <th style={{ ...thStyle, width: 120, background: 'rgba(232,176,75,.03)', borderLeft: '1px dashed rgba(232,176,75,.25)' }}>
-                  <button
-                    onClick={onAddAiColumn}
-                    title="Neue KI-Spalte direkt in der Tabelle anlegen"
-                    style={{
-                      ...mono, fontSize: 10, padding: '3px 10px', borderRadius: 5, cursor: 'pointer',
-                      border: '1px dashed rgba(232,176,75,.35)', background: 'transparent',
-                      color: '#e8b04b', whiteSpace: 'nowrap',
-                    }}
-                  >+ KI-Spalte</button>
-                </th>
-              )}
             </tr>
           </thead>
           <tbody>
@@ -454,35 +454,37 @@ export function DataTable({
                     </td>
                   )}
                   <td style={{ ...tdStyle, color: '#5f6e87', fontSize: 10 }}>{(page - 1) * PAGE + i + 1}</td>
-                  {rawColumns.map(col => (
-                    <td key={col} title={String(row[col] ?? '')} style={tdStyle}>
-                      {renderCell(String(row[col] ?? ''))}
-                    </td>
-                  ))}
                   {aiColumns.map(col => {
                     const val = String(row[col.name] ?? '—');
                     const isPlaceholder = val === '·';
+                    const isError = val.startsWith('Fehler');
                     return (
-                      <td key={col.name} title={val} style={{ ...tdStyle, background: 'rgba(232,176,75,.02)', minWidth: 160, maxWidth: 280 }}>
+                      <td key={col.name} title={val} style={{ ...tdStyle, background: 'rgba(232,176,75,.02)', minWidth: 170, maxWidth: 300, borderRight: '1px dashed rgba(232,176,75,.12)' }}>
                         {isPlaceholder ? (
                           <span style={{ ...mono, fontSize: 11, color: '#5f6e87' }}>—</span>
                         ) : (
-                          <span style={{ ...mono, fontSize: 11, color: '#e8b04b', background: 'rgba(232,176,75,.1)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap' }}>
+                          <span style={{
+                            ...mono, fontSize: 11, borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap',
+                            color: isError ? '#e8736b' : '#e8b04b',
+                            background: isError ? 'rgba(232,115,107,.1)' : 'rgba(232,176,75,.1)',
+                          }}>
                             {val}
                           </span>
                         )}
                       </td>
                     );
                   })}
-                  {onAddAiColumn && (
-                    <td style={{ borderBottom: '1px solid rgba(255,255,255,.04)', borderLeft: '1px dashed rgba(232,176,75,.15)' }} />
-                  )}
+                  {rawColumns.map(col => (
+                    <td key={col} title={String(row[col] ?? '')} style={tdStyle}>
+                      {renderCell(String(row[col] ?? ''))}
+                    </td>
+                  ))}
                 </tr>
               );
             })}
             {paginated.length === 0 && (
               <tr>
-                <td colSpan={allColumns.length + (onExcludeChange ? 2 : 1) + (onAddAiColumn ? 1 : 0)} style={{ ...mono, padding: '28px', textAlign: 'center', fontSize: 11, color: '#5f6e87' }}>
+                <td colSpan={allColumns.length + (onExcludeChange ? 2 : 1)} style={{ ...mono, padding: '28px', textAlign: 'center', fontSize: 11, color: '#5f6e87' }}>
                   Keine Daten
                 </td>
               </tr>
