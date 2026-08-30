@@ -9,6 +9,7 @@ import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { useToast } from '@/app/components/Toast';
+import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { TagInput } from '@/app/components/TagInput';
 import { CountrySelect } from '@/app/components/CountrySelect';
 
@@ -119,15 +120,6 @@ export default function Home() {
   const [useBlocklist,   setUseBlocklist]   = useState(true);
   const [blockCount,     setBlockCount]     = useState(0);
   const [groupByPage,    setGroupByPage]    = useState(true);
-  // Two-step delete: first click arms ("Wirklich löschen?"), second deletes;
-  // auto-disarms after 3 seconds
-  const [confirmDelete,  setConfirmDelete]  = useState<string | null>(null);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const armDelete = (key: string) => {
-    setConfirmDelete(key);
-    if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    confirmTimer.current = setTimeout(() => setConfirmDelete(null), 3000);
-  };
 
   useEffect(() => {
     // Local history renders instantly — no waiting for any network call
@@ -702,24 +694,16 @@ export default function Home() {
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
                                 <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF }}>{csv.rowCount.toLocaleString('de')} Z</span>
-                                <span style={{ fontFamily: T.ffMono, fontSize: 8, letterSpacing: '.08em', padding: '1px 5px', borderRadius: 3, background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', color: '#6381ff' }}>CSV</span>
+                                {csv.filename.startsWith('Meta:') ? (
+                                  <span style={{ fontFamily: T.ffMono, fontSize: 8, letterSpacing: '.08em', padding: '1px 5px', borderRadius: 3, background: 'rgba(232,176,75,.1)', border: '1px solid rgba(232,176,75,.25)', color: '#e8b04b' }}>Scrape</span>
+                                ) : (
+                                  <span style={{ fontFamily: T.ffMono, fontSize: 8, letterSpacing: '.08em', padding: '1px 5px', borderRadius: 3, background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', color: '#6381ff' }}>CSV</span>
+                                )}
                               </div>
                             </button>
-                            <button
-                              onClick={() => {
-                                if (confirmDelete === `csv_${csv.id}`) { deleteCsvImport(csv.id); setConfirmDelete(null); }
-                                else armDelete(`csv_${csv.id}`);
-                              }}
-                              title={confirmDelete === `csv_${csv.id}` ? 'Klicken zum endgültigen Löschen' : 'Import löschen'}
-                              style={{
-                                padding: confirmDelete === `csv_${csv.id}` ? '0 8px' : '0 10px',
-                                background: confirmDelete === `csv_${csv.id}` ? 'rgba(232,115,107,.12)' : 'none',
-                                border: 'none', borderLeft: `1px solid ${T.lineS}`, cursor: 'pointer',
-                                fontFamily: T.ffMono, fontSize: confirmDelete === `csv_${csv.id}` ? 9 : 13,
-                                color: confirmDelete === `csv_${csv.id}` ? '#e8736b' : T.inkF,
-                                transition: 'all .15s', flexShrink: 0, whiteSpace: 'nowrap',
-                              }}
-                            >{confirmDelete === `csv_${csv.id}` ? 'Wirklich löschen?' : '×'}</button>
+                            <div style={{ display: 'flex', alignItems: 'center', padding: '0 8px', borderLeft: `1px solid ${T.lineS}` }}>
+                              <ConfirmDelete onConfirm={() => deleteCsvImport(csv.id)} title="Eintrag löschen" />
+                            </div>
                           </div>
                         );
                       }
@@ -801,21 +785,7 @@ export default function Home() {
                             onClick={() => loadPreset(name)}
                             style={{ fontFamily: T.ffMono, fontSize: 11, padding: '4px 14px', borderRadius: 5, background: T.gold, border: 'none', color: '#07070a', fontWeight: 600, cursor: 'pointer' }}
                           >Laden</button>
-                          <button
-                            onClick={() => {
-                              if (confirmDelete === `preset_${name}`) { deletePreset(name); setConfirmDelete(null); }
-                              else armDelete(`preset_${name}`);
-                            }}
-                            style={{
-                              fontFamily: T.ffMono,
-                              fontSize: confirmDelete === `preset_${name}` ? 10 : 13,
-                              padding: confirmDelete === `preset_${name}` ? '4px 10px' : '4px 8px',
-                              borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all .15s',
-                              background: confirmDelete === `preset_${name}` ? 'rgba(232,115,107,.12)' : 'transparent',
-                              border: confirmDelete === `preset_${name}` ? '1px solid rgba(232,115,107,.4)' : `1px solid ${T.lineS}`,
-                              color: confirmDelete === `preset_${name}` ? '#e8736b' : T.inkF,
-                            }}
-                          >{confirmDelete === `preset_${name}` ? 'Wirklich löschen?' : '×'}</button>
+                          <ConfirmDelete onConfirm={() => deletePreset(name)} title="Suche löschen" style={{ display: 'flex', alignItems: 'center' }} />
                         </div>
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>

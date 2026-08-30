@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type ScrapeRun } from '@/lib/api';
 import { deleteCsvText } from '@/lib/csvStorage';
+import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 
 const T = {
   bg:    'var(--th-bg)',
@@ -64,19 +65,11 @@ export default function RunsList() {
   const [loading,   setLoading]   = useState(true);
   const [filter,    setFilter]    = useState<Filter>('all');
   const [page,      setPage]      = useState(1);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const PAGE_SIZE = 25;
 
-  const armDelete = (id: string) => {
-    setConfirmDelete(id);
-    if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    confirmTimer.current = setTimeout(() => setConfirmDelete(null), 3000);
-  };
   const deleteLocal = async (id: string) => {
     try { localStorage.removeItem(`csv_run_${id}`); await deleteCsvText(id); } catch {}
     setLocalRuns(prev => prev.filter(x => x.id !== id));
-    setConfirmDelete(null);
   };
 
   useEffect(() => {
@@ -233,21 +226,8 @@ export default function RunsList() {
                     <div style={{ ...cellStyle, color: '#4fd1c5', fontWeight: 600, fontSize: 13, textAlign: 'right' }}>{r.rowCount}</div>
                     <div style={{ ...cellStyle, color: T.inkF, textAlign: 'right' }}>—</div>
                     <div style={{ ...cellStyle, color: T.inkF, textAlign: 'right' }}>—</div>
-                    <div style={{ ...cellStyle, textAlign: 'right' }}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirmDelete === r.id) deleteLocal(r.id);
-                          else armDelete(r.id);
-                        }}
-                        title={confirmDelete === r.id ? 'Klicken zum endgültigen Löschen' : 'Eintrag löschen'}
-                        style={{
-                          fontFamily: T.mono, cursor: 'pointer', background: 'none', border: 'none', lineHeight: 1, padding: 0,
-                          fontSize: confirmDelete === r.id ? 9 : 13,
-                          color: confirmDelete === r.id ? '#e8736b' : T.inkF,
-                          opacity: confirmDelete === r.id ? 1 : .5, whiteSpace: 'nowrap',
-                        }}
-                      >{confirmDelete === r.id ? 'Löschen?' : '×'}</button>
+                    <div style={{ ...cellStyle, display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+                      <ConfirmDelete onConfirm={() => deleteLocal(r.id)} title="Eintrag löschen" />
                     </div>
                   </div>
                 );
