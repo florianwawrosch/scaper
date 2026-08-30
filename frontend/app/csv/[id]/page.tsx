@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Papa from 'papaparse';
 import { saveCsvText } from '@/lib/csvStorage';
 import { loadCsvRun } from '@/lib/csvRuns';
-import { addToBlocklist, removeFromBlocklist } from '@/lib/blocklist';
+import { addToBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { useToast } from '@/app/components/Toast';
@@ -60,7 +60,6 @@ export default function CsvViewer() {
   const [colRunning,  setColRunning]  = useState<Record<string, boolean>>({});
   const [colProgress, setColProgress] = useState<Record<string, number>>({});
   const [providers,   setProviders]   = useState<string[]>([]);
-  const [blockedIdx,  setBlockedIdx]  = useState<Set<number>>(new Set());
 
   useEffect(() => {
     try {
@@ -242,22 +241,20 @@ export default function CsvViewer() {
           aiColumns={aiColumns}
           excludedRows={excludedRows}
           onExcludeChange={setExcludedRows}
-          blockedRows={blockedIdx}
-          onBlockRow={run.fields.includes('page_name') ? (row) => {
-            const name = String(row.page_name ?? '').trim();
-            if (!name) return;
-            const idx = Number(row._idx);
-            const next = new Set(blockedIdx);
-            if (next.has(idx)) {
-              removeFromBlocklist(name);
-              next.delete(idx);
-              showToast(`«${name}» von der Blockliste entfernt`, 'info');
-            } else {
+          onBlockPages={run.fields.includes('page_name') ? (rows) => {
+            const names = new Set<string>();
+            for (const row of rows) {
+              const name = String(row.page_name ?? '').trim();
+              if (!name) continue;
               addToBlocklist(name, String(row.page_id ?? '') || undefined);
-              next.add(idx);
-              showToast(`«${name}» geblockt — wird bei künftigen Scrapes ausgeschlossen`, 'success');
+              names.add(name);
             }
-            setBlockedIdx(next);
+            if (names.size > 0) {
+              showToast(
+                `${names.size} ${names.size === 1 ? 'Seite' : 'Seiten'} zur Blockliste hinzugefügt — verwalten unter Einstellungen → Blockliste`,
+                'success', 5000,
+              );
+            }
           } : undefined}
           onAddAiColumn={addAiColumn}
           onConfigureAiColumn={(name) => {
