@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Papa from 'papaparse';
-import { loadCsvText, saveCsvText } from '@/lib/csvStorage';
+import { saveCsvText } from '@/lib/csvStorage';
+import { loadCsvRun } from '@/lib/csvRuns';
 import { addToBlocklist, removeFromBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { useToast } from '@/app/components/Toast';
-import { api } from '@/lib/api';
 import { DataTable } from '@/app/components/DataTable';
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
 import type { AnalysisConfig } from '@/app/components/AnalysisPanel';
@@ -24,18 +24,6 @@ interface CsvRun {
   createdAt: string;
   backendRunId?: string;
   scrapeConfig?: Record<string, unknown>;
-}
-
-interface StoredCsvMeta {
-  fields: string[];
-  filename: string;
-  createdAt: string;
-  rowCount?: number;
-  backendRunId?: string;
-  scrapeConfig?: Record<string, unknown>;
-  // legacy: old format stored data/csv inline in localStorage
-  data?: Record<string, string>[];
-  csv?: string;
 }
 
 const T = {
@@ -64,8 +52,6 @@ export default function CsvViewer() {
   const [error,      setError]      = useState('');
   const [aiColumns,  setAiColumns]  = useState<{ name: string; values: string[] }[]>([]);
   const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
-  const [backendRunId, setBackendRunId] = useState<string | null>(null);
-  const [uploadingToBackend, setUploadingToBackend] = useState(false);
 
   // AI column configs (owned here; edited via the ⚙ side panel)
   const configsKey = `analysis_configs_${id}`;
@@ -179,73 +165,17 @@ export default function CsvViewer() {
   const editingCfg = aiConfigs.find(c => c.id === editingId) ?? null;
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const raw = localStorage.getItem(`csv_run_${id}`);
-        if (!raw) { setError('Datei nicht gefunden. Bitte erneut hochladen.'); return; }
-        const meta: StoredCsvMeta = JSON.parse(raw);
-        if (meta.backendRunId) setBackendRunId(meta.backendRunId);
-
-        const parseText = (text: string) => {
-          Papa.parse<Record<string, string>>(text, {
-            header: true,
-            skipEmptyLines: true,
-            complete: (results) => setRun({
-              data: results.data,
-              fields: meta.fields,
-              filename: meta.filename,
-              createdAt: meta.createdAt,
-              backendRunId: meta.backendRunId,
-              scrapeConfig: meta.scrapeConfig,
-            }),
-            error: () => setError('CSV konnte nicht gelesen werden.'),
-          });
-        };
-
-        if (meta.data) {
-          // Legacy format A: parsed data inline in localStorage
-          setRun({ data: meta.data, fields: meta.fields, filename: meta.filename, createdAt: meta.createdAt, backendRunId: meta.backendRunId, scrapeConfig: meta.scrapeConfig });
-        } else if (meta.csv) {
-          // Legacy format B: raw CSV text inline in localStorage
-          parseText(meta.csv);
-        } else {
-          // Current format: raw CSV text in IndexedDB
-          const csvText = await loadCsvText(id);
-          if (!csvText) { setError('Datei nicht gefunden. Bitte erneut hochladen.'); return; }
-          parseText(csvText);
-        }
-      } catch {
-        setError('Fehler beim Laden der Datei.');
-      }
-    };
-    load();
+    loadCsvRun(id)
+      .then(({ meta, rows }) => setRun({
+        data: rows,
+        fields: meta.fields,
+        filename: meta.filename,
+        createdAt: meta.createdAt,
+        backendRunId: meta.backendRunId,
+        scrapeConfig: meta.scrapeConfig,
+      }))
+      .catch(e => setError(e instanceof Error ? e.message : 'Fehler beim Laden der Datei.'));
   }, [id]);
-
-  const resolveBackendRunId = useCallback(async (): Promise<string> => {
-    if (backendRunId) return backendRunId;
-    if (!run) throw new Error('Keine CSV-Daten vorhanden');
-
-    setUploadingToBackend(true);
-    try {
-      const r = await api.runs.create('csv_import', { filename: run.filename });
-      const mapping: Record<string, string> = {};
-      for (const f of run.fields) mapping[f] = f;
-      await api.runs.saveDataset(r.id, run.data, mapping);
-
-      // Update metadata with backendRunId (keep existing stored format)
-      try {
-        const raw = localStorage.getItem(`csv_run_${id}`);
-        if (raw) {
-          const meta = JSON.parse(raw);
-          localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...meta, backendRunId: r.id }));
-        }
-      } catch {}
-      setBackendRunId(r.id);
-      return r.id;
-    } finally {
-      setUploadingToBackend(false);
-    }
-  }, [backendRunId, run, id]);
 
   const fmt = (d: string) =>
     new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });

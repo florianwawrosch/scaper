@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Papa from 'papaparse';
-import { loadCsvText, saveCsvText } from '@/lib/csvStorage';
+import { saveCsvText } from '@/lib/csvStorage';
+import { loadCsvRun, type CsvRunMeta } from '@/lib/csvRuns';
 import { EnrichmentPanel } from '@/app/components/EnrichmentPanel';
 
 const T = {
@@ -18,48 +19,19 @@ const T = {
   ffDisp: 'var(--ff-disp)',
 };
 
-interface StoredCsvMeta {
-  fields: string[];
-  filename: string;
-  createdAt: string;
-  rowCount?: number;
-  data?: Record<string, string>[];
-  csv?: string;
-}
-
 export default function EnrichPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
 
-  const [meta,  setMeta]  = useState<StoredCsvMeta | null>(null);
+  const [meta,  setMeta]  = useState<CsvRunMeta | null>(null);
   const [rows,  setRows]  = useState<Record<string, string>[]>([]);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const raw = localStorage.getItem(`csv_run_${id}`);
-        if (!raw) { setError('Datei nicht gefunden.'); return; }
-        const m: StoredCsvMeta = JSON.parse(raw);
-        setMeta(m);
-
-        const parseText = (text: string) =>
-          Papa.parse<Record<string, string>>(text, {
-            header: true, skipEmptyLines: true,
-            complete: r => setRows(r.data),
-          });
-
-        if (m.data) setRows(m.data);
-        else if (m.csv) parseText(m.csv);
-        else {
-          const text = await loadCsvText(id);
-          if (!text) { setError('Datei nicht gefunden.'); return; }
-          parseText(text);
-        }
-      } catch { setError('Fehler beim Laden.'); }
-    };
-    load();
+    loadCsvRun(id)
+      .then(({ meta: m, rows: r }) => { setMeta(m); setRows(r); })
+      .catch(e => setError(e instanceof Error ? e.message : 'Fehler beim Laden.'));
   }, [id]);
 
   // Merge enriched emails back into the stored CSV so the table keeps them

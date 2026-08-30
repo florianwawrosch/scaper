@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
@@ -29,17 +29,11 @@ interface Props {
   /** When provided, analysis runs directly via the Vercel route /api/ai/analyze
    *  (chunked) — no separate Python backend needed. */
   rows?: Record<string, string>[];
-  /** In-table popover mode: auto-creates the first column, hides the list
-   *  header, separates "Speichern" (column appears in table) from
-   *  "Analysieren" (prompt runs on all rows). */
-  slotMode?: boolean;
-  /** Remove a previously emitted column (rename/delete in slotMode) */
-  onColumnRemove?: (name: string) => void;
 }
 
 const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
 
-export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, rows, slotMode, onColumnRemove }: Props) {
+export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, rows }: Props) {
   const { showToast } = useToast();
   const router = useRouter();
   const storageKey = `analysis_configs_${runId}`;
@@ -94,36 +88,7 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
   const update = (id: string, patch: Partial<AnalysisConfig>) =>
     persist(configs.map(c => c.id === id ? { ...c, ...patch } : c));
 
-  // Which column name each config last emitted into the table
-  const emittedRef = useRef<Record<string, string>>({});
-
-  const remove = (id: string) => {
-    const emitted = emittedRef.current[id];
-    if (emitted && onColumnRemove) onColumnRemove(emitted);
-    delete emittedRef.current[id];
-    persist(configs.filter(c => c.id !== id));
-  };
-
-  /** "Speichern": the column appears in the table immediately (placeholder
-   *  values) — running the prompt is a separate action. */
-  const saveColumn = (cfg: AnalysisConfig) => {
-    const name = cfg.name.trim();
-    if (!name) return showToast('Spaltenname fehlt', 'warning');
-    const prev = emittedRef.current[cfg.id];
-    if (prev && prev !== name && onColumnRemove) onColumnRemove(prev);
-    if (prev !== name) onColumnResult(name, Array(rowCount).fill('·'));
-    emittedRef.current[cfg.id] = name;
-    showToast(`Spalte «${name}» angelegt — jetzt Analysieren klicken`, 'success');
-  };
-
-  // slotMode: each opening of the popover works on ONE column. A fresh config
-  // is created when there is none yet, or the previous one is already complete.
-  useEffect(() => {
-    if (!slotMode || !keysReady || PROVIDERS.length === 0) return;
-    const last = configs[configs.length - 1];
-    if (!last || (last.name.trim() && last.prompt.trim())) add();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slotMode, keysReady]);
+  const remove = (id: string) => persist(configs.filter(c => c.id !== id));
 
   // Same prompt format as the Python backend (main.py analyze_run)
   const buildPrompt = (row: Record<string, string>, userPrompt: string) => {
@@ -162,14 +127,12 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
           setProgress(p => ({ ...p, [cfg.id]: Math.min(values.length, rows.length) }));
         }
         onColumnResult(cfg.name, values);
-        emittedRef.current[cfg.id] = cfg.name;
       } else {
         // Backend mode: existing scrape runs stored on the Python backend
         const rid = runId || (resolveRunId ? await resolveRunId() : '');
         if (!rid) throw new Error('Kein Backend verbunden — URL in den Einstellungen konfigurieren.');
         const res = await api.runs.analyze(rid, cfg.provider, cfg.model, cfg.prompt, cfg.name, apiKey);
         onColumnResult(res.column_name, res.values);
-        emittedRef.current[cfg.id] = res.column_name;
       }
 
       showToast(`Spalte "${cfg.name}" fertig`, 'success');
@@ -184,16 +147,13 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-      {/* List header — hidden in slotMode (the popover already has a title) */}
-      {!slotMode && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ ...mono, fontSize: 11, color: '#9aa7bd', letterSpacing: '.08em' }}>KI-Analyse Spalten</span>
-          <button
-            onClick={add}
-            style={{ ...mono, fontSize: 11, padding: '4px 12px', borderRadius: 6, border: '1px solid rgba(232,176,75,.3)', background: 'rgba(232,176,75,.06)', color: '#e8b04b', cursor: 'pointer' }}
-          >+ Spalte</button>
-        </div>
-      )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ ...mono, fontSize: 11, color: '#9aa7bd', letterSpacing: '.08em' }}>KI-Analyse Spalten</span>
+        <button
+          onClick={add}
+          style={{ ...mono, fontSize: 11, padding: '4px 12px', borderRadius: 6, border: '1px solid rgba(232,176,75,.3)', background: 'rgba(232,176,75,.06)', color: '#e8b04b', cursor: 'pointer' }}
+        >+ Spalte</button>
+      </div>
 
       {/* No API keys at all — only show after settings have loaded */}
       {keysReady && PROVIDERS.length === 0 && (
@@ -216,14 +176,13 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
         </button>
       )}
 
-      {!slotMode && configs.length === 0 && PROVIDERS.length > 0 && (
+      {configs.length === 0 && PROVIDERS.length > 0 && (
         <div style={{ padding: '18px 16px', textAlign: 'center', border: '1px dashed rgba(255,255,255,.09)', borderRadius: 8 }}>
           <p style={{ ...mono, fontSize: 11, color: '#5f6e87' }}>Noch keine KI-Analyse. Klicke «+ Spalte» um eine hinzuzufügen.</p>
         </div>
       )}
 
-      {/* slotMode: only the column currently being worked on is shown */}
-      {(slotMode ? configs.slice(-1) : configs).map(cfg => {
+      {configs.map(cfg => {
         const prov = PROVIDERS.find(p => p.id === cfg.provider) ?? PROVIDERS[0];
         if (!prov) return null;
         const isRunning = running[cfg.id];
@@ -273,19 +232,8 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
               style={{ ...mono, fontSize: 11, color: '#9aa7bd', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 6, padding: '6px 8px', width: '100%', outline: 'none', resize: 'vertical', lineHeight: 1.55 }}
             />
 
-            {/* Actions: save column (appears in table) vs run analysis */}
+            {/* Run analysis */}
             <div style={{ display: 'flex', gap: 8 }}>
-              {slotMode && (
-                <button
-                  onClick={() => saveColumn(cfg)}
-                  disabled={isRunning || !cfg.name.trim()}
-                  style={{
-                    ...mono, fontSize: 11, padding: '5px 14px', borderRadius: 6, cursor: 'pointer',
-                    border: '1px solid rgba(79,209,197,.35)', background: 'rgba(79,209,197,.07)', color: '#4fd1c5',
-                    opacity: isRunning || !cfg.name.trim() ? 0.4 : 1,
-                  }}
-                >💾 Spalte speichern</button>
-              )}
               <button
                 onClick={() => runAnalysis(cfg)}
                 disabled={isRunning || rowCount === 0 || !cfg.prompt.trim()}
