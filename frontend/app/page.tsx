@@ -8,8 +8,10 @@ import { api, type ScrapeRun } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
+import { ALL_PRESETS, getPresetsForSource, loadPreset } from '@/lib/aiTemplates';
 import { useToast } from '@/app/components/Toast';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
+import { PresetSelector } from '@/app/components/PresetSelector';
 import { TagInput } from '@/app/components/TagInput';
 import { CountrySelect } from '@/app/components/CountrySelect';
 
