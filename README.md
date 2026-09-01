@@ -46,6 +46,11 @@ frontend/                    Next.js-App (deployt auf Vercel)
   lib/serverKeys.ts          Env-Variablen-Namen ↔ Provider-Zuordnung
   lib/blocklist.ts           Blockliste (immer ausgeschlossene Seiten)
   lib/csvStorage.ts          IndexedDB-Speicher für Scrape-/CSV-Daten
+  lib/csvRuns.ts             Laden/Speichern eines Datensatzes (CSV + Meta)
+  lib/ai.ts                  KI-Pipeline: Prompts, Chunks, Multi-Output-Split,
+                             Enum-Validierung, Regel-Spalten, feld_hash-Cache
+  lib/aiTemplates.ts         Import-Vorlagen (LinkedIn v5, KEEP/DROP) + Overrides
+  lib/analysisConfigs.ts     KI-Spalten-Konfiguration pro Datensatz
 
 main.py + core/              Optionales FastAPI-Backend (Railway) — wird nur
                              gebraucht, wenn ein separater Server läuft; die
@@ -66,6 +71,42 @@ pages/ + app.py              Alte Streamlit-Oberfläche (Vorgänger, ungenutzt)
 
 Die Blockliste (Einstellungen → Blockliste, 🚫 in der Tabelle) filtert
 unerwünschte Seiten aus allen künftigen Scrapes.
+
+## LinkedIn-Klassifizierung (Uriels Sheet-System in der App)
+
+Das System aus dem Google Sheet `ki_linkedin_klassifizierung` ist komplett in
+die App überführt. Beim Upload einer LinkedIn-CSV (erkannt an Spalten wie
+`voller_name`, `jobtitel`, `headline`, `linkedin_url`) bietet ein Dialog die
+Vorlage **LinkedIn-Klassifizierung (v5)** an:
+
+- **1 KI-Aufruf pro Zeile → 8 Spalten**: Der v5-Prompt liefert sieben
+  pipe-getrennte Werte (`ki_haupttyp`, `ki_bietet_coaching`,
+  `ki_marketing_agentur`, `ki_themenfeld`, `ki_anbieterstatus`,
+  `ki_rollenbezug`, `ki_sicherheit`), die automatisch in Einzelspalten
+  gesplittet werden. `ki_zielgruppe` (ja/nein) ist eine **deterministische
+  Regel** über diese Werte — kein eigener KI-Aufruf: Coaching = ja/wahrscheinlich
+  UND keine Marketing-Agentur UND selbstständig/Unternehmen.
+- **Enum-Validierung**: Nur die im Sheet definierten Werte sind erlaubt.
+  Falsche Schreibweise wird korrigiert („coach" → „Coach"), ungültige
+  Antworten werden rot als `Fehler: …` markiert und beim nächsten ▶
+  automatisch erneut versucht.
+- **feld_hash-Cache**: Erneutes ▶ klassifiziert nur Zeilen, die neu sind,
+  deren Eingabewerte sich geändert haben oder die fehlgeschlagen waren —
+  unveränderte Zeilen kosten keine API-Credits. Prompt-/Modell-Änderung
+  invalidiert alles.
+- **Prompt zentral pflegen**: Einstellungen → **KI-Vorlagen**. Dort den
+  Prompt editieren (z.B. wenn eine v6 existiert), Version benennen,
+  „↺ Standard" setzt zurück. Neue Importe nutzen automatisch die
+  angepasste Version; das Spalten-Label zeigt Provider · Modell · Version.
+- **Auswertung**: Chips über der Tabelle zeigen Fortschritt und
+  Zielgruppen-Quote — Klick auf einen Chip filtert die Tabelle (und damit
+  auch den Export). „⌗ Statistik nach quelle_person" zeigt die Quote pro
+  Big Player, sortiert nach Trefferquote.
+- **Gezieltes Enrichment**: Die Enrichment-Seite enricht standardmäßig nur
+  Zeilen mit `ki_zielgruppe = ja` — spart Hunter.io/FindyMail-Credits.
+
+Der eingebaute v5-Prompt, die Eingabespalten, die erlaubten Werte und die
+Zielgruppen-Regel stehen in `frontend/lib/aiTemplates.ts`.
 
 ## Lokal entwickeln
 
