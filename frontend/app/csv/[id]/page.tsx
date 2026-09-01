@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Papa from 'papaparse';
 import { saveCsvText } from '@/lib/csvStorage';
@@ -8,7 +8,7 @@ import { loadCsvRun } from '@/lib/csvRuns';
 import { addToBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
-import { runAiColumn, defaultModel, providerLabel, splitMultiOutput, applyDerivedRules } from '@/lib/ai';
+import { runAiColumn, defaultModel, providerLabel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
 import { DataTable } from '@/app/components/DataTable';
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
@@ -133,8 +133,35 @@ export default function CsvViewer() {
     try {
       const apiKey = (loadSettings().apiKeys as Record<string, string>)[cfg.provider] || undefined;
       const multi = !!cfg.outputFields?.length;
-      const values = await runAiColumn({
-        rows: run.data,
+
+      // feld_hash-Caching (wie im Sheet): Zeilen mit unverändertem Prompt und
+      // unveränderten Eingabewerten, die schon ein brauchbares Ergebnis haben,
+      // werden nicht erneut klassifiziert. Fehler-Zeilen laufen automatisch neu.
+      const promptHash = shortHash([cfg.provider, cfg.model, cfg.prompt, ...(cfg.inputColumns ?? [])].join('\x1f'));
+      const rowHashes = run.data.map(r => rowFingerprint(r, cfg.inputColumns));
+      const hashKey = `analysis_hashes_${id}`;
+      let allHashes: Record<string, { promptHash: string; rowHashes: string[] }> = {};
+      try { allHashes = JSON.parse(localStorage.getItem(hashKey) ?? '{}'); } catch {}
+      const prev = allHashes[cfg.id];
+      const existing = aiColumns.find(c => c.name === cfg.name)?.values
+        ?? run.data.map(r => r[cfg.name] ?? '');
+      const todo: number[] = [];
+      for (let i = 0; i < run.data.length; i++) {
+        const cached = prev?.promptHash === promptHash
+          && prev.rowHashes[i] === rowHashes[i]
+          && isUsableAiValue(existing[i]);
+        if (!cached) todo.push(i);
+      }
+      if (todo.length === 0) {
+        showToast('Alle Zeilen bereits klassifiziert — nichts zu tun', 'info');
+        return;
+      }
+      const skipped = run.data.length - todo.length;
+      const todoSet = new Set(todo);
+      const merged = run.data.map((_, i) => (todoSet.has(i) ? '·' : existing[i]));
+
+      const subValues = await runAiColumn({
+        rows: todo.map(i => run.data[i]),
         provider: cfg.provider,
         model: cfg.model,
         prompt: cfg.prompt,
@@ -142,26 +169,37 @@ export default function CsvViewer() {
         inputColumns: cfg.inputColumns,
         multiOutput: multi,
         onProgress: (partial) => {
-          setColProgress(p => ({ ...p, [cfg.id]: partial.filter(v => v !== '·').length }));
-          upsertAiColumn(cfg.name, partial);
+          const full = [...merged];
+          partial.forEach((v, j) => { full[todo[j]] = v; });
+          setColProgress(p => ({ ...p, [cfg.id]: full.filter(v => v !== '·').length }));
+          upsertAiColumn(cfg.name, full);
           // Multi-Output: Antwort live in die Einzelspalten splitten
           if (multi) {
-            const split = splitMultiOutput(partial, cfg.outputFields!);
+            const split = splitMultiOutput(full, cfg.outputFields!);
             for (const [n, v] of Object.entries(split)) upsertAiColumn(n, v);
           }
         },
       });
-      upsertAiColumn(cfg.name, values);
+      subValues.forEach((v, j) => { merged[todo[j]] = v; });
+
+      upsertAiColumn(cfg.name, merged);
       if (multi) {
-        const split = splitMultiOutput(values, cfg.outputFields!);
+        const split = splitMultiOutput(merged, cfg.outputFields!);
         const derived = cfg.derived?.length ? applyDerivedRules(cfg.derived, split, run.data.length) : {};
-        const all = { [cfg.name]: values, ...split, ...derived };
+        const all = { [cfg.name]: merged, ...split, ...derived };
         for (const [n, v] of Object.entries(all)) upsertAiColumn(n, v);
         await persistColumnsToCsv(all);
       } else {
-        await persistColumnToCsv(cfg.name, values);
+        await persistColumnToCsv(cfg.name, merged);
       }
-      showToast(`Spalte «${cfg.name}» fertig`, 'success');
+      allHashes[cfg.id] = { promptHash, rowHashes };
+      try { localStorage.setItem(hashKey, JSON.stringify(allHashes)); } catch {}
+      showToast(
+        skipped > 0
+          ? `«${cfg.name}»: ${todo.length} klassifiziert, ${skipped} übersprungen (unverändert)`
+          : `Spalte «${cfg.name}» fertig`,
+        'success',
+      );
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Fehler', 'error', 8000);
     } finally {
@@ -177,23 +215,36 @@ export default function CsvViewer() {
     aiConfigs.find(c => c.name === name)
     ?? aiConfigs.find(c => c.outputFields?.includes(name) || c.derived?.some(d => d.name === name));
 
-  // Konfigurierte, aber noch nicht gelaufene KI-Spalten als Platzhalter zeigen
-  // (z.B. direkt nach dem Import mit geladener Vorlage)
+  // Alle Spalten, die zu einer KI-Config gehören (Roh-Antwort, Splits, Regeln)
+  const aiOwnedNames = useMemo(() => {
+    const s = new Set<string>();
+    for (const cfg of aiConfigs) {
+      s.add(cfg.name);
+      cfg.outputFields?.forEach(f => s.add(f));
+      cfg.derived?.forEach(d => s.add(d.name));
+    }
+    return s;
+  }, [aiConfigs]);
+
+  // Config-Spalten immer als KI-Spalten zeigen: noch nicht gelaufene als
+  // '·'-Platzhalter, bereits persistierte (nach Reload) mit ihren CSV-Werten —
+  // so behalten sie ⚙/▶ und können erneut laufen (Cache überspringt Unverändertes)
   useEffect(() => {
     if (!run) return;
     setAiColumns(prev => {
       const next = [...prev];
-      for (const cfg of aiConfigs) {
-        const names = [cfg.name, ...(cfg.outputFields ?? []), ...(cfg.derived?.map(d => d.name) ?? [])];
-        for (const n of names) {
-          if (!run.fields.includes(n) && !next.some(c => c.name === n)) {
-            next.push({ name: n, values: Array(run.data.length).fill('·') });
-          }
-        }
+      for (const n of aiOwnedNames) {
+        if (next.some(c => c.name === n)) continue;
+        next.push({
+          name: n,
+          values: run.fields.includes(n)
+            ? run.data.map(r => r[n] ?? '')
+            : Array(run.data.length).fill('·'),
+        });
       }
       return next.length === prev.length ? prev : next;
     });
-  }, [run, aiConfigs]);
+  }, [run, aiOwnedNames]);
 
   useEffect(() => {
     loadCsvRun(id)
@@ -269,10 +320,10 @@ export default function CsvViewer() {
         {/* Full-width table; AI columns are created in place, ⚙ opens the editor */}
         <DataTable
           data={run.data}
-          rawColumns={run.fields}
+          rawColumns={run.fields.filter(f => !aiOwnedNames.has(f))}
           aiColumns={aiColumns.map(c => {
             const own = aiConfigs.find(x => x.name === c.name);
-            if (own) return { ...c, label: `${providerLabel(own.provider)} · ${own.model}` };
+            if (own) return { ...c, label: `${providerLabel(own.provider)} · ${own.model}${own.promptVersion ? ` · ${own.promptVersion}` : ''}` };
             const parent = findCfgForColumn(c.name);
             if (parent?.derived?.some(d => d.name === c.name)) return { ...c, label: `Regel aus «${parent.name}»` };
             if (parent) return { ...c, label: `aus «${parent.name}»` };
@@ -320,7 +371,15 @@ export default function CsvViewer() {
               if (patch.name && patch.name !== editingCfg.name) {
                 renameAiColumn(editingCfg.name, patch.name);
               }
-              persistConfigs(aiConfigs.map(c => c.id === editingCfg.id ? { ...c, ...patch } : c));
+              persistConfigs(aiConfigs.map(c => {
+                if (c.id !== editingCfg.id) return c;
+                const next = { ...c, ...patch };
+                // Vorlagen-Version als angepasst markieren, sobald der Prompt abweicht
+                if (patch.prompt !== undefined && patch.prompt !== c.prompt && c.promptVersion && !c.promptVersion.endsWith('*')) {
+                  next.promptVersion = `${c.promptVersion}*`;
+                }
+                return next;
+              }));
             }}
             onSave={() => {
               setEditingId(null);

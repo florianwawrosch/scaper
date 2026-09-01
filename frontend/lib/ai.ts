@@ -40,6 +40,25 @@ export function buildRowPrompt(
     : `${userPrompt}\n\nDaten:\n${rowText}\n\nAntworte nur kurz und direkt.`;
 }
 
+/** djb2 — short, stable fingerprint for cache keys (like the sheet's feld_hash). */
+export function shortHash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, '0');
+}
+
+/** Fingerprint of the row values that actually go into the prompt. */
+export function rowFingerprint(row: Record<string, string>, inputColumns?: string[]): string {
+  const entries = inputColumns?.length
+    ? inputColumns.map(k => [k, row[k] ?? ''] as [string, string])
+    : Object.entries(row).filter(([k]) => k !== '_idx');
+  return shortHash(entries.map(([k, v]) => `${k}=${v}`).join('\x1f'));
+}
+
+/** A stored value that makes a re-run unnecessary (not empty/pending/failed). */
+export const isUsableAiValue = (v: string | undefined): boolean =>
+  !!v && v !== '·' && !v.startsWith('Fehler:');
+
 /** Split pipe-separated multi-value answers into one value array per field. */
 export function splitMultiOutput(values: string[], fields: string[]): Record<string, string[]> {
   const out: Record<string, string[]> = {};

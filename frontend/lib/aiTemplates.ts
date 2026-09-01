@@ -97,6 +97,7 @@ export const PRESET_LINKEDIN: ImportPreset = {
       inputColumns: LINKEDIN_INPUT_COLUMNS,
       outputFields: LINKEDIN_OUTPUT_FIELDS,
       derived: [LINKEDIN_ZIELGRUPPE_RULE],
+      promptVersion: 'v5',
     },
   ],
 };

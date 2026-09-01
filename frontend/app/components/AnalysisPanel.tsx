@@ -20,6 +20,8 @@ export interface AnalysisConfig {
   outputFields?: string[];
   /** Rule columns computed from the split output fields */
   derived?: DerivedRule[];
+  /** Template version the prompt came from (e.g. "v5") — shown in the column label */
+  promptVersion?: string;
 }
 
 interface Props {

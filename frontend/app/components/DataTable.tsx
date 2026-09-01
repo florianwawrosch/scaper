@@ -169,15 +169,21 @@ export function DataTable({
 
   // When an AI column is added it appears at the right end — auto-scroll there
   // so the user sees it appear (otherwise the button feels like it did nothing).
+  // Columns restored with existing values (e.g. re-seeded after a reload) must
+  // NOT scroll, or every open of a classified CSV would land at the far right.
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevAiCount = useRef(aiColumns.length);
   useEffect(() => {
     if (aiColumns.length > prevAiCount.current && scrollRef.current) {
-      const el = scrollRef.current;
-      requestAnimationFrame(() => { el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }); });
+      const added = aiColumns.slice(prevAiCount.current);
+      const isFresh = added.some(c => c.values.every(v => v === '·'));
+      if (isFresh) {
+        const el = scrollRef.current;
+        requestAnimationFrame(() => { el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }); });
+      }
     }
     prevAiCount.current = aiColumns.length;
-  }, [aiColumns.length]);
+  }, [aiColumns]);
 
   const extended = useMemo(() =>
     data.map((row, i) => {
