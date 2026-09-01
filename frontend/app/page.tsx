@@ -8,7 +8,7 @@ import { api, type ScrapeRun } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
-import { ALL_PRESETS, detectPreset, presetToConfigs, type ImportPreset } from '@/lib/aiTemplates';
+import { getEffectivePresets, detectPreset, presetToConfigs, type ImportPreset } from '@/lib/aiTemplates';
 import { useToast } from '@/app/components/Toast';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { PresetSelector } from '@/app/components/PresetSelector';
@@ -820,11 +820,11 @@ export default function Home() {
       {aiPresetPrompt && (
         <PresetSelector
           filename={aiPresetPrompt.filename}
-          presets={[aiPresetPrompt.detected, ...ALL_PRESETS.filter(p => p.id !== aiPresetPrompt.detected.id)]}
+          presets={[aiPresetPrompt.detected, ...getEffectivePresets().filter(p => p.id !== aiPresetPrompt.detected.id)]}
           onSelect={(presetId) => {
             const { id } = aiPresetPrompt;
             if (presetId) {
-              const preset = [aiPresetPrompt.detected, ...ALL_PRESETS].find(p => p.id === presetId);
+              const preset = [aiPresetPrompt.detected, ...getEffectivePresets()].find(p => p.id === presetId);
               if (preset) {
                 const local = loadSettings().apiKeys as Record<string, string>;
                 const provider = ['anthropic', 'gemini', 'openai'].find(p => local[p] || backendKeys[p]) ?? 'anthropic';

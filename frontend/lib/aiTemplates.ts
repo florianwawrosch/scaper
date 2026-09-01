@@ -116,12 +116,59 @@ export const PRESET_KEEP_DROP: ImportPreset = {
 
 export const ALL_PRESETS: ImportPreset[] = [PRESET_LINKEDIN, PRESET_KEEP_DROP];
 
+// ── Overrides: Prompt/Version einer Vorlage zentral in den Einstellungen
+//    anpassen (z.B. wenn Uriel v6 baut), ohne Code zu ändern ──
+const OVERRIDES_KEY = 'preset_overrides';
+
+export interface PromptOverride { prompt: string; promptVersion?: string }
+type OverrideStore = Record<string, Record<string, PromptOverride>>; // presetId → columnName → override
+
+function loadOverrides(): OverrideStore {
+  try { return JSON.parse(localStorage.getItem(OVERRIDES_KEY) ?? '{}'); } catch { return {}; }
+}
+
+export function savePromptOverride(presetId: string, columnName: string, o: PromptOverride): void {
+  const all = loadOverrides();
+  all[presetId] = { ...all[presetId], [columnName]: o };
+  try { localStorage.setItem(OVERRIDES_KEY, JSON.stringify(all)); } catch {}
+}
+
+export function resetPresetOverrides(presetId: string): void {
+  const all = loadOverrides();
+  delete all[presetId];
+  try { localStorage.setItem(OVERRIDES_KEY, JSON.stringify(all)); } catch {}
+}
+
+export function hasOverride(presetId: string): boolean {
+  return !!loadOverrides()[presetId];
+}
+
+/** Eingebaute Vorlagen mit gespeicherten Prompt-Anpassungen zusammengeführt */
+export function getEffectivePresets(): ImportPreset[] {
+  const overrides = loadOverrides();
+  return ALL_PRESETS.map(p => {
+    const po = overrides[p.id];
+    if (!po) return p;
+    const columns = p.columns.map(col => {
+      const o = po[col.name];
+      return o ? { ...col, prompt: o.prompt, promptVersion: o.promptVersion ?? col.promptVersion } : col;
+    });
+    return {
+      ...p,
+      columns,
+      // Preset-Label folgt der (ersten) Spalten-Version, damit Modal & Chips stimmen
+      promptVersion: columns.find(c => c.promptVersion)?.promptVersion ?? p.promptVersion,
+    };
+  });
+}
+
 /** LinkedIn-Import automatisch erkennen: min. 2 typische Spalten vorhanden */
 export function detectPreset(fields: string[]): ImportPreset | null {
   const set = new Set(fields.map(f => f.trim().toLowerCase()));
   const markers = ['linkedin_url', 'voller_name', 'headline', 'jobtitel', 'linkedin_id', 'verbindungsgrad'];
   const hits = markers.filter(m => set.has(m)).length;
-  return hits >= 2 ? PRESET_LINKEDIN : null;
+  if (hits < 2) return null;
+  return getEffectivePresets().find(p => p.id === PRESET_LINKEDIN.id) ?? PRESET_LINKEDIN;
 }
 
 /** Preset in fertige AnalysisConfigs umwandeln (Provider/Modell = erster verfügbarer) */

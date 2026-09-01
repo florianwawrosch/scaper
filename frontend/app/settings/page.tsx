@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { loadSettings, saveSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, type BlockEntry } from '@/lib/blocklist';
+import { getEffectivePresets, savePromptOverride, resetPresetOverrides, hasOverride, type ImportPreset } from '@/lib/aiTemplates';
 
 interface Service { key: string; label: string; hint: string; desc: string }
 interface Group   { key: string; label: string; desc: string; services: Service[] }
@@ -38,7 +39,7 @@ const GROUPS: Group[] = [
   },
 ];
 
-type NavKey = 'integrations' | 'blocklist' | 'design';
+type NavKey = 'integrations' | 'templates' | 'blocklist' | 'design';
 
 function maskKey(key: string): string {
   if (key.length <= 8) return '••••••••';
@@ -76,6 +77,24 @@ export default function Settings() {
   const [serverKeys, setServerKeys] = useState<Record<string, boolean>>({});
   const [blocklist,  setBlocklist]  = useState<BlockEntry[]>([]);
   const [blockInput, setBlockInput] = useState('');
+  // KI-Vorlagen: effektive Presets + lokale Editier-Zustände (Key: presetId:columnName)
+  const [tplPresets,  setTplPresets]  = useState<ImportPreset[]>([]);
+  const [tplPrompts,  setTplPrompts]  = useState<Record<string, string>>({});
+  const [tplVersions, setTplVersions] = useState<Record<string, string>>({});
+  const [tplSaved,    setTplSaved]    = useState<string | null>(null);
+
+  const reloadTemplates = () => {
+    const eff = getEffectivePresets();
+    setTplPresets(eff);
+    const prompts: Record<string, string> = {};
+    const versions: Record<string, string> = {};
+    for (const p of eff) for (const c of p.columns) {
+      prompts[`${p.id}:${c.name}`] = c.prompt;
+      versions[`${p.id}:${c.name}`] = c.promptVersion ?? '';
+    }
+    setTplPrompts(prompts);
+    setTplVersions(versions);
+  };
 
   useEffect(() => {
     const s = loadSettings();
@@ -90,10 +109,11 @@ export default function Settings() {
     // Which keys exist server-side (Vercel/Railway env vars) — booleans only
     fetchKeyAvailability().then(setServerKeys);
     setBlocklist(loadBlocklist());
+    reloadTemplates();
     // Deep link: /settings?tab=blocklist
     try {
       const tab = new URLSearchParams(window.location.search).get('tab');
-      if (tab === 'blocklist' || tab === 'design' || tab === 'integrations') setNav(tab as NavKey);
+      if (tab === 'blocklist' || tab === 'design' || tab === 'integrations' || tab === 'templates') setNav(tab as NavKey);
     } catch {}
   }, []);
 
@@ -165,6 +185,7 @@ export default function Settings() {
 
   const NAV: { key: NavKey; label: string; badge?: number }[] = [
     { key: 'integrations', label: 'Integrationen', badge: activeCount || undefined },
+    { key: 'templates',    label: 'KI-Vorlagen', badge: tplPresets.length || undefined },
     { key: 'blocklist',    label: 'Blockliste', badge: blocklist.length || undefined },
     { key: 'design',       label: 'Design' },
   ];
@@ -410,6 +431,118 @@ export default function Settings() {
                   </p>
                 </div>
               </div>
+            </div>
+          </>
+        )}
+
+        {/* ── KI-Vorlagen ── */}
+        {nav === 'templates' && (
+          <>
+            <div style={{ marginBottom: 28 }}>
+              <h1 style={{ fontFamily: T.disp, fontSize: 22, fontWeight: 700, color: T.ink }}>
+                KI-<em style={{ color: T.gold }}>Vorlagen</em>
+              </h1>
+              <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
+                Standard-KI-Spalten, die beim CSV-Import angeboten werden. Prompt-Änderungen gelten
+                für alle zukünftigen Importe (bestehende Datensätze behalten ihre Konfiguration).
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {tplPresets.map(preset => {
+                const overridden = hasOverride(preset.id);
+                return (
+                  <div key={preset.id} style={{ background: T.panel2, border: `1px solid ${overridden ? 'rgba(232,176,75,.3)' : 'rgba(255,255,255,.06)'}`, borderRadius: 8, padding: '16px 18px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                      <p style={{ fontFamily: T.mono, fontSize: 13, fontWeight: 600, color: T.ink, flex: 1 }}>{preset.name}</p>
+                      {overridden && (
+                        <>
+                          <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.08em', color: T.gold, background: T.goldD, border: '1px solid rgba(232,176,75,.3)', borderRadius: 4, padding: '2px 7px' }}>
+                            angepasst
+                          </span>
+                          <button type="button"
+                            onClick={() => { resetPresetOverrides(preset.id); reloadTemplates(); }}
+                            title="Prompt auf den eingebauten Standard zurücksetzen"
+                            style={{ fontFamily: T.mono, fontSize: 10, padding: '3px 9px', borderRadius: 4, background: 'transparent', border: '1px solid rgba(255,255,255,.12)', color: T.inkD, cursor: 'pointer' }}>
+                            ↺ Standard
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    {preset.description && (
+                      <p style={{ fontFamily: T.body, fontSize: 11, color: T.inkF, marginBottom: 12 }}>{preset.description}</p>
+                    )}
+
+                    {preset.columns.map(col => {
+                      const k = `${preset.id}:${col.name}`;
+                      const dirty = tplPrompts[k] !== col.prompt || (tplVersions[k] ?? '') !== (col.promptVersion ?? '');
+                      return (
+                        <div key={col.name} style={{ marginTop: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                            <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 600, color: T.teal }}>{col.name}</span>
+                            {col.outputFields && (
+                              <span style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF }}>→ {col.outputFields.join(', ')}</span>
+                            )}
+                            <div style={{ flex: 1 }} />
+                            <label style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF, letterSpacing: '.08em', textTransform: 'uppercase' }}>Version</label>
+                            <input
+                              value={tplVersions[k] ?? ''}
+                              onChange={e => setTplVersions(p => ({ ...p, [k]: e.target.value }))}
+                              placeholder="v5"
+                              style={{ width: 52, fontFamily: T.mono, fontSize: 10, padding: '3px 7px', borderRadius: 4, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none' }}
+                            />
+                          </div>
+                          {col.inputColumns && (
+                            <p style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF, opacity: .7, marginBottom: 6 }}>
+                              Eingabespalten: {col.inputColumns.join(', ')}
+                            </p>
+                          )}
+                          <textarea
+                            value={tplPrompts[k] ?? ''}
+                            onChange={e => setTplPrompts(p => ({ ...p, [k]: e.target.value }))}
+                            rows={10}
+                            spellCheck={false}
+                            style={{
+                              width: '100%', boxSizing: 'border-box', resize: 'vertical',
+                              fontFamily: T.mono, fontSize: 10.5, lineHeight: 1.55,
+                              padding: '10px 12px', borderRadius: 6,
+                              border: `1px solid ${dirty ? 'rgba(232,176,75,.4)' : T.line}`,
+                              background: T.panel, color: T.ink, outline: 'none',
+                            }}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                            <div style={{ flex: 1 }}>
+                              {tplSaved === k && (
+                                <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal }}>✓ Gespeichert — gilt für neue Importe</span>
+                              )}
+                            </div>
+                            <button type="button"
+                              disabled={!dirty}
+                              onClick={() => {
+                                savePromptOverride(preset.id, col.name, {
+                                  prompt: tplPrompts[k] ?? '',
+                                  promptVersion: (tplVersions[k] ?? '').trim() || undefined,
+                                });
+                                reloadTemplates();
+                                setTplSaved(k);
+                                setTimeout(() => setTplSaved(s => (s === k ? null : s)), 3000);
+                              }}
+                              style={{
+                                fontFamily: T.mono, fontSize: 11, padding: '5px 14px', borderRadius: 5,
+                                border: `1px solid ${dirty ? T.gold : 'rgba(255,255,255,.1)'}`,
+                                background: dirty ? 'rgba(232,176,75,.12)' : 'transparent',
+                                color: dirty ? T.gold : T.inkF,
+                                cursor: dirty ? 'pointer' : 'default',
+                              }}>
+                              Speichern
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
           </>
         )}
