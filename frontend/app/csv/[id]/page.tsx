@@ -8,7 +8,7 @@ import { loadCsvRun } from '@/lib/csvRuns';
 import { addToBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
-import { runAiColumn, defaultModel, providerLabel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue } from '@/lib/ai';
+import { runAiColumn, defaultModel, providerLabel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, normalizeMultiOutput } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
 import { DataTable, type StatChip } from '@/app/components/DataTable';
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
@@ -160,6 +160,11 @@ export default function CsvViewer() {
       const todoSet = new Set(todo);
       const merged = run.data.map((_, i) => (todoSet.has(i) ? '·' : existing[i]));
 
+      // Multi-Output: Antworten gegen die erlaubten Werte validieren/normalisieren;
+      // ungültige werden "Fehler: …" und laufen beim nächsten ▶ automatisch neu
+      const sanitize = (vals: string[]) =>
+        multi ? vals.map(v => normalizeMultiOutput(v, cfg.outputFields!, cfg.outputEnums)) : vals;
+
       const subValues = await runAiColumn({
         rows: todo.map(i => run.data[i]),
         provider: cfg.provider,
@@ -170,7 +175,7 @@ export default function CsvViewer() {
         multiOutput: multi,
         onProgress: (partial) => {
           const full = [...merged];
-          partial.forEach((v, j) => { full[todo[j]] = v; });
+          sanitize(partial).forEach((v, j) => { full[todo[j]] = v; });
           setColProgress(p => ({ ...p, [cfg.id]: full.filter(v => v !== '·').length }));
           upsertAiColumn(cfg.name, full);
           // Multi-Output: Antwort live in die Einzelspalten splitten
@@ -180,7 +185,8 @@ export default function CsvViewer() {
           }
         },
       });
-      subValues.forEach((v, j) => { merged[todo[j]] = v; });
+      sanitize(subValues).forEach((v, j) => { merged[todo[j]] = v; });
+      const failed = todo.filter(i => merged[i].startsWith('Fehler:')).length;
 
       upsertAiColumn(cfg.name, merged);
       if (multi) {
@@ -194,12 +200,10 @@ export default function CsvViewer() {
       }
       allHashes[cfg.id] = { promptHash, rowHashes };
       try { localStorage.setItem(hashKey, JSON.stringify(allHashes)); } catch {}
-      showToast(
-        skipped > 0
-          ? `«${cfg.name}»: ${todo.length} klassifiziert, ${skipped} übersprungen (unverändert)`
-          : `Spalte «${cfg.name}» fertig`,
-        'success',
-      );
+      const parts: string[] = [`${todo.length - failed} klassifiziert`];
+      if (skipped > 0) parts.push(`${skipped} übersprungen (unverändert)`);
+      if (failed > 0) parts.push(`${failed} ungültig — erneut ▶ drücken`);
+      showToast(`«${cfg.name}»: ${parts.join(', ')}`, failed > 0 ? 'warning' : 'success', failed > 0 ? 7000 : undefined);
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Fehler', 'error', 8000);
     } finally {

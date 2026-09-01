@@ -66,10 +66,41 @@ export function splitMultiOutput(values: string[], fields: string[]): Record<str
   for (const raw of values) {
     const s = String(raw ?? '').trim();
     if (s === '·') { fields.forEach(f => out[f].push('·')); continue; }
+    // Fehlerhafte Antworten bleiben in der Roh-Spalte sichtbar; Splits bleiben leer
+    if (s.startsWith('Fehler:')) { fields.forEach(f => out[f].push('')); continue; }
     const parts = s.split('|').map(p => p.trim());
     fields.forEach((f, i) => out[f].push(parts[i] ?? ''));
   }
   return out;
+}
+
+/**
+ * Validate + normalize one pipe-separated multi-output answer against the
+ * allowed values per field (case-insensitive; the canonical spelling wins).
+ * Returns the normalized answer, or an error string starting with "Fehler:"
+ * so the row is retried on the next run.
+ */
+export function normalizeMultiOutput(
+  raw: string,
+  fields: string[],
+  enums?: Record<string, string[]>,
+): string {
+  const s = String(raw ?? '').trim();
+  if (s === '·' || s.startsWith('Fehler:')) return s;
+  const parts = s.split('|').map(p => p.trim());
+  if (parts.length !== fields.length) {
+    return `Fehler: Ungültige Antwort (${parts.length} statt ${fields.length} Werte) — "${s.slice(0, 80)}"`;
+  }
+  if (!enums) return parts.join(' | ');
+  const norm: string[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const allowed = enums[fields[i]];
+    if (!allowed?.length) { norm.push(parts[i]); continue; }
+    const hit = allowed.find(a => a.toLowerCase() === parts[i].toLowerCase());
+    if (!hit) return `Fehler: "${parts[i]}" ist kein erlaubter Wert für ${fields[i]}`;
+    norm.push(hit);
+  }
+  return norm.join(' | ');
 }
 
 /** Serializable rule for a column derived from other columns (all conditions must hold). */

@@ -18,6 +18,8 @@ export interface AnalysisConfig {
   inputColumns?: string[];
   /** Pipe-separated answer is split into these columns (multi-output template) */
   outputFields?: string[];
+  /** Allowed values per output field — answers outside become "Fehler:" and re-run */
+  outputEnums?: Record<string, string[]>;
   /** Rule columns computed from the split output fields */
   derived?: DerivedRule[];
   /** Template version the prompt came from (e.g. "v5") — shown in the column label */

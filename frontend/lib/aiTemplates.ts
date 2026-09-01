@@ -73,6 +73,18 @@ const LINKEDIN_OUTPUT_FIELDS = [
   'ki_anbieterstatus', 'ki_rollenbezug', 'ki_sicherheit',
 ];
 
+// Erlaubte Werte je Feld (Sheet-Spalten D–J) — Antworten außerhalb werden
+// als Fehler markiert und beim nächsten Lauf erneut versucht
+const LINKEDIN_OUTPUT_ENUMS: Record<string, string[]> = {
+  ki_haupttyp: ['Coach', 'Trainer', 'Berater', 'Agentur', 'Dienstleister', 'Software', 'Handel', 'Bildung', 'Arzt', 'Finanzen', 'Immobilien', 'Konzern', 'Sonstiges'],
+  ki_bietet_coaching: ['ja', 'wahrscheinlich', 'nein'],
+  ki_marketing_agentur: ['ja', 'wahrscheinlich', 'nein'],
+  ki_themenfeld: ['Beziehung', 'Spiritualitaet', 'Persoenlichkeit', 'Fitness', 'Gesundheit', 'Ernaehrung', 'Business', 'Marketing', 'Vertrieb', 'Finanzen', 'Handwerk', 'Beauty', 'Bildung', 'Recht', 'Immobilien', 'Sonstiges'],
+  ki_anbieterstatus: ['selbststaendig', 'angestellt', 'unternehmen', 'unklar'],
+  ki_rollenbezug: ['eigenes_angebot', 'nur_zielgruppe', 'beides', 'unklar'],
+  ki_sicherheit: ['hoch', 'mittel', 'niedrig'],
+};
+
 /** Zielgruppe = bietet Coaching, ist keine Agentur, ist selbstständig/Unternehmen */
 const LINKEDIN_ZIELGRUPPE_RULE: DerivedRule = {
   name: 'ki_zielgruppe',
@@ -96,6 +108,7 @@ export const PRESET_LINKEDIN: ImportPreset = {
       prompt: LINKEDIN_V5_PROMPT,
       inputColumns: LINKEDIN_INPUT_COLUMNS,
       outputFields: LINKEDIN_OUTPUT_FIELDS,
+      outputEnums: LINKEDIN_OUTPUT_ENUMS,
       derived: [LINKEDIN_ZIELGRUPPE_RULE],
       promptVersion: 'v5',
     },
