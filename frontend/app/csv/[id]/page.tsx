@@ -317,6 +317,44 @@ export default function CsvViewer() {
           >Enrichment starten →</button>
         </div>
 
+        {/* KI-Statistik: Fortschritt + Verteilung der Regel-Spalten */}
+        {(() => {
+          const chips: { text: string; tone: 'gold' | 'teal' | 'muted' }[] = [];
+          for (const cfg of aiConfigs) {
+            const col = aiColumns.find(c => c.name === cfg.name);
+            if (!col) continue;
+            const done = col.values.filter(isUsableAiValue).length;
+            if (done === 0) continue;
+            chips.push({
+              text: `${cfg.name}: ${done}/${run.data.length} klassifiziert`,
+              tone: done === run.data.length ? 'teal' : 'gold',
+            });
+            for (const d of cfg.derived ?? []) {
+              const dcol = aiColumns.find(c => c.name === d.name);
+              if (!dcol) continue;
+              const yes = dcol.values.filter(v => v === d.then).length;
+              const no  = dcol.values.filter(v => v === d.else).length;
+              if (yes + no === 0) continue;
+              const pct = Math.round((yes / (yes + no)) * 100);
+              chips.push({ text: `${d.name}: ${yes} ${d.then} (${pct}%) · ${no} ${d.else}`, tone: 'gold' });
+            }
+          }
+          if (chips.length === 0) return null;
+          return (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              {chips.map((c, i) => (
+                <span key={i} style={{
+                  fontFamily: T.ffMono, fontSize: 10, padding: '4px 10px', borderRadius: 12,
+                  letterSpacing: '.03em',
+                  border: c.tone === 'teal' ? '1px solid rgba(79,209,197,.3)' : '1px solid rgba(232,176,75,.3)',
+                  background: c.tone === 'teal' ? 'rgba(79,209,197,.07)' : 'rgba(232,176,75,.07)',
+                  color: c.tone === 'teal' ? '#4fd1c5' : '#e8b04b',
+                }}>{c.text}</span>
+              ))}
+            </div>
+          );
+        })()}
+
         {/* Full-width table; AI columns are created in place, ⚙ opens the editor */}
         <DataTable
           data={run.data}
