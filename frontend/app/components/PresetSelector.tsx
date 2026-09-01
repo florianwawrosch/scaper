@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { ImportPreset, AiColumnTemplate } from '@/lib/aiTemplates';
+import type { ImportPreset } from '@/lib/aiTemplates';
 
 const T = {
   bg:    'var(--th-bg)',
@@ -26,7 +26,6 @@ interface Props {
 
 export function PresetSelector({ presets, onSelect, onClose, filename }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const handleConfirm = () => {
     onSelect(selectedId);
@@ -103,7 +102,11 @@ export function PresetSelector({ presets, onSelect, onClose, filename }: Props) 
                 </div>
               )}
               <div style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, opacity: 0.7 }}>
-                {preset.columns.length} {preset.columns.length === 1 ? 'Spalte' : 'Spalten'}
+                {(() => {
+                  const total = preset.columns.reduce((n, c) => n + (c.outputFields?.length ?? 1) + (c.derived?.length ?? 0), 0);
+                  const calls = preset.columns.length;
+                  return `${total} ${total === 1 ? 'Spalte' : 'Spalten'} · ${calls} KI-${calls === 1 ? 'Aufruf' : 'Aufrufe'} pro Zeile${preset.promptVersion ? ` · Prompt ${preset.promptVersion}` : ''}`;
+                })()}
               </div>
 
               {/* Expandable column details */}
@@ -113,15 +116,18 @@ export function PresetSelector({ presets, onSelect, onClose, filename }: Props) 
                     <div key={idx} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: idx < preset.columns.length - 1 ? `1px solid ${T.lineS}` : 'none' }}>
                       <div style={{ fontFamily: T.ffMono, fontSize: 10, fontWeight: 600, color: T.teal, marginBottom: 4 }}>
                         {col.name}
+                        {col.outputFields && (
+                          <span style={{ color: T.inkF, fontWeight: 400 }}> → {col.outputFields.join(', ')}</span>
+                        )}
                       </div>
-                      <div style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, lineHeight: 1.5, marginBottom: 4 }}>
-                        {col.prompt}
+                      <div style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, lineHeight: 1.5, marginBottom: 4, maxHeight: 120, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+                        {col.prompt.length > 600 ? col.prompt.slice(0, 600) + '…' : col.prompt}
                       </div>
-                      {col.description && (
-                        <div style={{ fontFamily: T.ffMono, fontSize: 8, color: T.inkF, opacity: 0.6 }}>
-                          {col.description}
+                      {col.derived?.map(d => (
+                        <div key={d.name} style={{ fontFamily: T.ffMono, fontSize: 8, color: T.inkF, opacity: 0.7 }}>
+                          + Regel-Spalte «{d.name}» (aus KI-Ausgaben berechnet, kein KI-Aufruf)
                         </div>
-                      )}
+                      ))}
                     </div>
                   ))}
                 </div>

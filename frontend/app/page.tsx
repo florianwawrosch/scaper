@@ -8,7 +8,7 @@ import { api, type ScrapeRun } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
-import { ALL_PRESETS, getPresetsForSource, loadPreset } from '@/lib/aiTemplates';
+import { ALL_PRESETS, detectPreset, presetToConfigs, type ImportPreset } from '@/lib/aiTemplates';
 import { useToast } from '@/app/components/Toast';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { PresetSelector } from '@/app/components/PresetSelector';
@@ -122,6 +122,8 @@ export default function Home() {
   const [useBlocklist,   setUseBlocklist]   = useState(true);
   const [blockCount,     setBlockCount]     = useState(0);
   const [groupByPage,    setGroupByPage]    = useState(true);
+  // Nach Upload erkanntes KI-Spalten-Preset (LinkedIn etc.) — Modal vor der Navigation
+  const [aiPresetPrompt, setAiPresetPrompt] = useState<{ id: string; filename: string; detected: ImportPreset } | null>(null);
 
   useEffect(() => {
     // Local history renders instantly — no waiting for any network call
@@ -210,6 +212,12 @@ export default function Home() {
         return;
       }
       setUploading(false);
+      // LinkedIn-Daten erkannt? → Preset-Auswahl anbieten statt direkt zu navigieren
+      const detected = detectPreset(fields);
+      if (detected) {
+        setAiPresetPrompt({ id, filename: file.name, detected });
+        return;
+      }
       router.push(`/csv/${id}`);
     };
 
@@ -806,6 +814,35 @@ export default function Home() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── KI-Spalten-Preset nach LinkedIn-Upload ── */}
+      {aiPresetPrompt && (
+        <PresetSelector
+          filename={aiPresetPrompt.filename}
+          presets={[aiPresetPrompt.detected, ...ALL_PRESETS.filter(p => p.id !== aiPresetPrompt.detected.id)]}
+          onSelect={(presetId) => {
+            const { id } = aiPresetPrompt;
+            if (presetId) {
+              const preset = [aiPresetPrompt.detected, ...ALL_PRESETS].find(p => p.id === presetId);
+              if (preset) {
+                const local = loadSettings().apiKeys as Record<string, string>;
+                const provider = ['anthropic', 'gemini', 'openai'].find(p => local[p] || backendKeys[p]) ?? 'anthropic';
+                try {
+                  localStorage.setItem(`analysis_configs_${id}`, JSON.stringify(presetToConfigs(preset, provider)));
+                } catch {}
+                showToast(`Vorlage «${preset.name}» geladen — Spalten mit ▶ analysieren`, 'success');
+              }
+            }
+            setAiPresetPrompt(null);
+            router.push(`/csv/${id}`);
+          }}
+          onClose={() => {
+            const { id } = aiPresetPrompt;
+            setAiPresetPrompt(null);
+            router.push(`/csv/${id}`);
+          }}
+        />
       )}
 
       {/* ── Full-page drag overlay ── */}

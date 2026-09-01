@@ -22,12 +22,59 @@ export const modelsFor = (id: string) =>
 export const defaultModel = (id: string) => modelsFor(id)[0] ?? '';
 
 /** Same per-row prompt format the Python backend used (main.py analyze_run). */
-export function buildRowPrompt(row: Record<string, string>, userPrompt: string): string {
-  const rowText = Object.entries(row)
+export function buildRowPrompt(
+  row: Record<string, string>,
+  userPrompt: string,
+  inputColumns?: string[],
+  bare?: boolean,
+): string {
+  const entries = inputColumns?.length
+    ? inputColumns.map(k => [k, row[k] ?? ''] as [string, string])
+    : Object.entries(row);
+  const rowText = entries
     .filter(([k, v]) => k !== '_idx' && v && String(v).trim())
     .map(([k, v]) => `${k}: ${v}`)
     .join('\n');
-  return `${userPrompt}\n\nDaten:\n${rowText}\n\nAntworte nur kurz und direkt.`;
+  return bare
+    ? `${userPrompt}\n${rowText}`
+    : `${userPrompt}\n\nDaten:\n${rowText}\n\nAntworte nur kurz und direkt.`;
+}
+
+/** Split pipe-separated multi-value answers into one value array per field. */
+export function splitMultiOutput(values: string[], fields: string[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  fields.forEach(f => { out[f] = []; });
+  for (const raw of values) {
+    const s = String(raw ?? '').trim();
+    if (s === '·') { fields.forEach(f => out[f].push('·')); continue; }
+    const parts = s.split('|').map(p => p.trim());
+    fields.forEach((f, i) => out[f].push(parts[i] ?? ''));
+  }
+  return out;
+}
+
+/** Serializable rule for a column derived from other columns (all conditions must hold). */
+export interface DerivedRule {
+  name: string;
+  allOf: { field: string; anyOf: string[] }[];
+  then: string;
+  else: string;
+}
+
+/** Compute derived columns from already-split output columns. */
+export function applyDerivedRules(
+  rules: DerivedRule[],
+  columns: Record<string, string[]>,
+  rowCount: number,
+): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const rule of rules) {
+    out[rule.name] = Array.from({ length: rowCount }, (_, i) => {
+      const ok = rule.allOf.every(c => c.anyOf.includes((columns[c.field]?.[i] ?? '').trim()));
+      return ok ? rule.then : rule.else;
+    });
+  }
+  return out;
 }
 
 /**
@@ -43,13 +90,15 @@ export async function runAiColumn(opts: {
   prompt: string;
   apiKey?: string;
   chunkSize?: number;
+  inputColumns?: string[];
+  multiOutput?: boolean;
   onProgress?: (partial: string[]) => void;
 }): Promise<string[]> {
-  const { rows, provider, model, prompt, apiKey, chunkSize = 20, onProgress } = opts;
+  const { rows, provider, model, prompt, apiKey, chunkSize = 20, inputColumns, multiOutput, onProgress } = opts;
   const values: string[] = [];
 
   for (let i = 0; i < rows.length; i += chunkSize) {
-    const prompts = rows.slice(i, i + chunkSize).map(r => buildRowPrompt(r, prompt));
+    const prompts = rows.slice(i, i + chunkSize).map(r => buildRowPrompt(r, prompt, inputColumns, multiOutput));
     const res = await fetch('/api/ai/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

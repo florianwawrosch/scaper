@@ -8,7 +8,7 @@ import { loadCsvRun } from '@/lib/csvRuns';
 import { addToBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
-import { runAiColumn, defaultModel, providerLabel } from '@/lib/ai';
+import { runAiColumn, defaultModel, providerLabel, splitMultiOutput, applyDerivedRules } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
 import { DataTable } from '@/app/components/DataTable';
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
@@ -84,12 +84,17 @@ export default function CsvViewer() {
   const renameAiColumn = (oldName: string, newName: string) =>
     setAiColumns(prev => prev.map(c => c.name === oldName ? { ...c, name: newName } : c));
 
-  /** Merge finished values into the stored CSV so the column survives reloads */
-  const persistColumnToCsv = async (name: string, values: string[]) => {
+  /** Merge finished values into the stored CSV so the columns survive reloads */
+  const persistColumnsToCsv = async (cols: Record<string, string[]>) => {
     if (!run) return;
     try {
-      const merged = run.data.map((r, i) => ({ ...r, [name]: values[i] ?? '' }));
-      const fields = run.fields.includes(name) ? run.fields : [...run.fields, name];
+      const merged = run.data.map((r, i) => {
+        const extra: Record<string, string> = {};
+        for (const [n, v] of Object.entries(cols)) extra[n] = v[i] ?? '';
+        return { ...r, ...extra };
+      });
+      const fields = [...run.fields];
+      for (const n of Object.keys(cols)) if (!fields.includes(n)) fields.push(n);
       await saveCsvText(id, Papa.unparse(merged));
       const raw = localStorage.getItem(`csv_run_${id}`);
       if (raw) {
@@ -100,6 +105,7 @@ export default function CsvViewer() {
       }
     } catch {}
   };
+  const persistColumnToCsv = (name: string, values: string[]) => persistColumnsToCsv({ [name]: values });
 
   /** "+ KI-Spalte": column appears in the table immediately, no popup */
   const addAiColumn = () => {
@@ -126,19 +132,35 @@ export default function CsvViewer() {
     setColRunning(p => ({ ...p, [cfg.id]: true }));
     try {
       const apiKey = (loadSettings().apiKeys as Record<string, string>)[cfg.provider] || undefined;
+      const multi = !!cfg.outputFields?.length;
       const values = await runAiColumn({
         rows: run.data,
         provider: cfg.provider,
         model: cfg.model,
         prompt: cfg.prompt,
         apiKey,
+        inputColumns: cfg.inputColumns,
+        multiOutput: multi,
         onProgress: (partial) => {
           setColProgress(p => ({ ...p, [cfg.id]: partial.filter(v => v !== '·').length }));
           upsertAiColumn(cfg.name, partial);
+          // Multi-Output: Antwort live in die Einzelspalten splitten
+          if (multi) {
+            const split = splitMultiOutput(partial, cfg.outputFields!);
+            for (const [n, v] of Object.entries(split)) upsertAiColumn(n, v);
+          }
         },
       });
       upsertAiColumn(cfg.name, values);
-      await persistColumnToCsv(cfg.name, values);
+      if (multi) {
+        const split = splitMultiOutput(values, cfg.outputFields!);
+        const derived = cfg.derived?.length ? applyDerivedRules(cfg.derived, split, run.data.length) : {};
+        const all = { [cfg.name]: values, ...split, ...derived };
+        for (const [n, v] of Object.entries(all)) upsertAiColumn(n, v);
+        await persistColumnsToCsv(all);
+      } else {
+        await persistColumnToCsv(cfg.name, values);
+      }
       showToast(`Spalte «${cfg.name}» fertig`, 'success');
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Fehler', 'error', 8000);
@@ -149,6 +171,29 @@ export default function CsvViewer() {
   };
 
   const editingCfg = aiConfigs.find(c => c.id === editingId) ?? null;
+
+  /** Config zu einer Spalte finden — auch für gesplittete Output-/Regel-Spalten */
+  const findCfgForColumn = (name: string) =>
+    aiConfigs.find(c => c.name === name)
+    ?? aiConfigs.find(c => c.outputFields?.includes(name) || c.derived?.some(d => d.name === name));
+
+  // Konfigurierte, aber noch nicht gelaufene KI-Spalten als Platzhalter zeigen
+  // (z.B. direkt nach dem Import mit geladener Vorlage)
+  useEffect(() => {
+    if (!run) return;
+    setAiColumns(prev => {
+      const next = [...prev];
+      for (const cfg of aiConfigs) {
+        const names = [cfg.name, ...(cfg.outputFields ?? []), ...(cfg.derived?.map(d => d.name) ?? [])];
+        for (const n of names) {
+          if (!run.fields.includes(n) && !next.some(c => c.name === n)) {
+            next.push({ name: n, values: Array(run.data.length).fill('·') });
+          }
+        }
+      }
+      return next.length === prev.length ? prev : next;
+    });
+  }, [run, aiConfigs]);
 
   useEffect(() => {
     loadCsvRun(id)
@@ -226,8 +271,12 @@ export default function CsvViewer() {
           data={run.data}
           rawColumns={run.fields}
           aiColumns={aiColumns.map(c => {
-            const cfg = aiConfigs.find(x => x.name === c.name);
-            return cfg ? { ...c, label: `${providerLabel(cfg.provider)} · ${cfg.model}` } : c;
+            const own = aiConfigs.find(x => x.name === c.name);
+            if (own) return { ...c, label: `${providerLabel(own.provider)} · ${own.model}` };
+            const parent = findCfgForColumn(c.name);
+            if (parent?.derived?.some(d => d.name === c.name)) return { ...c, label: `Regel aus «${parent.name}»` };
+            if (parent) return { ...c, label: `aus «${parent.name}»` };
+            return c;
           })}
           excludedRows={excludedRows}
           onExcludeChange={setExcludedRows}
@@ -248,12 +297,12 @@ export default function CsvViewer() {
           } : undefined}
           onAddAiColumn={addAiColumn}
           onConfigureAiColumn={(name) => {
-            const cfg = aiConfigs.find(c => c.name === name);
+            const cfg = findCfgForColumn(name);
             if (cfg) setEditingId(cfg.id);
             else showToast('Für diese Spalte gibt es keine Konfiguration', 'warning');
           }}
           onRunAiColumn={(name) => {
-            const cfg = aiConfigs.find(c => c.name === name);
+            const cfg = findCfgForColumn(name);
             if (cfg) runColumn(cfg);
             else showToast('Für diese Spalte gibt es keine Konfiguration', 'warning');
           }}
