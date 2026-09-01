@@ -27,18 +27,41 @@ export default function EnrichPage() {
   const [rows,  setRows]  = useState<Record<string, string>[]>([]);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  // Zielgruppen-Filter: Regel-Spalte (z.B. ki_zielgruppe) aus den KI-Configs
+  const [audience,     setAudience]     = useState<{ column: string; value: string } | null>(null);
+  const [onlyAudience, setOnlyAudience] = useState(true);
 
   useEffect(() => {
     loadCsvRun(id)
-      .then(({ meta: m, rows: r }) => { setMeta(m); setRows(r); })
+      .then(({ meta: m, rows: r }) => {
+        setMeta(m); setRows(r);
+        // Regel-Spalte aus den gespeicherten KI-Configs ermitteln;
+        // Fallback: eine vorhandene ki_zielgruppe-Spalte mit ja/nein
+        try {
+          const cfgs = JSON.parse(localStorage.getItem(`analysis_configs_${id}`) ?? '[]');
+          const rule = cfgs.flatMap((c: any) => c.derived ?? []).find((d: any) => m.fields.includes(d.name));
+          if (rule) { setAudience({ column: rule.name, value: rule.then }); return; }
+        } catch {}
+        if (m.fields.includes('ki_zielgruppe')) setAudience({ column: 'ki_zielgruppe', value: 'ja' });
+      })
       .catch(e => setError(e instanceof Error ? e.message : 'Fehler beim Laden.'));
   }, [id]);
+
+  // Nur Zeilen mit Zielgruppen-Treffer enrichen (spart Credits); Mapping
+  // zurück auf die Original-Indizes über activeIdx
+  const audienceActive = !!audience && onlyAudience;
+  const activeIdx = rows
+    .map((r, i) => i)
+    .filter(i => !audienceActive || String(rows[i][audience!.column] ?? '').trim() === audience!.value);
+  const activeRows = activeIdx.map(i => rows[i]);
 
   // Merge enriched emails back into the stored CSV so the table keeps them
   const persistEmails = async (results: { email: string }[]) => {
     if (!meta) return;
     try {
-      const merged = rows.map((r, i) => ({ ...r, email_enriched: results[i]?.email ?? r.email_enriched ?? '' }));
+      const byOriginal = new Map<number, string>();
+      results.forEach((res, j) => { if (res?.email) byOriginal.set(activeIdx[j], res.email); });
+      const merged = rows.map((r, i) => ({ ...r, email_enriched: byOriginal.get(i) ?? r.email_enriched ?? '' }));
       const fields = meta.fields.includes('email_enriched') ? meta.fields : [...meta.fields, 'email_enriched'];
       await saveCsvText(id, Papa.unparse(merged));
       // Drop legacy inline rows so the freshly written IndexedDB CSV wins on reload
@@ -84,10 +107,29 @@ export default function EnrichPage() {
           </div>
         )}
 
+        {/* Zielgruppen-Filter: nur klassifizierte Treffer enrichen */}
+        {audience && (
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14,
+            padding: '11px 14px', borderRadius: 8, cursor: 'pointer',
+            border: `1px solid ${onlyAudience ? 'rgba(232,176,75,.35)' : T.lineS}`,
+            background: onlyAudience ? 'rgba(232,176,75,.06)' : 'transparent',
+          }}>
+            <input
+              type="checkbox" checked={onlyAudience} onChange={e => setOnlyAudience(e.target.checked)}
+              style={{ width: 13, height: 13, cursor: 'pointer', accentColor: '#e8b04b' }}
+            />
+            <span style={{ fontFamily: T.ffMono, fontSize: 11, color: onlyAudience ? T.gold : T.inkD }}>
+              Nur Zielgruppe enrichen ({audience.column} = {audience.value})
+              <span style={{ color: T.inkF }}> — {activeRows.length} von {rows.length} Zeilen, spart API-Credits</span>
+            </span>
+          </label>
+        )}
+
         <EnrichmentPanel
           runId=""
-          rows={rows}
-          leadsCount={rows.length}
+          rows={activeRows}
+          leadsCount={activeRows.length}
           availableColumns={meta?.fields ?? []}
           onEmailColumn={persistEmails}
         />
