@@ -5,12 +5,21 @@ import * as XLSX from 'xlsx';
 
 interface AiColumn { name: string; values: string[]; label?: string }
 
+/** Auswertungs-Chip über der Tabelle; mit filter wird er zum Ein-Klick-Filter */
+export interface StatChip {
+  text: string;
+  tone: 'gold' | 'teal';
+  filter?: { column: string; value: string };
+}
+
 interface DataTableProps {
   data: Record<string, any>[];
   rawColumns: string[];
   aiColumns?: AiColumn[];
   excludedRows?: Set<number>;
   onExcludeChange?: (indices: Set<number>) => void;
+  /** Auswertungs-Chips über der Toolbar (Klick filtert die Tabelle) */
+  stats?: StatChip[];
   /** "+ KI-Spalte" header button: creates a new AI column directly in the table */
   onAddAiColumn?: () => void;
   /** ⚙ in an AI column header: open the configuration for that column */
@@ -145,7 +154,7 @@ function FilterDropdown({
 
 export function DataTable({
   data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange,
-  onAddAiColumn, onConfigureAiColumn, onRunAiColumn, onBlockPages,
+  stats, onAddAiColumn, onConfigureAiColumn, onRunAiColumn, onBlockPages,
 }: DataTableProps) {
   const [globalSearch, setGlobalSearch]   = useState('');
   const [colFilters,   setColFilters]     = useState<Record<string, ColFilter>>({});
@@ -334,8 +343,48 @@ export function DataTable({
     return val || '—';
   };
 
+  // Chip-Klick: Spalte auf genau diesen Wert filtern; erneuter Klick hebt auf
+  const chipFilterActive = (f: { column: string; value: string }) => {
+    const cf = colFilters[f.column];
+    return !!cf?.values && cf.values.size === 1 && cf.values.has(f.value);
+  };
+  const toggleChipFilter = (f: { column: string; value: string }) => {
+    setColFilters(prev => {
+      const next = { ...prev };
+      if (chipFilterActive(f)) delete next[f.column];
+      else next[f.column] = { text: '', values: new Set([f.value]) };
+      return next;
+    });
+    setPage(1);
+  };
+
   return (
     <div style={{ border: '1px solid rgba(255,255,255,.07)', borderRadius: 10, overflow: 'hidden', fontSize: 11 }}>
+
+      {/* Auswertungs-Chips: Klick filtert die Tabelle */}
+      {stats && stats.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,.05)', background: 'rgba(255,255,255,.015)' }}>
+          {stats.map((c, i) => {
+            const active = c.filter ? chipFilterActive(c.filter) : false;
+            const color = c.tone === 'teal' ? '#4fd1c5' : '#e8b04b';
+            const rgb   = c.tone === 'teal' ? '79,209,197' : '232,176,75';
+            return (
+              <button
+                key={i}
+                onClick={c.filter ? () => toggleChipFilter(c.filter!) : undefined}
+                title={c.filter ? (active ? 'Filter aufheben' : `Tabelle auf ${c.filter.column} = ${c.filter.value} filtern`) : undefined}
+                style={{
+                  ...mono, fontSize: 10, padding: '3px 10px', borderRadius: 12, letterSpacing: '.03em',
+                  border: `1px solid rgba(${rgb},${active ? '.7' : '.3'})`,
+                  background: active ? `rgba(${rgb},.22)` : `rgba(${rgb},.06)`,
+                  color,
+                  cursor: c.filter ? 'pointer' : 'default',
+                }}
+              >{c.text}{active ? ' ×' : ''}</button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'rgba(255,255,255,.03)', borderBottom: '1px solid rgba(255,255,255,.07)' }}>
