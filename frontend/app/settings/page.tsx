@@ -39,7 +39,8 @@ const GROUPS: Group[] = [
   },
 ];
 
-type NavKey = 'integrations' | 'templates' | 'blocklist' | 'design';
+const NAV_KEYS = ['integrations', 'templates', 'blocklist', 'design'] as const;
+type NavKey = typeof NAV_KEYS[number];
 
 function maskKey(key: string): string {
   if (key.length <= 8) return '••••••••';
@@ -78,10 +79,11 @@ export default function Settings() {
   const [blocklist,  setBlocklist]  = useState<BlockEntry[]>([]);
   const [blockInput, setBlockInput] = useState('');
   // KI-Vorlagen: effektive Presets + lokale Editier-Zustände (Key: presetId:columnName)
-  const [tplPresets,  setTplPresets]  = useState<ImportPreset[]>([]);
-  const [tplPrompts,  setTplPrompts]  = useState<Record<string, string>>({});
-  const [tplVersions, setTplVersions] = useState<Record<string, string>>({});
-  const [tplSaved,    setTplSaved]    = useState<string | null>(null);
+  const [tplPresets,    setTplPresets]    = useState<ImportPreset[]>([]);
+  const [tplPrompts,    setTplPrompts]    = useState<Record<string, string>>({});
+  const [tplVersions,   setTplVersions]   = useState<Record<string, string>>({});
+  const [tplSaved,      setTplSaved]      = useState<string | null>(null);
+  const [tplOverridden, setTplOverridden] = useState<Set<string>>(new Set());
 
   const reloadTemplates = () => {
     const eff = getEffectivePresets();
@@ -94,6 +96,8 @@ export default function Settings() {
     }
     setTplPrompts(prompts);
     setTplVersions(versions);
+    // Einmal beim (Neu-)Laden ermitteln statt hasOverride() pro Preset pro Render
+    setTplOverridden(new Set(eff.filter(p => hasOverride(p.id)).map(p => p.id)));
   };
 
   useEffect(() => {
@@ -113,7 +117,7 @@ export default function Settings() {
     // Deep link: /settings?tab=blocklist
     try {
       const tab = new URLSearchParams(window.location.search).get('tab');
-      if (tab === 'blocklist' || tab === 'design' || tab === 'integrations' || tab === 'templates') setNav(tab as NavKey);
+      if (tab && (NAV_KEYS as readonly string[]).includes(tab)) setNav(tab as NavKey);
     } catch {}
   }, []);
 
@@ -450,7 +454,7 @@ export default function Settings() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {tplPresets.map(preset => {
-                const overridden = hasOverride(preset.id);
+                const overridden = tplOverridden.has(preset.id);
                 return (
                   <div key={preset.id} style={{ background: T.panel2, border: `1px solid ${overridden ? 'rgba(232,176,75,.3)' : 'rgba(255,255,255,.06)'}`, borderRadius: 8, padding: '16px 18px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>

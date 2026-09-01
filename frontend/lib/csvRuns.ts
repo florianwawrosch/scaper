@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { loadCsvText } from './csvStorage';
+import { loadCsvText, saveCsvText } from './csvStorage';
 
 export interface CsvRunMeta {
   fields: string[];
@@ -42,4 +42,34 @@ export async function loadCsvRun(id: string): Promise<LoadedCsvRun> {
       error: () => reject(new Error('CSV konnte nicht gelesen werden.')),
     });
   });
+}
+
+/**
+ * Write half of the store: merge one or more columns into the rows, persist
+ * the CSV to IndexedDB and refresh the localStorage meta. Drops the legacy
+ * inline data/csv fields so the freshly written IndexedDB CSV wins on reload
+ * — that invariant lives HERE, next to the loader that knows the formats.
+ * Returns the merged rows so callers can update their state from them.
+ */
+export async function saveCsvRunColumns(
+  id: string,
+  rows: Record<string, string>[],
+  cols: Record<string, string[]>,
+): Promise<Record<string, string>[]> {
+  const entries = Object.entries(cols);
+  const merged = rows.map((r, i) => {
+    const extra: Record<string, string> = {};
+    for (const [n, v] of entries) extra[n] = v[i] ?? String(r[n] ?? '');
+    return { ...r, ...extra };
+  });
+  await saveCsvText(id, Papa.unparse(merged));
+  const raw = localStorage.getItem(`csv_run_${id}`);
+  if (raw) {
+    const m: CsvRunMeta = JSON.parse(raw);
+    delete m.data; delete m.csv;
+    const fields = [...m.fields];
+    for (const n of Object.keys(cols)) if (!fields.includes(n)) fields.push(n);
+    localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...m, fields, rowCount: merged.length }));
+  }
+  return merged;
 }

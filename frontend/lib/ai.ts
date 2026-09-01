@@ -55,9 +55,16 @@ export function rowFingerprint(row: Record<string, string>, inputColumns?: strin
   return shortHash(entries.map(([k, v]) => `${k}=${v}`).join('\x1f'));
 }
 
+// Sentinel contract for AI cell values — shared by pipeline, table and the
+// analyze route (which mints the "Fehler:" strings): '·' = pending/not run,
+// "Fehler: …" = failed and will be retried on the next run.
+export const PENDING = '·';
+export const isPendingAiValue = (v: string | undefined): boolean => v === PENDING;
+export const isAiError = (v: string | undefined): boolean => !!v?.startsWith('Fehler:');
+
 /** A stored value that makes a re-run unnecessary (not empty/pending/failed). */
 export const isUsableAiValue = (v: string | undefined): boolean =>
-  !!v && v !== '·' && !v.startsWith('Fehler:');
+  !!v && !isPendingAiValue(v) && !isAiError(v);
 
 /** Split pipe-separated multi-value answers into one value array per field. */
 export function splitMultiOutput(values: string[], fields: string[]): Record<string, string[]> {

@@ -97,7 +97,7 @@ const LINKEDIN_ZIELGRUPPE_RULE: DerivedRule = {
   else: 'nein',
 };
 
-export const PRESET_LINKEDIN: ImportPreset = {
+const PRESET_LINKEDIN: ImportPreset = {
   id: 'linkedin_klassifizierung_v5',
   name: 'LinkedIn-Klassifizierung (v5)',
   description: 'Uriels Vorlage: 1 KI-Aufruf → 7 Spalten (Haupttyp, Coaching, Agentur, Themenfeld, Status, Rollenbezug, Sicherheit) + Zielgruppen-Regel',
@@ -115,7 +115,7 @@ export const PRESET_LINKEDIN: ImportPreset = {
   ],
 };
 
-export const PRESET_KEEP_DROP: ImportPreset = {
+const PRESET_KEEP_DROP: ImportPreset = {
   id: 'keep_drop',
   name: 'Einfache KEEP/DROP-Klassifizierung',
   description: 'Eine Spalte: Ist die Zeile ein relevanter Lead? KEEP oder DROP.',
@@ -127,7 +127,7 @@ export const PRESET_KEEP_DROP: ImportPreset = {
   ],
 };
 
-export const ALL_PRESETS: ImportPreset[] = [PRESET_LINKEDIN, PRESET_KEEP_DROP];
+const ALL_PRESETS: ImportPreset[] = [PRESET_LINKEDIN, PRESET_KEEP_DROP];
 
 // ── Overrides: Prompt/Version einer Vorlage zentral in den Einstellungen
 //    anpassen (z.B. wenn Uriel v6 baut), ohne Code zu ändern ──

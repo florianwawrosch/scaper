@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import { isPendingAiValue, isAiError } from '@/lib/ai';
 
 interface AiColumn { name: string; values: string[]; label?: string }
 
@@ -20,6 +21,8 @@ interface DataTableProps {
   onExcludeChange?: (indices: Set<number>) => void;
   /** Auswertungs-Chips über der Toolbar (Klick filtert die Tabelle) */
   stats?: StatChip[];
+  /** Bei Erhöhung scrollt die Tabelle ans rechte Ende (Parent hat eine Spalte angelegt) */
+  scrollSignal?: number;
   /** "+ KI-Spalte" header button: creates a new AI column directly in the table */
   onAddAiColumn?: () => void;
   /** ⚙ in an AI column header: open the configuration for that column */
@@ -154,7 +157,7 @@ function FilterDropdown({
 
 export function DataTable({
   data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange,
-  stats, onAddAiColumn, onConfigureAiColumn, onRunAiColumn, onBlockPages,
+  stats, scrollSignal = 0, onAddAiColumn, onConfigureAiColumn, onRunAiColumn, onBlockPages,
 }: DataTableProps) {
   const [globalSearch, setGlobalSearch]   = useState('');
   const [colFilters,   setColFilters]     = useState<Record<string, ColFilter>>({});
@@ -176,23 +179,18 @@ export function DataTable({
     [rawColumns, hiddenCols],
   );
 
-  // When an AI column is added it appears at the right end — auto-scroll there
-  // so the user sees it appear (otherwise the button feels like it did nothing).
-  // Columns restored with existing values (e.g. re-seeded after a reload) must
-  // NOT scroll, or every open of a classified CSV would land at the far right.
+  // When the parent creates an AI column it bumps scrollSignal — the new column
+  // appears at the right end, so scroll there (otherwise "+ KI-Spalte" feels
+  // like it did nothing). Restored columns after a reload don't bump the signal.
   const scrollRef = useRef<HTMLDivElement>(null);
-  const prevAiCount = useRef(aiColumns.length);
+  const prevScrollSignal = useRef(scrollSignal);
   useEffect(() => {
-    if (aiColumns.length > prevAiCount.current && scrollRef.current) {
-      const added = aiColumns.slice(prevAiCount.current);
-      const isFresh = added.some(c => c.values.every(v => v === '·'));
-      if (isFresh) {
-        const el = scrollRef.current;
-        requestAnimationFrame(() => { el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }); });
-      }
+    if (scrollSignal > prevScrollSignal.current && scrollRef.current) {
+      const el = scrollRef.current;
+      requestAnimationFrame(() => { el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }); });
     }
-    prevAiCount.current = aiColumns.length;
-  }, [aiColumns]);
+    prevScrollSignal.current = scrollSignal;
+  }, [scrollSignal]);
 
   const extended = useMemo(() =>
     data.map((row, i) => {
@@ -593,8 +591,8 @@ export function DataTable({
                   ))}
                   {aiColumns.map(col => {
                     const val = String(row[col.name] ?? '—');
-                    const isPlaceholder = val === '·';
-                    const isError = val.startsWith('Fehler');
+                    const isPlaceholder = isPendingAiValue(val);
+                    const isError = isAiError(val);
                     return (
                       <td key={col.name} title={val} style={{ ...tdStyle, background: 'rgba(232,176,75,.02)', minWidth: 170, maxWidth: 300, borderLeft: '1px dashed rgba(232,176,75,.12)' }}>
                         {isPlaceholder ? (

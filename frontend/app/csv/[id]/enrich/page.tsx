@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import Papa from 'papaparse';
-import { saveCsvText } from '@/lib/csvStorage';
-import { loadCsvRun, type CsvRunMeta } from '@/lib/csvRuns';
+import { loadCsvRun, saveCsvRunColumns, type CsvRunMeta } from '@/lib/csvRuns';
+import { loadAiConfigs, findDerivedRule } from '@/lib/analysisConfigs';
 import { EnrichmentPanel } from '@/app/components/EnrichmentPanel';
 
 const T = {
@@ -37,12 +36,9 @@ export default function EnrichPage() {
         setMeta(m); setRows(r);
         // Regel-Spalte aus den gespeicherten KI-Configs ermitteln;
         // Fallback: eine vorhandene ki_zielgruppe-Spalte mit ja/nein
-        try {
-          const cfgs = JSON.parse(localStorage.getItem(`analysis_configs_${id}`) ?? '[]');
-          const rule = cfgs.flatMap((c: any) => c.derived ?? []).find((d: any) => m.fields.includes(d.name));
-          if (rule) { setAudience({ column: rule.name, value: rule.then }); return; }
-        } catch {}
-        if (m.fields.includes('ki_zielgruppe')) setAudience({ column: 'ki_zielgruppe', value: 'ja' });
+        const rule = findDerivedRule(loadAiConfigs(id), m.fields);
+        if (rule) setAudience({ column: rule.name, value: rule.then });
+        else if (m.fields.includes('ki_zielgruppe')) setAudience({ column: 'ki_zielgruppe', value: 'ja' });
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Fehler beim Laden.'));
   }, [id]);
@@ -50,23 +46,20 @@ export default function EnrichPage() {
   // Nur Zeilen mit Zielgruppen-Treffer enrichen (spart Credits); Mapping
   // zurück auf die Original-Indizes über activeIdx
   const audienceActive = !!audience && onlyAudience;
-  const activeIdx = rows
-    .map((r, i) => i)
-    .filter(i => !audienceActive || String(rows[i][audience!.column] ?? '').trim() === audience!.value);
-  const activeRows = activeIdx.map(i => rows[i]);
+  const { activeIdx, activeRows } = useMemo(() => {
+    const idx = rows
+      .map((_, i) => i)
+      .filter(i => !audienceActive || String(rows[i][audience!.column] ?? '').trim() === audience!.value);
+    return { activeIdx: idx, activeRows: idx.map(i => rows[i]) };
+  }, [rows, audienceActive, audience]);
 
   // Merge enriched emails back into the stored CSV so the table keeps them
   const persistEmails = async (results: { email: string }[]) => {
     if (!meta) return;
     try {
-      const byOriginal = new Map<number, string>();
-      results.forEach((res, j) => { if (res?.email) byOriginal.set(activeIdx[j], res.email); });
-      const merged = rows.map((r, i) => ({ ...r, email_enriched: byOriginal.get(i) ?? r.email_enriched ?? '' }));
-      const fields = meta.fields.includes('email_enriched') ? meta.fields : [...meta.fields, 'email_enriched'];
-      await saveCsvText(id, Papa.unparse(merged));
-      // Drop legacy inline rows so the freshly written IndexedDB CSV wins on reload
-      const { data: _d, csv: _c, ...cleanMeta } = meta;
-      localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...cleanMeta, fields, rowCount: merged.length }));
+      const emailCol = rows.map((r, i) => r.email_enriched ?? '');
+      results.forEach((res, j) => { if (res?.email) emailCol[activeIdx[j]] = res.email; });
+      const merged = await saveCsvRunColumns(id, rows, { email_enriched: emailCol });
       setRows(merged);
       setSaved(true);
     } catch {}

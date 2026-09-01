@@ -9,6 +9,8 @@ import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { getEffectivePresets, detectPreset, presetToConfigs, type ImportPreset } from '@/lib/aiTemplates';
+import { saveAiConfigs } from '@/lib/analysisConfigs';
+import { AI_PROVIDERS } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { PresetSelector } from '@/app/components/PresetSelector';
@@ -123,7 +125,7 @@ export default function Home() {
   const [blockCount,     setBlockCount]     = useState(0);
   const [groupByPage,    setGroupByPage]    = useState(true);
   // Nach Upload erkanntes KI-Spalten-Preset (LinkedIn etc.) — Modal vor der Navigation
-  const [aiPresetPrompt, setAiPresetPrompt] = useState<{ id: string; filename: string; detected: ImportPreset } | null>(null);
+  const [aiPresetPrompt, setAiPresetPrompt] = useState<{ id: string; filename: string; presets: ImportPreset[] } | null>(null);
 
   useEffect(() => {
     // Local history renders instantly — no waiting for any network call
@@ -212,10 +214,13 @@ export default function Home() {
         return;
       }
       setUploading(false);
-      // LinkedIn-Daten erkannt? → Preset-Auswahl anbieten statt direkt zu navigieren
+      // LinkedIn-Daten erkannt? → Preset-Auswahl anbieten statt direkt zu navigieren.
+      // Die Liste (erkanntes Preset zuerst) wird EINMAL hier berechnet — nicht
+      // bei jedem Render, das würde den Override-Store wiederholt parsen.
       const detected = detectPreset(fields);
       if (detected) {
-        setAiPresetPrompt({ id, filename: file.name, detected });
+        const others = getEffectivePresets().filter(p => p.id !== detected.id);
+        setAiPresetPrompt({ id, filename: file.name, presets: [detected, ...others] });
         return;
       }
       router.push(`/csv/${id}`);
@@ -820,17 +825,18 @@ export default function Home() {
       {aiPresetPrompt && (
         <PresetSelector
           filename={aiPresetPrompt.filename}
-          presets={[aiPresetPrompt.detected, ...getEffectivePresets().filter(p => p.id !== aiPresetPrompt.detected.id)]}
+          presets={aiPresetPrompt.presets}
           onSelect={(presetId) => {
             const { id } = aiPresetPrompt;
             if (presetId) {
-              const preset = [aiPresetPrompt.detected, ...getEffectivePresets()].find(p => p.id === presetId);
+              const preset = aiPresetPrompt.presets.find(p => p.id === presetId);
               if (preset) {
                 const local = loadSettings().apiKeys as Record<string, string>;
-                const provider = ['anthropic', 'gemini', 'openai'].find(p => local[p] || backendKeys[p]) ?? 'anthropic';
-                try {
-                  localStorage.setItem(`analysis_configs_${id}`, JSON.stringify(presetToConfigs(preset, provider)));
-                } catch {}
+                // anthropic bevorzugt (der v5-Prompt ist auf Claude abgestimmt),
+                // sonst der erste Provider aus AI_PROVIDERS mit Key
+                const ids = AI_PROVIDERS.map(p => p.id);
+                const provider = ['anthropic', ...ids].find(p => local[p] || backendKeys[p]) ?? ids[0];
+                saveAiConfigs(id, presetToConfigs(preset, provider));
                 showToast(`Vorlage «${preset.name}» geladen — Spalten mit ▶ analysieren`, 'success');
               }
             }

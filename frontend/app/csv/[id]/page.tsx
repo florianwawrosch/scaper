@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import Papa from 'papaparse';
-import { saveCsvText } from '@/lib/csvStorage';
-import { loadCsvRun } from '@/lib/csvRuns';
+import { loadCsvRun, saveCsvRunColumns } from '@/lib/csvRuns';
 import { addToBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
-import { runAiColumn, defaultModel, providerLabel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, normalizeMultiOutput } from '@/lib/ai';
+import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
+import { runAiColumn, defaultModel, providerLabel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, isAiError, normalizeMultiOutput, PENDING } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
 import { DataTable, type StatChip } from '@/app/components/DataTable';
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
@@ -52,27 +51,24 @@ export default function CsvViewer() {
   const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
 
   // AI column configs (owned here; edited via the ⚙ side panel)
-  const configsKey = `analysis_configs_${id}`;
   const [aiConfigs,   setAiConfigs]   = useState<AnalysisConfig[]>([]);
   const [editingId,   setEditingId]   = useState<string | null>(null);
   const [colRunning,  setColRunning]  = useState<Record<string, boolean>>({});
   const [colProgress, setColProgress] = useState<Record<string, number>>({});
   const [providers,   setProviders]   = useState<string[]>([]);
+  const [scrollSignal, setScrollSignal] = useState(0);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(configsKey);
-      if (saved) setAiConfigs(JSON.parse(saved));
-    } catch {}
+    setAiConfigs(loadAiConfigs(id));
     fetchKeyAvailability().then(server => {
       const local = loadSettings().apiKeys as Record<string, string>;
       setProviders(['gemini', 'anthropic', 'openai'].filter(p => local[p] || server[p]));
     });
-  }, [configsKey]);
+  }, [id]);
 
   const persistConfigs = (next: AnalysisConfig[]) => {
     setAiConfigs(next);
-    try { localStorage.setItem(configsKey, JSON.stringify(next)); } catch {}
+    saveAiConfigs(id, next);
   };
 
   const upsertAiColumn = (name: string, values: string[]) =>
@@ -88,25 +84,8 @@ export default function CsvViewer() {
   /** Merge finished values into the stored CSV so the columns survive reloads */
   const persistColumnsToCsv = async (cols: Record<string, string[]>) => {
     if (!run) return;
-    try {
-      const merged = run.data.map((r, i) => {
-        const extra: Record<string, string> = {};
-        for (const [n, v] of Object.entries(cols)) extra[n] = v[i] ?? '';
-        return { ...r, ...extra };
-      });
-      const fields = [...run.fields];
-      for (const n of Object.keys(cols)) if (!fields.includes(n)) fields.push(n);
-      await saveCsvText(id, Papa.unparse(merged));
-      const raw = localStorage.getItem(`csv_run_${id}`);
-      if (raw) {
-        const m = JSON.parse(raw);
-        // Drop legacy inline rows so the freshly written IndexedDB CSV wins on reload
-        delete m.data; delete m.csv;
-        localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...m, fields, rowCount: merged.length }));
-      }
-    } catch {}
+    try { await saveCsvRunColumns(id, run.data, cols); } catch {}
   };
-  const persistColumnToCsv = (name: string, values: string[]) => persistColumnsToCsv({ [name]: values });
 
   /** "+ KI-Spalte": column appears in the table immediately, no popup */
   const addAiColumn = () => {
@@ -121,7 +100,8 @@ export default function CsvViewer() {
       model: defaultModel(provider), prompt: '',
     };
     persistConfigs([...aiConfigs, cfg]);
-    upsertAiColumn(name, Array(run.data.length).fill('·'));
+    upsertAiColumn(name, Array(run.data.length).fill(PENDING));
+    setScrollSignal(s => s + 1); // Tabelle scrollt zur neuen Spalte am rechten Ende
     // Open the editor right away so it's obvious the column was created
     setEditingId(cfg.id);
     showToast(`Spalte «${name}» angelegt — Prompt eingeben und Analysieren`, 'info');
@@ -159,12 +139,26 @@ export default function CsvViewer() {
       }
       const skipped = run.data.length - todo.length;
       const todoSet = new Set(todo);
-      const merged = run.data.map((_, i) => (todoSet.has(i) ? '·' : existing[i]));
-
-      // Multi-Output: Antworten gegen die erlaubten Werte validieren/normalisieren;
-      // ungültige werden "Fehler: …" und laufen beim nächsten ▶ automatisch neu
-      const sanitize = (vals: string[]) =>
-        multi ? vals.map(v => normalizeMultiOutput(v, cfg.outputFields!, cfg.outputEnums)) : vals;
+      // Persistenter Mal-Puffer: fertige Werte werden genau EINMAL normalisiert
+      // (statt bei jedem Progress-Tick die ganze Liste erneut) und dann nur noch
+      // kopiert — bei 1000 Zeilen × 50 Chunks spart das ~98% der Normalisierung.
+      const merged = run.data.map((_, i) => (todoSet.has(i) ? PENDING : existing[i]));
+      let normalizedUpTo = 0;
+      const paint = (vals: string[]) => {
+        for (let j = normalizedUpTo; j < vals.length; j++) {
+          if (vals[j] === PENDING) continue;
+          merged[todo[j]] = multi ? normalizeMultiOutput(vals[j], cfg.outputFields!, cfg.outputEnums) : vals[j];
+          if (j === normalizedUpTo) normalizedUpTo++;
+        }
+        upsertAiColumn(cfg.name, [...merged]);
+        // Multi-Output: Antwort live in die Einzelspalten splitten
+        if (multi) {
+          const split = splitMultiOutput(merged, cfg.outputFields!);
+          for (const [n, v] of Object.entries(split)) upsertAiColumn(n, v);
+          return split;
+        }
+        return null;
+      };
 
       const subValues = await runAiColumn({
         rows: todo.map(i => run.data[i]),
@@ -175,30 +169,16 @@ export default function CsvViewer() {
         inputColumns: cfg.inputColumns,
         multiOutput: multi,
         onProgress: (partial) => {
-          const full = [...merged];
-          sanitize(partial).forEach((v, j) => { full[todo[j]] = v; });
-          setColProgress(p => ({ ...p, [cfg.id]: full.filter(v => v !== '·').length }));
-          upsertAiColumn(cfg.name, full);
-          // Multi-Output: Antwort live in die Einzelspalten splitten
-          if (multi) {
-            const split = splitMultiOutput(full, cfg.outputFields!);
-            for (const [n, v] of Object.entries(split)) upsertAiColumn(n, v);
-          }
+          paint(partial);
+          setColProgress(p => ({ ...p, [cfg.id]: merged.filter(v => v !== PENDING).length }));
         },
       });
-      sanitize(subValues).forEach((v, j) => { merged[todo[j]] = v; });
-      const failed = todo.filter(i => merged[i].startsWith('Fehler:')).length;
+      const split = paint(subValues);
+      const failed = todo.filter(i => isAiError(merged[i])).length;
 
-      upsertAiColumn(cfg.name, merged);
-      if (multi) {
-        const split = splitMultiOutput(merged, cfg.outputFields!);
-        const derived = cfg.derived?.length ? applyDerivedRules(cfg.derived, split, run.data.length) : {};
-        const all = { [cfg.name]: merged, ...split, ...derived };
-        for (const [n, v] of Object.entries(all)) upsertAiColumn(n, v);
-        await persistColumnsToCsv(all);
-      } else {
-        await persistColumnToCsv(cfg.name, merged);
-      }
+      const derived = split && cfg.derived?.length ? applyDerivedRules(cfg.derived, split, run.data.length) : {};
+      for (const [n, v] of Object.entries(derived)) upsertAiColumn(n, v);
+      await persistColumnsToCsv({ [cfg.name]: merged, ...(split ?? {}), ...derived });
       allHashes[cfg.id] = { promptHash, rowHashes };
       try { localStorage.setItem(hashKey, JSON.stringify(allHashes)); } catch {}
       const parts: string[] = [`${todo.length - failed} klassifiziert`];
@@ -217,8 +197,8 @@ export default function CsvViewer() {
 
   /** Config zu einer Spalte finden — auch für gesplittete Output-/Regel-Spalten */
   const findCfgForColumn = (name: string) =>
-    aiConfigs.find(c => c.name === name)
-    ?? aiConfigs.find(c => c.outputFields?.includes(name) || c.derived?.some(d => d.name === name));
+    aiConfigs.find(c =>
+      c.name === name || c.outputFields?.includes(name) || c.derived?.some(d => d.name === name));
 
   // Alle Spalten, die zu einer KI-Config gehören (Roh-Antwort, Splits, Regeln)
   const aiOwnedNames = useMemo(() => {
@@ -244,12 +224,88 @@ export default function CsvViewer() {
           name: n,
           values: run.fields.includes(n)
             ? run.data.map(r => r[n] ?? '')
-            : Array(run.data.length).fill('·'),
+            : Array(run.data.length).fill(PENDING),
         });
       }
       return next.length === prev.length ? prev : next;
     });
   }, [run, aiOwnedNames]);
+
+  // ── Memoisierte DataTable-Props: neue Array-Identitäten pro Render würden
+  //    die komplette Memo-Kette der Tabelle (extended → filtered → sorted)
+  //    bei jedem Tastendruck im Editor invalidieren ──
+
+  const tableRawColumns = useMemo(
+    () => (run ? run.fields.filter(f => !aiOwnedNames.has(f)) : []),
+    [run, aiOwnedNames],
+  );
+
+  const labeledAiColumns = useMemo(() => aiColumns.map(c => {
+    const parent = findCfgForColumn(c.name);
+    if (!parent) return c;
+    if (parent.name === c.name) {
+      return { ...c, label: `${providerLabel(parent.provider)} · ${parent.model}${parent.promptVersion ? ` · ${parent.promptVersion}` : ''}` };
+    }
+    if (parent.derived?.some(d => d.name === c.name)) return { ...c, label: `Regel aus «${parent.name}»` };
+    return { ...c, label: `aus «${parent.name}»` };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [aiColumns, aiConfigs]);
+
+  // KI-Statistik wie im statistik-Blatt: Fortschritt + Regel-Verteilung,
+  // Regel-Chips filtern die Tabelle per Klick
+  const statChips = useMemo(() => {
+    if (!run) return [];
+    const chips: StatChip[] = [];
+    for (const cfg of aiConfigs) {
+      const col = aiColumns.find(c => c.name === cfg.name);
+      if (!col) continue;
+      const done = col.values.reduce((n, v) => n + (isUsableAiValue(v) ? 1 : 0), 0);
+      if (done === 0) continue;
+      chips.push({
+        text: `${cfg.name}: ${done}/${run.data.length} klassifiziert`,
+        tone: done === run.data.length ? 'teal' : 'gold',
+      });
+      for (const d of cfg.derived ?? []) {
+        const dcol = aiColumns.find(c => c.name === d.name);
+        if (!dcol) continue;
+        let yes = 0, no = 0;
+        for (const v of dcol.values) { if (v === d.then) yes++; else if (v === d.else) no++; }
+        if (yes + no === 0) continue;
+        const pct = Math.round((yes / (yes + no)) * 100);
+        chips.push({ text: `${d.name}: ${yes} ${d.then} (${pct}%)`, tone: 'gold', filter: { column: d.name, value: d.then } });
+        chips.push({ text: `${no} ${d.else}`, tone: 'gold', filter: { column: d.name, value: d.else } });
+      }
+    }
+    return chips;
+  }, [run, aiConfigs, aiColumns]);
+
+  // Quellen-Statistik: Zielgruppen-Quote pro Big Player (wie das statistik-Blatt)
+  const sourceStats = useMemo(() => {
+    if (!run) return null;
+    const srcCol = ['quelle_person', 'erster_autor'].find(c => run.fields.includes(c));
+    if (!srcCol) return null;
+    const cfg = aiConfigs.find(c => c.derived?.length);
+    const rule = cfg?.derived?.[0];
+    const dcol = rule ? aiColumns.find(c => c.name === rule.name) : undefined;
+    const rawCol = cfg ? aiColumns.find(c => c.name === cfg.name) : undefined;
+    if (!rule || !dcol || !rawCol) return null;
+    if (!rawCol.values.some(isUsableAiValue)) return null;
+
+    const bySrc = new Map<string, { total: number; done: number; yes: number }>();
+    run.data.forEach((r, i) => {
+      const src = String(r[srcCol] ?? '').trim() || '—';
+      const s = bySrc.get(src) ?? { total: 0, done: 0, yes: 0 };
+      s.total++;
+      if (isUsableAiValue(rawCol.values[i])) s.done++;
+      if (dcol.values[i] === rule.then) s.yes++;
+      bySrc.set(src, s);
+    });
+    const rows = [...bySrc.entries()]
+      .map(([src, s]) => ({ src, ...s, quote: s.done > 0 ? s.yes / s.done : 0 }))
+      .sort((a, b) => b.quote - a.quote || b.total - a.total);
+    if (rows.length < 2) return null;
+    return { srcCol, rule, rows };
+  }, [run, aiConfigs, aiColumns]);
 
   useEffect(() => {
     loadCsvRun(id)
@@ -323,102 +379,46 @@ export default function CsvViewer() {
         </div>
 
         {/* Quellen-Statistik: Zielgruppen-Quote pro Big Player (wie das statistik-Blatt) */}
-        {(() => {
-          const srcCol = ['quelle_person', 'erster_autor'].find(c => run.fields.includes(c));
-          if (!srcCol) return null;
-          const cfg = aiConfigs.find(c => c.derived?.length);
-          const rule = cfg?.derived?.[0];
-          const dcol = rule ? aiColumns.find(c => c.name === rule.name) : undefined;
-          const rawCol = cfg ? aiColumns.find(c => c.name === cfg.name) : undefined;
-          if (!rule || !dcol || !rawCol) return null;
-          if (!rawCol.values.some(isUsableAiValue)) return null;
-
-          const bySrc = new Map<string, { total: number; done: number; yes: number }>();
-          run.data.forEach((r, i) => {
-            const src = String(r[srcCol] ?? '').trim() || '—';
-            const s = bySrc.get(src) ?? { total: 0, done: 0, yes: 0 };
-            s.total++;
-            if (isUsableAiValue(rawCol.values[i])) s.done++;
-            if (dcol.values[i] === rule.then) s.yes++;
-            bySrc.set(src, s);
-          });
-          const rows = [...bySrc.entries()]
-            .map(([src, s]) => ({ src, ...s, quote: s.done > 0 ? s.yes / s.done : 0 }))
-            .sort((a, b) => b.quote - a.quote || b.total - a.total);
-          if (rows.length < 2) return null;
-
-          return (
-            <div style={{ marginBottom: 10 }}>
-              <button
-                onClick={() => setShowSrcStats(v => !v)}
-                style={{
-                  fontFamily: T.ffMono, fontSize: 10, padding: '4px 12px', borderRadius: 12,
-                  border: `1px solid ${T.lineS}`, background: showSrcStats ? 'rgba(255,255,255,.06)' : 'transparent',
-                  color: T.inkD, cursor: 'pointer', letterSpacing: '.03em',
-                }}
-              >⌗ Statistik nach {srcCol} ({rows.length}) {showSrcStats ? '▴' : '▾'}</button>
-              {showSrcStats && (
-                <div style={{ marginTop: 8, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden', maxWidth: 640 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 80px 90px', padding: '6px 12px', background: 'rgba(255,255,255,.03)', borderBottom: `1px solid ${T.lineS}` }}>
-                    {[srcCol, 'Zeilen', 'Klassifiziert', rule.then, 'Quote'].map((h, i) => (
-                      <span key={h} style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: T.inkF, textAlign: i > 0 ? 'right' : 'left' }}>{h}</span>
-                    ))}
-                  </div>
-                  {rows.map(r => (
-                    <div key={r.src} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 80px 90px', padding: '5px 12px', borderBottom: `1px solid ${T.lineS}` }}>
-                      <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.src}</span>
-                      <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, textAlign: 'right' }}>{r.total}</span>
-                      <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, textAlign: 'right' }}>{r.done}</span>
-                      <span style={{ fontFamily: T.ffMono, fontSize: 11, color: '#4fd1c5', textAlign: 'right' }}>{r.yes}</span>
-                      <span style={{ fontFamily: T.ffMono, fontSize: 11, color: r.quote >= 0.25 ? '#e8b04b' : T.inkF, textAlign: 'right', fontWeight: r.quote >= 0.25 ? 600 : 400 }}>
-                        {r.done > 0 ? `${Math.round(r.quote * 100)}%` : '—'}
-                      </span>
-                    </div>
+        {sourceStats && (
+          <div style={{ marginBottom: 10 }}>
+            <button
+              onClick={() => setShowSrcStats(v => !v)}
+              style={{
+                fontFamily: T.ffMono, fontSize: 10, padding: '4px 12px', borderRadius: 12,
+                border: `1px solid ${T.lineS}`, background: showSrcStats ? 'rgba(255,255,255,.06)' : 'transparent',
+                color: T.inkD, cursor: 'pointer', letterSpacing: '.03em',
+              }}
+            >⌗ Statistik nach {sourceStats.srcCol} ({sourceStats.rows.length}) {showSrcStats ? '▴' : '▾'}</button>
+            {showSrcStats && (
+              <div style={{ marginTop: 8, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden', maxWidth: 640 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 80px 90px', padding: '6px 12px', background: 'rgba(255,255,255,.03)', borderBottom: `1px solid ${T.lineS}` }}>
+                  {[sourceStats.srcCol, 'Zeilen', 'Klassifiziert', sourceStats.rule.then, 'Quote'].map((h, i) => (
+                    <span key={h} style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: T.inkF, textAlign: i > 0 ? 'right' : 'left' }}>{h}</span>
                   ))}
                 </div>
-              )}
-            </div>
-          );
-        })()}
+                {sourceStats.rows.map(r => (
+                  <div key={r.src} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 80px 90px', padding: '5px 12px', borderBottom: `1px solid ${T.lineS}` }}>
+                    <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.src}</span>
+                    <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, textAlign: 'right' }}>{r.total}</span>
+                    <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, textAlign: 'right' }}>{r.done}</span>
+                    <span style={{ fontFamily: T.ffMono, fontSize: 11, color: '#4fd1c5', textAlign: 'right' }}>{r.yes}</span>
+                    <span style={{ fontFamily: T.ffMono, fontSize: 11, color: r.quote >= 0.25 ? '#e8b04b' : T.inkF, textAlign: 'right', fontWeight: r.quote >= 0.25 ? 600 : 400 }}>
+                      {r.done > 0 ? `${Math.round(r.quote * 100)}%` : '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Full-width table; AI columns are created in place, ⚙ opens the editor */}
         <DataTable
           data={run.data}
-          rawColumns={run.fields.filter(f => !aiOwnedNames.has(f))}
-          stats={(() => {
-            // KI-Statistik wie im statistik-Blatt: Fortschritt + Regel-Verteilung,
-            // Regel-Chips filtern die Tabelle per Klick
-            const chips: StatChip[] = [];
-            for (const cfg of aiConfigs) {
-              const col = aiColumns.find(c => c.name === cfg.name);
-              if (!col) continue;
-              const done = col.values.filter(isUsableAiValue).length;
-              if (done === 0) continue;
-              chips.push({
-                text: `${cfg.name}: ${done}/${run.data.length} klassifiziert`,
-                tone: done === run.data.length ? 'teal' : 'gold',
-              });
-              for (const d of cfg.derived ?? []) {
-                const dcol = aiColumns.find(c => c.name === d.name);
-                if (!dcol) continue;
-                const yes = dcol.values.filter(v => v === d.then).length;
-                const no  = dcol.values.filter(v => v === d.else).length;
-                if (yes + no === 0) continue;
-                const pct = Math.round((yes / (yes + no)) * 100);
-                chips.push({ text: `${d.name}: ${yes} ${d.then} (${pct}%)`, tone: 'gold', filter: { column: d.name, value: d.then } });
-                chips.push({ text: `${no} ${d.else}`, tone: 'gold', filter: { column: d.name, value: d.else } });
-              }
-            }
-            return chips;
-          })()}
-          aiColumns={aiColumns.map(c => {
-            const own = aiConfigs.find(x => x.name === c.name);
-            if (own) return { ...c, label: `${providerLabel(own.provider)} · ${own.model}${own.promptVersion ? ` · ${own.promptVersion}` : ''}` };
-            const parent = findCfgForColumn(c.name);
-            if (parent?.derived?.some(d => d.name === c.name)) return { ...c, label: `Regel aus «${parent.name}»` };
-            if (parent) return { ...c, label: `aus «${parent.name}»` };
-            return c;
-          })}
+          rawColumns={tableRawColumns}
+          stats={statChips}
+          aiColumns={labeledAiColumns}
+          scrollSignal={scrollSignal}
           excludedRows={excludedRows}
           onExcludeChange={setExcludedRows}
           onBlockPages={run.fields.includes('page_name') ? (rows) => {

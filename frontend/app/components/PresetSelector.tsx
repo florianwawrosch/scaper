@@ -66,7 +66,10 @@ export function PresetSelector({ presets, onSelect, onClose, filename }: Props) 
 
         {/* Presets list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
-          {presets.map(preset => (
+          {presets.map(preset => {
+            const colCount  = preset.columns.reduce((n, c) => n + (c.outputFields?.length ?? 1) + (c.derived?.length ?? 0), 0);
+            const callCount = preset.columns.length;
+            return (
             <button
               key={preset.id}
               onClick={() => setSelectedId(selectedId === preset.id ? null : preset.id)}
@@ -102,11 +105,7 @@ export function PresetSelector({ presets, onSelect, onClose, filename }: Props) 
                 </div>
               )}
               <div style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, opacity: 0.7 }}>
-                {(() => {
-                  const total = preset.columns.reduce((n, c) => n + (c.outputFields?.length ?? 1) + (c.derived?.length ?? 0), 0);
-                  const calls = preset.columns.length;
-                  return `${total} ${total === 1 ? 'Spalte' : 'Spalten'} · ${calls} KI-${calls === 1 ? 'Aufruf' : 'Aufrufe'} pro Zeile${preset.promptVersion ? ` · Prompt ${preset.promptVersion}` : ''}`;
-                })()}
+                {colCount} {colCount === 1 ? 'Spalte' : 'Spalten'} · {callCount} KI-{callCount === 1 ? 'Aufruf' : 'Aufrufe'} pro Zeile{preset.promptVersion ? ` · Prompt ${preset.promptVersion}` : ''}
               </div>
 
               {/* Expandable column details */}
@@ -133,7 +132,8 @@ export function PresetSelector({ presets, onSelect, onClose, filename }: Props) 
                 </div>
               )}
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {/* Actions */}
