@@ -47,6 +47,7 @@ export default function CsvViewer() {
 
   const [run,        setRun]        = useState<CsvRun | null>(null);
   const [error,      setError]      = useState('');
+  const [showSrcStats, setShowSrcStats] = useState(false);
   const [aiColumns,  setAiColumns]  = useState<{ name: string; values: string[] }[]>([]);
   const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
 
@@ -320,6 +321,65 @@ export default function CsvViewer() {
             }}
           >Enrichment starten →</button>
         </div>
+
+        {/* Quellen-Statistik: Zielgruppen-Quote pro Big Player (wie das statistik-Blatt) */}
+        {(() => {
+          const srcCol = ['quelle_person', 'erster_autor'].find(c => run.fields.includes(c));
+          if (!srcCol) return null;
+          const cfg = aiConfigs.find(c => c.derived?.length);
+          const rule = cfg?.derived?.[0];
+          const dcol = rule ? aiColumns.find(c => c.name === rule.name) : undefined;
+          const rawCol = cfg ? aiColumns.find(c => c.name === cfg.name) : undefined;
+          if (!rule || !dcol || !rawCol) return null;
+          if (!rawCol.values.some(isUsableAiValue)) return null;
+
+          const bySrc = new Map<string, { total: number; done: number; yes: number }>();
+          run.data.forEach((r, i) => {
+            const src = String(r[srcCol] ?? '').trim() || '—';
+            const s = bySrc.get(src) ?? { total: 0, done: 0, yes: 0 };
+            s.total++;
+            if (isUsableAiValue(rawCol.values[i])) s.done++;
+            if (dcol.values[i] === rule.then) s.yes++;
+            bySrc.set(src, s);
+          });
+          const rows = [...bySrc.entries()]
+            .map(([src, s]) => ({ src, ...s, quote: s.done > 0 ? s.yes / s.done : 0 }))
+            .sort((a, b) => b.quote - a.quote || b.total - a.total);
+          if (rows.length < 2) return null;
+
+          return (
+            <div style={{ marginBottom: 10 }}>
+              <button
+                onClick={() => setShowSrcStats(v => !v)}
+                style={{
+                  fontFamily: T.ffMono, fontSize: 10, padding: '4px 12px', borderRadius: 12,
+                  border: `1px solid ${T.lineS}`, background: showSrcStats ? 'rgba(255,255,255,.06)' : 'transparent',
+                  color: T.inkD, cursor: 'pointer', letterSpacing: '.03em',
+                }}
+              >⌗ Statistik nach {srcCol} ({rows.length}) {showSrcStats ? '▴' : '▾'}</button>
+              {showSrcStats && (
+                <div style={{ marginTop: 8, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden', maxWidth: 640 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 80px 90px', padding: '6px 12px', background: 'rgba(255,255,255,.03)', borderBottom: `1px solid ${T.lineS}` }}>
+                    {[srcCol, 'Zeilen', 'Klassifiziert', rule.then, 'Quote'].map((h, i) => (
+                      <span key={h} style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: T.inkF, textAlign: i > 0 ? 'right' : 'left' }}>{h}</span>
+                    ))}
+                  </div>
+                  {rows.map(r => (
+                    <div key={r.src} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 80px 90px', padding: '5px 12px', borderBottom: `1px solid ${T.lineS}` }}>
+                      <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.src}</span>
+                      <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, textAlign: 'right' }}>{r.total}</span>
+                      <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, textAlign: 'right' }}>{r.done}</span>
+                      <span style={{ fontFamily: T.ffMono, fontSize: 11, color: '#4fd1c5', textAlign: 'right' }}>{r.yes}</span>
+                      <span style={{ fontFamily: T.ffMono, fontSize: 11, color: r.quote >= 0.25 ? '#e8b04b' : T.inkF, textAlign: 'right', fontWeight: r.quote >= 0.25 ? 600 : 400 }}>
+                        {r.done > 0 ? `${Math.round(r.quote * 100)}%` : '—'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Full-width table; AI columns are created in place, ⚙ opens the editor */}
         <DataTable
