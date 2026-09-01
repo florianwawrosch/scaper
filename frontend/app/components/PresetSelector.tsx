@@ -19,17 +19,14 @@ const T = {
 
 interface Props {
   presets: ImportPreset[];
-  onSelect: (presetId: string | null) => void;
+  /** autoRun: Klassifizierung direkt nach dem Laden starten */
+  onSelect: (presetId: string | null, autoRun?: boolean) => void;
   onClose: () => void;
   filename: string;
 }
 
 export function PresetSelector({ presets, onSelect, onClose, filename }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const handleConfirm = () => {
-    onSelect(selectedId);
-  };
 
   return (
     <div
@@ -154,21 +151,40 @@ export function PresetSelector({ presets, onSelect, onClose, filename }: Props) 
             Abbrechen
           </button>
           <button
-            onClick={handleConfirm}
+            onClick={() => onSelect(selectedId)}
             style={{
               fontFamily: T.ffMono,
               fontSize: 11,
               padding: '7px 16px',
               borderRadius: 6,
               border: `1px solid ${T.gold}`,
-              background: 'rgba(232,176,75,.15)',
+              background: selectedId ? 'transparent' : 'rgba(232,176,75,.15)',
               color: T.gold,
               cursor: 'pointer',
               fontWeight: 600,
             }}
           >
-            {selectedId ? 'Vorlage laden' : 'Ohne Vorlage'}
+            {selectedId ? 'Nur laden' : 'Ohne Vorlage'}
           </button>
+          {selectedId && (
+            <button
+              onClick={() => onSelect(selectedId, true)}
+              title="Vorlage laden und die Klassifizierung sofort starten (kostet API-Credits)"
+              style={{
+                fontFamily: T.ffMono,
+                fontSize: 11,
+                padding: '7px 16px',
+                borderRadius: 6,
+                border: `1px solid ${T.gold}`,
+                background: 'rgba(232,176,75,.2)',
+                color: T.gold,
+                cursor: 'pointer',
+                fontWeight: 700,
+              }}
+            >
+              ▶ Laden + Analysieren
+            </button>
+          )}
         </div>
       </div>
     </div>

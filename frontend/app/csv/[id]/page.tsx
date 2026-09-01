@@ -193,6 +193,24 @@ export default function CsvViewer() {
     }
   };
 
+  // "▶ Laden + Analysieren" im Import-Dialog: der Viewer startet die
+  // Klassifizierung selbst, sobald Daten und Configs da sind. Das Flag wird
+  // sofort entfernt, damit auch StrictMode-Doppel-Effekte nur einmal starten.
+  useEffect(() => {
+    if (!run || aiConfigs.length === 0) return;
+    try {
+      const k = `autorun_analysis_${id}`;
+      if (!localStorage.getItem(k)) return;
+      localStorage.removeItem(k);
+      const cfg = aiConfigs.find(c => c.prompt.trim());
+      if (cfg) {
+        showToast(`Klassifizierung «${cfg.name}» startet…`, 'info');
+        runColumn(cfg);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run, aiConfigs, id]);
+
   const editingCfg = aiConfigs.find(c => c.id === editingId) ?? null;
 
   /** Config zu einer Spalte finden — auch für gesplittete Output-/Regel-Spalten */

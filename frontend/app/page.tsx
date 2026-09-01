@@ -826,7 +826,7 @@ export default function Home() {
         <PresetSelector
           filename={aiPresetPrompt.filename}
           presets={aiPresetPrompt.presets}
-          onSelect={(presetId) => {
+          onSelect={(presetId, autoRun) => {
             const { id } = aiPresetPrompt;
             if (presetId) {
               const preset = aiPresetPrompt.presets.find(p => p.id === presetId);
@@ -837,7 +837,12 @@ export default function Home() {
                 const ids = AI_PROVIDERS.map(p => p.id);
                 const provider = ['anthropic', ...ids].find(p => local[p] || backendKeys[p]) ?? ids[0];
                 saveAiConfigs(id, presetToConfigs(preset, provider));
-                showToast(`Vorlage «${preset.name}» geladen — Spalten mit ▶ analysieren`, 'success');
+                if (autoRun) {
+                  // Der Viewer liest das Flag beim Laden und startet die Analyse
+                  try { localStorage.setItem(`autorun_analysis_${id}`, '1'); } catch {}
+                } else {
+                  showToast(`Vorlage «${preset.name}» geladen — Spalten mit ▶ analysieren`, 'success');
+                }
               }
             }
             setAiPresetPrompt(null);
