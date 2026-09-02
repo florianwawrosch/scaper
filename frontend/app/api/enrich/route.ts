@@ -71,28 +71,43 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const results: { email: string; enriched: boolean }[] = [];
+  const batch = rows.slice(0, 50); // API cost safety limit
+  const results: { email: string; enriched: boolean }[] = new Array(batch.length);
   let firstError: string | null = null;
   let skippedEmpty = 0;
 
-  for (const row of rows.slice(0, 50)) { // API cost safety limit
-    const name    = String(row[nameCol] ?? '').trim();
-    const company = String(row[companyCol] ?? '').trim();
-    let email: string | null = null;
+  // Sequential processing of up to 50 rows (each with a 10s provider timeout)
+  // can exceed this route's 60s maxDuration well before finishing — and since
+  // results were only returned after the loop, a timeout discarded every
+  // lookup, including ones the provider had already billed. Bounded
+  // concurrency (same pattern as /api/ai/analyze) keeps wall-clock time well
+  // under the limit.
+  const CONCURRENCY = 8;
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, batch.length) }, async () => {
+      while (next < batch.length) {
+        const i = next++;
+        const row = batch[i];
+        const name    = String(row[nameCol] ?? '').trim();
+        const company = String(row[companyCol] ?? '').trim();
+        let email: string | null = null;
 
-    if (name && company) {
-      try {
-        email = provider === 'hunter_io'
-          ? await enrichHunter(name, company, key)
-          : await enrichFindymail(name, company, key);
-      } catch (e) {
-        if (!firstError) firstError = e instanceof Error ? e.message : String(e);
+        if (name && company) {
+          try {
+            email = provider === 'hunter_io'
+              ? await enrichHunter(name, company, key)
+              : await enrichFindymail(name, company, key);
+          } catch (e) {
+            if (!firstError) firstError = e instanceof Error ? e.message : String(e);
+          }
+        } else {
+          skippedEmpty++;
+        }
+        results[i] = { email: email ?? '', enriched: !!email };
       }
-    } else {
-      skippedEmpty++;
-    }
-    results.push({ email: email ?? '', enriched: !!email });
-  }
+    }),
+  );
 
   const nOk = results.filter(r => r.enriched).length;
   if (nOk === 0 && firstError) {
