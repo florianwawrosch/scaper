@@ -66,13 +66,13 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
   }, []);
 
   // Auto-select common column names (e.g. LinkedIn imports use voller_name/firma)
-  // so the mapping doesn't have to be picked by hand on every visit.
-  useEffect(() => {
-    if (!availableColumns?.length) return;
-    const pick = (candidates: string[]) => availableColumns.find(c => candidates.includes(c.toLowerCase()));
-    setNameCol(prev => prev || pick(['voller_name', 'name', 'full_name', 'vollername']) || '');
-    setCompanyCol(prev => prev || pick(['firma', 'company', 'unternehmen', 'company_domain', 'domain']) || '');
-  }, [availableColumns]);
+  // so the mapping doesn't have to be picked by hand on every visit. Derived,
+  // not synced into state: nameCol/companyCol hold only an explicit user choice
+  // ('' = none), the effective value falls back to the auto-pick.
+  const pickCol = (candidates: string[]) =>
+    availableColumns?.find(c => candidates.includes(c.toLowerCase())) ?? '';
+  const effNameCol    = nameCol    || pickCol(['voller_name', 'name', 'full_name', 'vollername']);
+  const effCompanyCol = companyCol || pickCol(['firma', 'company', 'unternehmen', 'company_domain', 'domain']);
 
   // Only show providers that are actually configured (browser key or server env)
   const PROVIDERS = ALL_PROVIDERS.filter(p => available[p.id]);
@@ -85,7 +85,7 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
     // it from its env vars, so don't block when it's missing locally.
     const apiKey = getApiKey(selected as any);
     if (leadsCount === 0) return showToast('Keine Leads zum Enrichment', 'warning');
-    if (needsMapping && (!nameCol || !companyCol)) {
+    if (needsMapping && (!effNameCol || !effCompanyCol)) {
       return showToast('Bitte Name- und Firmen-Spalte auswählen', 'warning');
     }
 
@@ -108,8 +108,8 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
             body: JSON.stringify({
               provider: selected,
               rows,
-              nameColumn: nameCol,
-              companyColumn: companyCol,
+              nameColumn: effNameCol,
+              companyColumn: effCompanyCol,
               ...(apiKey && { apiKey }),
             }),
           })
@@ -119,7 +119,7 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
             body: JSON.stringify({
               provider: selected,
               ...(apiKey && { apiKey }),
-              ...(needsMapping && { nameColumn: nameCol, companyColumn: companyCol }),
+              ...(needsMapping && { nameColumn: effNameCol, companyColumn: effCompanyCol }),
             }),
           });
 
@@ -211,8 +211,8 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <p style={{ ...mono, fontSize: 9, letterSpacing: '.1em', color: T.inkF, textTransform: 'uppercase' }}>Spalten-Zuordnung</p>
             {[
-              { label: 'Name',  value: nameCol,    set: setNameCol },
-              { label: 'Firma / Domain', value: companyCol, set: setCompanyCol },
+              { label: 'Name',  value: effNameCol,    set: setNameCol },
+              { label: 'Firma / Domain', value: effCompanyCol, set: setCompanyCol },
             ].map(({ label, value, set }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ ...mono, fontSize: 10, color: T.inkD, width: 90, flexShrink: 0 }}>{label}</span>
