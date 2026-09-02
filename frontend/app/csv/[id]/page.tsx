@@ -84,7 +84,8 @@ export default function CsvViewer() {
   /** Merge finished values into the stored CSV so the columns survive reloads */
   const persistColumnsToCsv = async (cols: Record<string, string[]>) => {
     if (!run) return;
-    try { await saveCsvRunColumns(id, run.data, cols); } catch {}
+    try { await saveCsvRunColumns(id, run.data, cols); }
+    catch { showToast('Ergebnisse konnten nicht gespeichert werden — Browser-Speicher voll? Bitte Seite nicht neu laden.', 'error', 10000); }
   };
 
   /** "+ KI-Spalte": column appears in the table immediately, no popup */

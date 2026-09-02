@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { loadCsvRun, saveCsvRunColumns, type CsvRunMeta } from '@/lib/csvRuns';
 import { loadAiConfigs, findDerivedRule } from '@/lib/analysisConfigs';
 import { EnrichmentPanel } from '@/app/components/EnrichmentPanel';
+import { useToast } from '@/app/components/Toast';
 
 const T = {
   panel:  'var(--th-panel)',
@@ -20,6 +21,7 @@ const T = {
 
 export default function EnrichPage() {
   const router = useRouter();
+  const { showToast } = useToast();
   const { id } = useParams<{ id: string }>();
 
   const [meta,  setMeta]  = useState<CsvRunMeta | null>(null);
@@ -67,7 +69,9 @@ export default function EnrichPage() {
       const merged = await saveCsvRunColumns(id, rows, { email_enriched: emailCol });
       setRows(merged);
       setSaved(true);
-    } catch {}
+    } catch {
+      showToast('E-Mails konnten nicht gespeichert werden — Browser-Speicher voll? Bitte Seite nicht neu laden.', 'error', 10000);
+    }
   };
 
   if (error) return (
