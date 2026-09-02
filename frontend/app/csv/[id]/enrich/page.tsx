@@ -43,15 +43,20 @@ export default function EnrichPage() {
       .catch(e => setError(e instanceof Error ? e.message : 'Fehler beim Laden.'));
   }, [id]);
 
-  // Nur Zeilen mit Zielgruppen-Treffer enrichen (spart Credits); Mapping
-  // zurück auf die Original-Indizes über activeIdx
+  // Nur Zeilen mit Zielgruppen-Treffer enrichen (spart Credits); bereits
+  // enrichte Zeilen werden übersprungen, damit ein erneuter Lauf bei Listen
+  // über dem 50er-Limit automatisch mit der nächsten Charge weitermacht.
+  // Mapping zurück auf die Original-Indizes über activeIdx
   const audienceActive = !!audience && onlyAudience;
   const { activeIdx, activeRows } = useMemo(() => {
     const idx = rows
       .map((_, i) => i)
-      .filter(i => !audienceActive || String(rows[i][audience!.column] ?? '').trim() === audience!.value);
+      .filter(i => !audienceActive || String(rows[i][audience!.column] ?? '').trim() === audience!.value)
+      .filter(i => !String(rows[i].email_enriched ?? '').trim());
     return { activeIdx: idx, activeRows: idx.map(i => rows[i]) };
   }, [rows, audienceActive, audience]);
+
+  const alreadyEnrichedCount = rows.filter(r => String(r.email_enriched ?? '').trim()).length;
 
   // Merge enriched emails back into the stored CSV so the table keeps them
   const persistEmails = async (results: { email: string }[]) => {
@@ -98,6 +103,13 @@ export default function EnrichPage() {
               ✓ E-Mails als Spalte «email_enriched» in die Tabelle übernommen.
             </p>
           </div>
+        )}
+
+        {alreadyEnrichedCount > 0 && (
+          <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF, marginBottom: 14 }}>
+            ⓘ {alreadyEnrichedCount} Zeile{alreadyEnrichedCount === 1 ? '' : 'n'} bereits enricht — werden übersprungen.
+            {activeRows.length > 0 && ' Erneut „Enrichment starten" klicken für die nächste Charge.'}
+          </p>
         )}
 
         {/* Zielgruppen-Filter: nur klassifizierte Treffer enrichen */}

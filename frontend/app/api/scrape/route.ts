@@ -81,16 +81,20 @@ export async function POST(req: NextRequest) {
 
   const allRows: Record<string, string>[] = [];
   const seenAdIds = new Set<string>();
+  // Global cap across all keywords — otherwise N keywords could each pull
+  // up to `limit` ads, silently multiplying the result size by N.
+  let collected = 0;
 
   try {
     for (const term of keywords) {
+      if (collected >= limit) break;
       const params = new URLSearchParams({
         access_token: token,
         search_terms: term,
         ad_reached_countries: JSON.stringify(countries.length ? countries : ['DE', 'AT']),
         ad_active_status: cfg.ad_status || 'ACTIVE',
         fields: FIELDS.join(','),
-        limit: String(Math.min(limit, 100)),
+        limit: String(Math.min(limit - collected, 100)),
         publisher_platforms: JSON.stringify(platforms),
         search_type: cfg.search_type || 'KEYWORD_UNORDERED',
       });
@@ -104,7 +108,6 @@ export async function POST(req: NextRequest) {
       }
 
       let url: string | null = `${API_URL}?${params.toString()}`;
-      let collected = 0;
 
       while (url && collected < limit) {
         const res: Response = await fetch(url, {
