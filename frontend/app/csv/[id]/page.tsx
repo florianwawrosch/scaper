@@ -112,6 +112,30 @@ export default function CsvViewer() {
     if (!run || colRunning[cfg.id]) return;
     if (!cfg.prompt.trim()) { setEditingId(cfg.id); return showToast('Erst einen Prompt eingeben (⚙)', 'warning'); }
     setColRunning(p => ({ ...p, [cfg.id]: true }));
+
+    // Declared outside the try so a mid-run failure (e.g. chunk 3 of 5 hits a
+    // network error) can still persist whatever chunks already completed —
+    // otherwise already-paid-for API results only ever lived in React state
+    // and a reload (or even a bare retry, since the cache hash never saved)
+    // would silently discard and re-bill them.
+    let merged: string[] | null = null;
+    let lastSplit: Record<string, string[]> | null = null;
+    const promptHash = shortHash([cfg.provider, cfg.model, cfg.prompt, ...(cfg.inputColumns ?? [])].join('\x1f'));
+    const rowHashes = run.data.map(r => rowFingerprint(r, cfg.inputColumns));
+    const hashKey = `analysis_hashes_${id}`;
+    let allHashes: Record<string, { promptHash: string; rowHashes: string[] }> = {};
+    try { allHashes = JSON.parse(localStorage.getItem(hashKey) ?? '{}'); } catch {}
+
+    const persistProgress = async () => {
+      if (!merged || !merged.some(v => v !== PENDING)) return;
+      const derived = lastSplit && cfg.derived?.length ? applyDerivedRules(cfg.derived, lastSplit, run.data.length) : {};
+      for (const [n, v] of Object.entries(derived)) upsertAiColumn(n, v);
+      await persistColumnsToCsv({ [cfg.name]: merged, ...(lastSplit ?? {}), ...derived });
+      allHashes[cfg.id] = { promptHash, rowHashes };
+      try { localStorage.setItem(hashKey, JSON.stringify(allHashes)); } catch {}
+      return derived;
+    };
+
     try {
       const apiKey = (loadSettings().apiKeys as Record<string, string>)[cfg.provider] || undefined;
       const multi = !!cfg.outputFields?.length;
@@ -119,11 +143,6 @@ export default function CsvViewer() {
       // feld_hash-Caching (wie im Sheet): Zeilen mit unverändertem Prompt und
       // unveränderten Eingabewerten, die schon ein brauchbares Ergebnis haben,
       // werden nicht erneut klassifiziert. Fehler-Zeilen laufen automatisch neu.
-      const promptHash = shortHash([cfg.provider, cfg.model, cfg.prompt, ...(cfg.inputColumns ?? [])].join('\x1f'));
-      const rowHashes = run.data.map(r => rowFingerprint(r, cfg.inputColumns));
-      const hashKey = `analysis_hashes_${id}`;
-      let allHashes: Record<string, { promptHash: string; rowHashes: string[] }> = {};
-      try { allHashes = JSON.parse(localStorage.getItem(hashKey) ?? '{}'); } catch {}
       const prev = allHashes[cfg.id];
       const existing = aiColumns.find(c => c.name === cfg.name)?.values
         ?? run.data.map(r => r[cfg.name] ?? '');
@@ -143,19 +162,20 @@ export default function CsvViewer() {
       // Persistenter Mal-Puffer: fertige Werte werden genau EINMAL normalisiert
       // (statt bei jedem Progress-Tick die ganze Liste erneut) und dann nur noch
       // kopiert — bei 1000 Zeilen × 50 Chunks spart das ~98% der Normalisierung.
-      const merged = run.data.map((_, i) => (todoSet.has(i) ? PENDING : existing[i]));
+      merged = run.data.map((_, i) => (todoSet.has(i) ? PENDING : existing[i]));
       let normalizedUpTo = 0;
       const paint = (vals: string[]) => {
         for (let j = normalizedUpTo; j < vals.length; j++) {
           if (vals[j] === PENDING) continue;
-          merged[todo[j]] = multi ? normalizeMultiOutput(vals[j], cfg.outputFields!, cfg.outputEnums) : vals[j];
+          merged![todo[j]] = multi ? normalizeMultiOutput(vals[j], cfg.outputFields!, cfg.outputEnums) : vals[j];
           if (j === normalizedUpTo) normalizedUpTo++;
         }
-        upsertAiColumn(cfg.name, [...merged]);
+        upsertAiColumn(cfg.name, [...merged!]);
         // Multi-Output: Antwort live in die Einzelspalten splitten
         if (multi) {
-          const split = splitMultiOutput(merged, cfg.outputFields!);
+          const split = splitMultiOutput(merged!, cfg.outputFields!);
           for (const [n, v] of Object.entries(split)) upsertAiColumn(n, v);
+          lastSplit = split;
           return split;
         }
         return null;
@@ -171,23 +191,23 @@ export default function CsvViewer() {
         multiOutput: multi,
         onProgress: (partial) => {
           paint(partial);
-          setColProgress(p => ({ ...p, [cfg.id]: merged.filter(v => v !== PENDING).length }));
+          setColProgress(p => ({ ...p, [cfg.id]: merged!.filter(v => v !== PENDING).length }));
         },
       });
-      const split = paint(subValues);
-      const failed = todo.filter(i => isAiError(merged[i])).length;
+      paint(subValues);
+      const failed = todo.filter(i => isAiError(merged![i])).length;
 
-      const derived = split && cfg.derived?.length ? applyDerivedRules(cfg.derived, split, run.data.length) : {};
-      for (const [n, v] of Object.entries(derived)) upsertAiColumn(n, v);
-      await persistColumnsToCsv({ [cfg.name]: merged, ...(split ?? {}), ...derived });
-      allHashes[cfg.id] = { promptHash, rowHashes };
-      try { localStorage.setItem(hashKey, JSON.stringify(allHashes)); } catch {}
+      await persistProgress();
       const parts: string[] = [`${todo.length - failed} klassifiziert`];
       if (skipped > 0) parts.push(`${skipped} übersprungen (unverändert)`);
       if (failed > 0) parts.push(`${failed} ungültig — erneut ▶ drücken`);
       showToast(`«${cfg.name}»: ${parts.join(', ')}`, failed > 0 ? 'warning' : 'success', failed > 0 ? 7000 : undefined);
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'Fehler', 'error', 8000);
+      // Whatever chunks completed before the failure are still worth keeping —
+      // save them so a retry only redoes what's actually still pending.
+      const savedPartial = await persistProgress().catch(() => undefined) !== undefined;
+      const msg = e instanceof Error ? e.message : 'Fehler';
+      showToast(savedPartial ? `${msg} — bereits klassifizierte Zeilen wurden gespeichert.` : msg, 'error', 8000);
     } finally {
       setColRunning(p => ({ ...p, [cfg.id]: false }));
       setColProgress(p => ({ ...p, [cfg.id]: 0 }));
