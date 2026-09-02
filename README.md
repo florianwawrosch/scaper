@@ -23,7 +23,7 @@ definiert alle akzeptierten Namen). Aktuell verwendete Namen:
 | Anthropic Claude | `ANTHROPIC_API_KEY` |
 | FindyMail | `FINDYMAIL_API_KEY` |
 | Hunter.io | `HUNTER_IO_API_KEY` |
-| App-Passwortschutz | `APP_PASSWORD` (optional) |
+| App-Passwortschutz | `APP_PASSWORD` — **Pflicht für jedes öffentliche Deployment**, siehe unten |
 
 Nach dem Anlegen/Ändern einer Variable: einmal **Redeploy** — Vercel übernimmt
 Variablen erst beim nächsten Deploy. Kontrolle im Browser:
@@ -32,6 +32,27 @@ Booleans, nie die Werte). In den App-Einstellungen erscheint für serverseitige
 Keys das blaue Badge „✓ Server-Key aktiv". Keys, die man in den
 App-Einstellungen einträgt, liegen nur im jeweiligen Browser (localStorage)
 und haben Vorrang vor den Server-Keys.
+
+## Passwortschutz — vor dem ersten öffentlichen Deploy setzen
+
+Die Server-Keys werden bei **jeder** Anfrage an `/api/scrape`, `/api/ai/analyze`
+und `/api/enrich` eingesetzt — auch ohne Login. Ohne `APP_PASSWORD` ist die App
+also für jeden mit der URL offen, und jeder kann auf Kosten der Meta-, KI- und
+Enrichment-Credits scrapen, klassifizieren und enrichen.
+
+1. Vercel → Project → **Settings → Environment Variables**
+2. `APP_PASSWORD` anlegen (Production; optional auch Preview), ein echtes
+   Passwort als Wert
+3. **Redeploy** — die Variable greift erst beim nächsten Deploy
+
+Danach schützt die Middleware alle Seiten **und** alle API-Routen: ohne gültiges
+Login-Cookie landet jeder Aufruf (auch ein direkter `curl` auf `/api/scrape`)
+auf `/login`. Kontrolle: Die App-URL im Browser öffnen muss sofort auf `/login`
+umleiten. Solange kein Passwort gesetzt ist und der Server Keys hat, zeigt die
+App auf der Import-Seite und unter Einstellungen → Integrationen einen roten
+Warnhinweis.
+
+Lokal (`npm run dev`) gilt dasselbe über `frontend/.env.local`.
 
 ## Architektur
 

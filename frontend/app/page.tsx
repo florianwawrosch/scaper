@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
 import { saveCsvText, deleteCsvText } from '@/lib/csvStorage';
 import { api, type ScrapeRun } from '@/lib/api';
-import { fetchKeyAvailability } from '@/lib/keyAvailability';
+import { fetchServerStatus } from '@/lib/keyAvailability';
 import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { getEffectivePresets, detectPreset, presetToConfigs, type ImportPreset } from '@/lib/aiTemplates';
@@ -121,6 +121,8 @@ export default function Home() {
   const [formError,      setFormError]      = useState('');
   const [uploading,      setUploading]      = useState(false);
   const [backendKeys,    setBackendKeys]    = useState<Record<string, boolean>>({});
+  // null = unknown (status request failed) — no warning flashed on a blip
+  const [pwProtected,    setPwProtected]    = useState<boolean | null>(null);
   const [useBlocklist,   setUseBlocklist]   = useState(true);
   const [blockCount,     setBlockCount]     = useState(0);
   const [groupByPage,    setGroupByPage]    = useState(true);
@@ -175,7 +177,7 @@ export default function Home() {
       const last = runs[0];
       if (!hadRescrape && last?.scraper_config) applyRunConfig(last.scraper_config as Record<string, any>);
     }).catch(() => {});
-    fetchKeyAvailability().then(setBackendKeys);
+    fetchServerStatus().then(s => { setBackendKeys(s.keys); setPwProtected(s.passwordProtected); });
   }, []);
 
   const deleteCsvImport = async (csvId: string) => {
@@ -460,6 +462,30 @@ export default function Home() {
   return (
     <div style={{ minHeight: '100vh' }}>
       <div style={{ maxWidth: 1060, margin: '0 auto', padding: '20px 20px 48px' }}>
+
+        {/* Server hat API-Keys, aber kein APP_PASSWORD: jeder mit der URL kann
+            auf Kosten dieser Keys scrapen/klassifizieren/enrichen. */}
+        {pwProtected === false && Object.values(backendKeys).some(Boolean) && (
+          <div style={{
+            marginBottom: 16, padding: '11px 14px', borderRadius: 8,
+            border: '1px solid rgba(232,115,107,.45)', background: 'rgba(232,115,107,.08)',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>⚠</span>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontFamily: T.ffMono, fontSize: 12, fontWeight: 600, color: T.rose }}>
+                App ist ohne Passwort öffentlich — Server-API-Keys sind für jeden nutzbar
+              </p>
+              <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, marginTop: 3, lineHeight: 1.5 }}>
+                In Vercel die Umgebungsvariable <code>APP_PASSWORD</code> setzen und neu deployen.
+                Bis dahin kann jeder mit dieser URL auf Kosten eurer Meta-/KI-/Enrichment-Credits arbeiten.
+              </p>
+            </div>
+            <button onClick={() => router.push('/settings')} className="btn-ghost" style={{ padding: '4px 10px', fontSize: 11, flexShrink: 0 }}>
+              Einstellungen →
+            </button>
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, alignItems: 'start' }}>
 
           {/* ── Left: Scraper config ── */}

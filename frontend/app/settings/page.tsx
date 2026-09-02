@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { loadSettings, saveSettings } from '@/lib/settings';
-import { fetchKeyAvailability } from '@/lib/keyAvailability';
+import { fetchServerStatus } from '@/lib/keyAvailability';
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, type BlockEntry } from '@/lib/blocklist';
 import { getEffectivePresets, savePromptOverride, resetPresetOverrides, hasOverride, type ImportPreset } from '@/lib/aiTemplates';
 
@@ -76,6 +76,8 @@ export default function Settings() {
   const [show,       setShow]       = useState<Record<string, boolean>>({});
   const [backendUrl, setBackendUrl] = useState('');
   const [serverKeys, setServerKeys] = useState<Record<string, boolean>>({});
+  // null = unknown (status request failed) — no warning flashed on a blip
+  const [pwProtected, setPwProtected] = useState<boolean | null>(null);
   const [blocklist,  setBlocklist]  = useState<BlockEntry[]>([]);
   const [blockInput, setBlockInput] = useState('');
   // KI-Vorlagen: effektive Presets + lokale Editier-Zustände (Key: presetId:columnName)
@@ -111,7 +113,7 @@ export default function Settings() {
     } catch {}
     try { setBackendUrl(localStorage.getItem('backendUrl') ?? ''); } catch {}
     // Which keys exist server-side (Vercel/Railway env vars) — booleans only
-    fetchKeyAvailability().then(setServerKeys);
+    fetchServerStatus().then(s => { setServerKeys(s.keys); setPwProtected(s.passwordProtected); });
     setBlocklist(loadBlocklist());
     reloadTemplates();
     // Deep link: /settings?tab=blocklist
@@ -359,6 +361,20 @@ export default function Settings() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+
+              {/* ── Server-Keys ohne APP_PASSWORD = öffentlich nutzbar ── */}
+              {pwProtected === false && Object.values(serverKeys).some(Boolean) && (
+                <div style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid rgba(232,115,107,.45)', background: 'rgba(232,115,107,.08)' }}>
+                  <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: '#e8736b', marginBottom: 4 }}>
+                    ⚠ Kein Passwortschutz — die Server-Keys unten sind öffentlich nutzbar
+                  </p>
+                  <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkD, lineHeight: 1.6 }}>
+                    Ohne <code>APP_PASSWORD</code> ist die App für jeden mit der URL offen, und jeder Aufruf
+                    von Scraper, KI-Analyse und Enrichment läuft über diese Keys. In Vercel →
+                    Settings → Environment Variables <code>APP_PASSWORD</code> setzen und neu deployen.
+                  </p>
+                </div>
+              )}
 
               {/* ── Aktiv: connected integrations, pulled to the top ── */}
               {activeServices.length > 0 && (
