@@ -492,7 +492,7 @@ export default function Settings() {
                             <input
                               value={tplVersions[k] ?? ''}
                               onChange={e => setTplVersions(p => ({ ...p, [k]: e.target.value }))}
-                              placeholder="v5"
+                              placeholder="z.B. v2"
                               style={{ width: 52, fontFamily: T.mono, fontSize: 10, padding: '3px 7px', borderRadius: 4, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none' }}
                             />
                           </div>
