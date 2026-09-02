@@ -127,7 +127,15 @@ export function applyDerivedRules(
   const out: Record<string, string[]> = {};
   for (const rule of rules) {
     out[rule.name] = Array.from({ length: rowCount }, (_, i) => {
-      const ok = rule.allOf.every(c => c.anyOf.includes((columns[c.field]?.[i] ?? '').trim()));
+      const values = rule.allOf.map(c => (columns[c.field]?.[i] ?? '').trim());
+      // A required field that's still pending ('·', not classified yet in
+      // this run) or empty (cleared by splitMultiOutput after a "Fehler:"
+      // response) means this row hasn't actually been evaluated — falling
+      // through to "else" here would mislabel a not-yet-classified row as
+      // definitively excluded from the target audience, and that mislabel
+      // can now outlive the run (e.g. persisted on a mid-run failure).
+      if (values.some(v => v === '' || v === PENDING)) return PENDING;
+      const ok = rule.allOf.every((c, j) => c.anyOf.includes(values[j]));
       return ok ? rule.then : rule.else;
     });
   }
