@@ -321,9 +321,11 @@ export function DataTable({
   // URLs and bare domains (e.g. "app.quiz-akademie.de") become clickable links
   const renderCell = (val: string) => {
     const v = val.trim();
-    // Full URL, or a bare domain: label.tld optionally with a path, no spaces
+    // Full URL, or a bare domain: label.tld optionally with a path, no spaces.
+    // The TLD must be alphabetic (real TLDs never are) so decimals, version
+    // strings ("16.3.3") and IPs ("192.168.1.1") don't get misread as domains.
     const isUrl    = /^https?:\/\/\S+$/i.test(v);
-    const isDomain = /^(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/\S*)?$/i.test(v) && v.includes('.') && !v.includes('@');
+    const isDomain = /^(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:\/\S*)?$/i.test(v) && !v.includes('@');
     if (isUrl || isDomain) {
       const href = isUrl ? v : `https://${v}`;
       return (
