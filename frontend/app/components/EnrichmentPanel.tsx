@@ -65,6 +65,15 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
     });
   }, []);
 
+  // Auto-select common column names (e.g. LinkedIn imports use voller_name/firma)
+  // so the mapping doesn't have to be picked by hand on every visit.
+  useEffect(() => {
+    if (!availableColumns?.length) return;
+    const pick = (candidates: string[]) => availableColumns.find(c => candidates.includes(c.toLowerCase()));
+    setNameCol(prev => prev || pick(['voller_name', 'name', 'full_name', 'vollername']) || '');
+    setCompanyCol(prev => prev || pick(['firma', 'company', 'unternehmen', 'company_domain', 'domain']) || '');
+  }, [availableColumns]);
+
   // Only show providers that are actually configured (browser key or server env)
   const PROVIDERS = ALL_PROVIDERS.filter(p => available[p.id]);
 
