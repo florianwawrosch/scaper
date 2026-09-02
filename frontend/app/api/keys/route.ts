@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { KEY_ENV, envKey } from '@/lib/serverKeys';
+import { safeEqual } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (!pwd) return NextResponse.json({});
 
   const cookie = req.cookies.get('app_auth')?.value;
-  if (cookie !== `auth::${pwd}`) {
+  if (typeof cookie !== 'string' || !safeEqual(cookie, `auth::${pwd}`)) {
     return NextResponse.json({ error: 'Nicht eingeloggt' }, { status: 401 });
   }
 

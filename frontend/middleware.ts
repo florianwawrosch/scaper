@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { safeEqual } from '@/lib/auth';
 
 export function middleware(req: NextRequest) {
   const pwd = process.env.APP_PASSWORD;
@@ -13,7 +14,7 @@ export function middleware(req: NextRequest) {
   }
 
   const cookie = req.cookies.get('app_auth')?.value;
-  if (cookie && cookie === `auth::${pwd}`) return NextResponse.next();
+  if (cookie && safeEqual(cookie, `auth::${pwd}`)) return NextResponse.next();
 
   const url = req.nextUrl.clone();
   url.pathname = '/login';

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { safeEqual } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   const { password } = await req.json();
@@ -8,7 +9,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  if (password !== expected) {
+  if (typeof password !== 'string' || !safeEqual(password, expected)) {
     return NextResponse.json({ error: 'Falsches Passwort' }, { status: 401 });
   }
 
