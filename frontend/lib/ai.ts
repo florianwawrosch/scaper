@@ -162,10 +162,20 @@ export function applyDerivedRules(
 }
 
 /**
+ * Wie viele 20er-Chunks gleichzeitig an /api/ai/analyze gehen. Der Server
+ * fährt pro Request 4 Provider-Aufrufe parallel, also 12 gleichzeitige Calls
+ * bei 3 Chunks — für Claude/OpenAI-Limits unkritisch. Geminis Free-Tier
+ * (15 Anfragen/Minute) verträgt nur einen Chunk auf einmal.
+ */
+const PARALLEL_CHUNKS: Record<string, number> = { anthropic: 3, openai: 3, gemini: 1 };
+
+/**
  * Run one AI column over all rows via /api/ai/analyze, in chunks so no single
- * request hits the serverless time limit. `onProgress` is called after each
- * chunk with the values collected so far (padded to the row count) so the UI
- * can stream results into the table. Throws with a readable message on error.
+ * request hits the serverless time limit. Several chunks run concurrently
+ * (provider-dependent); `onProgress` is called after each finished chunk with
+ * the values collected so far — unfinished slots hold PENDING, and chunks may
+ * complete out of order — so the UI can stream results into the table.
+ * Throws with a readable message on the first failed chunk.
  */
 export async function runAiColumn(opts: {
   rows: Record<string, string>[];
@@ -174,15 +184,20 @@ export async function runAiColumn(opts: {
   prompt: string;
   apiKey?: string;
   chunkSize?: number;
+  /** Gleichzeitige Chunks (Standard: je Provider, siehe PARALLEL_CHUNKS) */
+  parallel?: number;
   inputColumns?: string[];
   multiOutput?: boolean;
   onProgress?: (partial: string[]) => void;
 }): Promise<string[]> {
   const { rows, provider, model, prompt, apiKey, chunkSize = 20, inputColumns, multiOutput, onProgress } = opts;
-  const values: string[] = [];
+  const parallel = Math.max(1, opts.parallel ?? PARALLEL_CHUNKS[provider] ?? 2);
+  const values: string[] = Array(rows.length).fill(PENDING);
+  const starts: number[] = [];
+  for (let i = 0; i < rows.length; i += chunkSize) starts.push(i);
 
-  for (let i = 0; i < rows.length; i += chunkSize) {
-    const prompts = rows.slice(i, i + chunkSize).map(r => buildRowPrompt(r, prompt, inputColumns, multiOutput));
+  const runChunk = async (start: number) => {
+    const prompts = rows.slice(start, start + chunkSize).map(r => buildRowPrompt(r, prompt, inputColumns, multiOutput));
     const res = await fetch('/api/ai/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -194,8 +209,18 @@ export async function runAiColumn(opts: {
       throw new Error(msg);
     }
     const data = await res.json();
-    values.push(...(data.values ?? []));
-    onProgress?.([...values, ...Array(Math.max(0, rows.length - values.length)).fill('·')]);
-  }
+    const got: string[] = data.values ?? [];
+    for (let j = 0; j < prompts.length; j++) values[start + j] = got[j] ?? `Fehler: keine Antwort`;
+    onProgress?.([...values]);
+  };
+
+  // Worker-Pool: jeder Worker zieht den nächsten Chunk; der erste Fehler
+  // bricht ab (laufende Chunks liefern ihre Werte noch per onProgress).
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(parallel, starts.length) }, async () => {
+      while (next < starts.length) await runChunk(starts[next++]);
+    }),
+  );
   return values;
 }

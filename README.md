@@ -122,6 +122,12 @@ mit Backoff (`frontend/lib/serverRetry.ts`), damit ein Rate-Limit-Hickser
 nicht sofort zur `Fehler:`-Zeile wird; Timeouts werden bewusst nicht
 wiederholt.
 
+Die KI-Analyse schickt 20er-Chunks an `/api/ai/analyze`; bei Claude und
+OpenAI laufen drei Chunks gleichzeitig (12 parallele Provider-Aufrufe), bei
+Gemini wegen des Free-Tier-Limits nur einer (`PARALLEL_CHUNKS` in
+`frontend/lib/ai.ts`). Ergebnisse erscheinen chunkweise in der Tabelle, auch
+wenn Chunks in anderer Reihenfolge fertig werden.
+
 Die Blockliste (Einstellungen → Blockliste, 🚫 in der Tabelle) filtert
 unerwünschte Seiten aus allen künftigen Scrapes.
 
