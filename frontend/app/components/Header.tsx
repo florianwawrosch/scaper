@@ -41,7 +41,7 @@ export function Header() {
           style={{ display: 'flex', alignItems: 'baseline', gap: 10, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
         >
           <span style={{
-            fontFamily: "'Spline Sans Mono', monospace",
+            ...mono,
             fontSize: 10,
             letterSpacing: '.28em',
             color: '#e8b04b',
@@ -68,7 +68,7 @@ export function Header() {
                 key={href}
                 onClick={() => router.push(href)}
                 style={{
-                  fontFamily: "'Spline Sans Mono', monospace",
+                  ...mono,
                   fontSize: 12,
                   letterSpacing: '.08em',
                   color: active ? '#f4efe4' : '#5f6e87',

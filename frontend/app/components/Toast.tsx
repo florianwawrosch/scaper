@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { createContext, useContext } from 'react';
+import { mono } from '@/app/theme';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -79,7 +80,7 @@ function ToastContainer({
           <div
             key={toast.id}
             style={{
-              fontFamily: "'Spline Sans Mono', monospace",
+              ...mono,
               fontSize: 12, padding: '8px 12px', borderRadius: 7,
               background: bg, border: `1px solid ${border}`, color,
               maxWidth: 320, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
@@ -88,7 +89,7 @@ function ToastContainer({
             <span>{toast.message}</span>
             <button
               onClick={() => removeToast(toast.id)}
-              style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12, background: 'none', border: 'none', color, opacity: 0.6, cursor: 'pointer', padding: 0, lineHeight: 1 }}
+              style={{ ...mono, fontSize: 12, background: 'none', border: 'none', color, opacity: 0.6, cursor: 'pointer', padding: 0, lineHeight: 1 }}
             >✕</button>
           </div>
         );

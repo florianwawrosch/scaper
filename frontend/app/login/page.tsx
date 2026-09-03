@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { T } from '@/app/theme';
 
-const mono = "'Spline Sans Mono', monospace";
+const mono = T.ffMono;
 
 const inputStyle = (bad: boolean): React.CSSProperties => ({
   fontFamily: mono, fontSize: 14, padding: '10px 12px', width: '100%', boxSizing: 'border-box',
