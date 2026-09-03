@@ -2,15 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Papa from 'papaparse';
 import { deleteCsvText } from '@/lib/csvStorage';
 import { loadSavedSearches, saveSavedSearch, deleteSavedSearch, type SavedSearch } from '@/lib/savedSearches';
-import { createCsvRun } from '@/lib/csvRuns';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
-import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
-import { loadSettings } from '@/lib/settings';
+import { loadBlocklist } from '@/lib/blocklist';
 import { presetsForSource, applyPresets, pickPresetProvider, type PresetSource } from '@/lib/aiTemplates';
 import { useCsvImport } from '@/app/hooks/useCsvImport';
+import { useScrapeForm, DEFAULT_FORM } from '@/app/hooks/useScrapeForm';
 import { useToast } from '@/app/components/Toast';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { PresetSelector } from '@/app/components/PresetSelector';
@@ -66,32 +64,20 @@ function SingleChip({ options, value, onChange }: { options: { value: string; la
   );
 }
 
+// Alte gespeicherte Suchen kennen nicht jedes Feld — fehlende auf Standard setzen
+const DEFAULT_FORM_SEARCH = { keywords: DEFAULT_FORM.tags, country: DEFAULT_FORM.country, platforms: DEFAULT_FORM.platforms, adStatus: DEFAULT_FORM.adStatus };
+
 export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [csvRuns,        setCsvRuns]        = useState<{id:string;filename:string;createdAt:string;rowCount:number}[]>([]);
-  const [creating,       setCreating]       = useState(false);
-  const [tags,           setTags]           = useState<string[]>([]);
-  const [country,        setCountry]        = useState('DE');
-  const [platforms,      setPlatforms]      = useState(['FACEBOOK', 'INSTAGRAM']);
-  const [adStatus,       setAdStatus]       = useState('ACTIVE');
-  const [mediaType,      setMediaType]      = useState('ALL');
-  const [searchType,     setSearchType]     = useState('KEYWORD_UNORDERED');
-  const [languages,      setLanguages]      = useState<string[]>([]);
-  const [dateMin,        setDateMin]        = useState('');
-  const [dateMax,        setDateMax]        = useState('');
-  const [limit,          setLimit]          = useState(100);
-  const [bylines,        setBylines]        = useState('');
   const [presets,        setPresets]        = useState<Record<string, SavedSearch>>({});
   const [presetName,     setPresetName]     = useState('');
   const [showPresets,    setShowPresets]    = useState(false);
-  const [formError,      setFormError]      = useState('');
   const [backendKeys,    setBackendKeys]    = useState<Record<string, boolean>>({});
-  const [useBlocklist,   setUseBlocklist]   = useState(true);
   const [blockCount,     setBlockCount]     = useState(0);
-  const [groupByPage,    setGroupByPage]    = useState(true);
 
   useEffect(() => {
     // Local history renders instantly — no waiting for any network call.
@@ -114,25 +100,6 @@ export default function Home() {
     setCsvRuns(csvItems);
     setBlockCount(loadBlocklist().length);
 
-    // "Erneut scrapen": prefill the form from a stored run config
-    try {
-      const rc = localStorage.getItem('rescrape_config');
-      if (rc) {
-        const c = JSON.parse(rc);
-        if (Array.isArray(c.keywords)) setTags(c.keywords);
-        if (c.country)                 setCountry(c.country);
-        if (Array.isArray(c.platforms)) setPlatforms(c.platforms);
-        if (c.adStatus)                setAdStatus(c.adStatus);
-        if (c.mediaType)               setMediaType(c.mediaType);
-        if (c.searchType)              setSearchType(c.searchType);
-        if (Array.isArray(c.languages)) setLanguages(c.languages);
-        if (c.dateMin)                 setDateMin(c.dateMin);
-        if (c.dateMax)                 setDateMax(c.dateMax);
-        if (c.limit)                   setLimit(c.limit);
-        if (c.bylines)                 setBylines(c.bylines);
-        localStorage.removeItem('rescrape_config');
-      }
-    } catch {}
     fetchKeyAvailability().then(setBackendKeys);
   }, []);
 
@@ -168,127 +135,29 @@ export default function Home() {
     return new Set(presets.map(p => p.id));
   }, [backendKeys, showToast]);
 
+  const {
+    tags, setTags, country, setCountry, platforms, setPlatforms, adStatus, setAdStatus,
+    mediaType, setMediaType, searchType, setSearchType, languages, setLanguages,
+    dateMin, setDateMin, dateMax, setDateMax, limit, setLimit, bylines, setBylines,
+    applyConfig, toConfig, startScrape, creating, formError, setFormError,
+    useBlocklist, setUseBlocklist, groupByPage, setGroupByPage,
+  } = useScrapeForm({ autoApplyPresets });
+
   const { csvFile, uploading, dragOver, importFile, aiPresetPrompt, setAiPresetPrompt } =
     useCsvImport({ autoApplyPresets, onError: setFormError });
 
   const savePreset = () => {
     const auto = tags[0] ?? new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
     const name = presetName.trim() || auto;
-    setPresets(saveSavedSearch(name, { keywords: tags, country, platforms, adStatus, mediaType, searchType, languages, dateMin, dateMax, limit, bylines }));
+    setPresets(saveSavedSearch(name, toConfig()));
     setPresetName('');
   };
 
   const loadPreset = (name: string) => {
     const p = presets[name];
     if (!p) return;
-    setTags(p.keywords ?? []);
-    setCountry(p.country ?? p.countries?.[0] ?? 'DE');
-    setPlatforms(p.platforms ?? ['FACEBOOK', 'INSTAGRAM']);
-    setAdStatus(p.adStatus ?? 'ACTIVE');
-    if (p.mediaType) setMediaType(p.mediaType);
-    if (p.searchType) setSearchType(p.searchType);
-    if (p.languages) setLanguages(p.languages);
-    if (p.dateMin !== undefined) setDateMin(p.dateMin);
-    if (p.dateMax !== undefined) setDateMax(p.dateMax);
-    if (p.limit) setLimit(p.limit);
-    if (p.bylines !== undefined) setBylines(p.bylines);
+    applyConfig({ ...DEFAULT_FORM_SEARCH, ...p });
     setShowPresets(false);
-  };
-
-  const startScrape = async () => {
-    setFormError('');
-    if (tags.length === 0) { setFormError('Mindestens einen Suchbegriff eingeben'); return; }
-    const settings = loadSettings();
-    // Token from browser settings if present — otherwise the Vercel server
-    // reads it from its env vars (META_API_KEY etc., see lib/serverKeys.ts).
-    const token = settings.apiKeys.meta_ads;
-    setCreating(true);
-    try {
-      // Scrape runs directly on the Vercel server — no separate backend needed.
-      const res = await fetch('/api/scrape', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          keywords: tags,
-          countries: country === 'ALL' ? ['ALL'] : [country],
-          platforms,
-          ad_status: adStatus,
-          media_type: mediaType,
-          search_type: searchType,
-          ...(languages.length > 0 && { languages }),
-          ...(dateMin && { ad_delivery_date_min: dateMin }),
-          ...(dateMax && { ad_delivery_date_max: dateMax }),
-          limit,
-          ...(bylines && { bylines: bylines.split(',').map(s => s.trim()).filter(Boolean) }),
-          ...(token && { meta_ads_token: token }),
-        }),
-      });
-      if (!res.ok) {
-        let msg = `Scraping fehlgeschlagen (HTTP ${res.status})`;
-        try { msg = (await res.json()).detail ?? msg; } catch {}
-        throw new Error(msg);
-      }
-      const { rows } = await res.json() as { rows: Record<string, string>[] };
-      if (!rows?.length) {
-        setFormError('Keine Ads gefunden — andere Suchbegriffe oder Filter probieren.');
-        return;
-      }
-
-      // Apply the blocklist (pages the user always wants excluded)
-      let finalRows = rows;
-      if (useBlocklist) {
-        const { kept, blocked } = applyBlocklist(rows);
-        if (blocked > 0) showToast(`${blocked} Zeilen durch Blockliste entfernt`, 'info');
-        if (kept.length === 0) {
-          setFormError(`Alle ${rows.length} gefundenen Ads stehen auf der Blockliste.`);
-          return;
-        }
-        finalRows = kept;
-      }
-
-      // One row per page: the lead is the fanpage, not each individual ad
-      if (groupByPage) {
-        const byPage = new Map<string, Record<string, string> & { ads_count: string }>();
-        for (const row of finalRows) {
-          const key = String(row.page_id || row.page_name || '').trim();
-          if (!key) continue;
-          const existing = byPage.get(key);
-          if (existing) {
-            existing.ads_count = String(Number(existing.ads_count) + 1);
-            // Keep the longest ad text as the representative one
-            if ((row.ad_text?.length ?? 0) > (existing.ad_text?.length ?? 0)) {
-              existing.ad_text = row.ad_text;
-            }
-          } else {
-            byPage.set(key, { ...row, ads_count: '1' });
-          }
-        }
-        const grouped = [...byPage.values()];
-        if (grouped.length > 0 && grouped.length < finalRows.length) {
-          showToast(`${finalRows.length} Ads → ${grouped.length} Seiten zusammengefasst`, 'info');
-        }
-        if (grouped.length > 0) finalRows = grouped;
-      }
-
-      // Store the result through the proven CSV pipeline (IndexedDB + viewer)
-      const id = await createCsvRun({
-        filename: `Meta: ${tags.join(', ')}`,
-        fields: Object.keys(finalRows[0]),
-        csvText: Papa.unparse(finalRows),
-        rowCount: finalRows.length,
-        // Saved so the run can be repeated with the same settings
-        scrapeConfig: {
-          keywords: tags, country, platforms, adStatus, mediaType, searchType,
-          languages, dateMin, dateMax, limit, bylines,
-        },
-      });
-      autoApplyPresets(id, 'meta');
-      router.push(`/csv/${id}`);
-    } catch (e) {
-      setFormError(e instanceof Error ? e.message : 'Fehler beim Scrapen');
-    } finally {
-      setCreating(false);
-    }
   };
 
   const fmt = (d: string) =>
