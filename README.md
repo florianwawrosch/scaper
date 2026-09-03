@@ -88,7 +88,19 @@ pages/ + app.py              Alte Streamlit-Oberfläche (Vorgänger, ungenutzt)
    gespeicherte CSV geschrieben (überleben Reload).
 3. **Enrichment**: „Enrichment starten →" → eigene Seite, nur konfigurierte
    Provider → `/api/enrich` → E-Mails als Spalte `email_enriched`.
-4. **Export**: ↓ CSV / ↓ XLSX direkt aus der Tabelle.
+4. **Export**: ↓ CSV / ↓ XLSX direkt aus der Tabelle (alle Spalten, Filter
+   und Abwahl der Tabelle gelten). **↓ Outreach** erscheint, sobald eine
+   E-Mail-Spalte da ist: nur Zielgruppen-Treffer mit gefundener E-Mail, auf
+   die Spalten `email, first_name, last_name, company, website,
+   linkedin_profile` + Kontext (`headline, job_title, themenfeld, haupttyp,
+   quelle`) gemappt — direkt in Smartlead/Instantly/Lemlist importierbar, die
+   Kontextspalten als Personalisierungs-Variablen. Mapping in
+   `frontend/lib/outreachExport.ts`.
+
+KI- und Enrichment-Aufrufe wiederholen 429/5xx-Antworten der Provider kurz
+mit Backoff (`frontend/lib/serverRetry.ts`), damit ein Rate-Limit-Hickser
+nicht sofort zur `Fehler:`-Zeile wird; Timeouts werden bewusst nicht
+wiederholt.
 
 Die Blockliste (Einstellungen → Blockliste, 🚫 in der Tabelle) filtert
 unerwünschte Seiten aus allen künftigen Scrapes.

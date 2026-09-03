@@ -6,10 +6,11 @@ import { loadCsvRun, saveCsvRunColumns } from '@/lib/csvRuns';
 import { addToBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
-import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
+import { loadAiConfigs, saveAiConfigs, findDerivedRule } from '@/lib/analysisConfigs';
+import { buildOutreachExport } from '@/lib/outreachExport';
 import { runAiColumn, defaultModel, providerLabel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, isAiError, normalizeMultiOutput, PENDING } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
-import { DataTable, type StatChip } from '@/app/components/DataTable';
+import { DataTable, type StatChip, type ExportPreset } from '@/app/components/DataTable';
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
 import type { AnalysisConfig } from '@/app/components/AnalysisPanel';
 
@@ -359,6 +360,33 @@ export default function CsvViewer() {
       .catch(e => setError(e instanceof Error ? e.message : 'Fehler beim Laden der Datei.'));
   }, [id]);
 
+  // „↓ Outreach": nur Zielgruppe + gefundene E-Mail, auf Cold-Email-Spalten
+  // gemappt. Erscheint erst, wenn der Datensatz eine E-Mail-Spalte hat —
+  // vorher gäbe es nichts zu exportieren.
+  const exportPresets = useMemo<ExportPreset[]>(() => {
+    if (!run) return [];
+    const hasEmail = run.fields.some(f => ['email_enriched', 'email', 'e_mail', 'email_address', 'mail'].includes(f.toLowerCase()));
+    if (!hasEmail) return [];
+    const rule = findDerivedRule(aiConfigs, run.fields);
+    const audience = rule ? { column: rule.name, value: rule.then } : null;
+    return [{
+      label: '↓ Outreach',
+      title: `Cold-Email-CSV: nur Zeilen mit E-Mail${audience ? ` und ${audience.column} = ${audience.value}` : ''}, Spalten email / first_name / last_name / company / … — direkt in Smartlead & Co. importierbar`,
+      transform: (rows) => {
+        const out = buildOutreachExport(rows, run.fields, { audience });
+        const { noEmail, notAudience } = out.dropped;
+        if (out.rows.length === 0) {
+          showToast(`Nichts zu exportieren — ${notAudience} nicht Zielgruppe, ${noEmail} ohne E-Mail. Erst Enrichment laufen lassen?`, 'warning', 6000);
+          return null;
+        }
+        const skipped = [notAudience > 0 && `${notAudience} nicht Zielgruppe`, noEmail > 0 && `${noEmail} ohne E-Mail`].filter(Boolean).join(', ');
+        showToast(`${out.rows.length} Leads exportiert${skipped ? ` — übersprungen: ${skipped}` : ''}`, 'success', 5000);
+        return { filename: `outreach_${new Date().toISOString().slice(0, 10)}.csv`, columns: out.columns, rows: out.rows };
+      },
+    }];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run, aiConfigs]);
+
   const fmt = (d: string) =>
     new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 
@@ -460,6 +488,7 @@ export default function CsvViewer() {
           scrollSignal={scrollSignal}
           excludedRows={excludedRows}
           onExcludeChange={setExcludedRows}
+          exportPresets={exportPresets}
           onBlockPages={run.fields.includes('page_name') ? (rows) => {
             const names = new Set<string>();
             for (const row of rows) {

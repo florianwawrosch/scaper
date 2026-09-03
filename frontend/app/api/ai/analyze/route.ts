@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { envKey } from '@/lib/serverKeys';
+import { fetchRetry } from '@/lib/serverRetry';
 
 /**
  * AI analysis — direct TypeScript port of _call_ai_single from main.py.
@@ -22,7 +23,7 @@ async function readJson(res: Response): Promise<any> {
 async function callAi(provider: string, model: string, prompt: string, key: string): Promise<string> {
   try {
     if (provider === 'gemini') {
-      const res = await fetch(
+      const res = await fetchRetry(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
         {
           method: 'POST',
@@ -36,7 +37,7 @@ async function callAi(provider: string, model: string, prompt: string, key: stri
       return (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '—').trim();
     }
     if (provider === 'anthropic') {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetchRetry('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -51,7 +52,7 @@ async function callAi(provider: string, model: string, prompt: string, key: stri
       return (data.content?.[0]?.text ?? '—').trim();
     }
     if (provider === 'openai') {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetchRetry('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
         body: JSON.stringify({ model, max_tokens: 256, messages: [{ role: 'user', content: prompt }] }),

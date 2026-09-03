@@ -13,6 +13,18 @@ export interface StatChip {
   filter?: { column: string; value: string };
 }
 
+/**
+ * Zusätzlicher Export-Button in der Toolbar. `transform` bekommt die aktuell
+ * sichtbaren, nicht abgewählten Zeilen (Filter/Sortierung/Abwahl der Tabelle
+ * gelten also) und liefert die fertigen CSV-Spalten/-Zeilen — oder null, wenn
+ * es nichts zu exportieren gibt (der Aufrufer meldet das selbst).
+ */
+export interface ExportPreset {
+  label: string;
+  title?: string;
+  transform: (rows: Record<string, unknown>[]) => { filename: string; columns: string[]; rows: Record<string, string>[] } | null;
+}
+
 interface DataTableProps {
   data: Record<string, any>[];
   rawColumns: string[];
@@ -31,6 +43,8 @@ interface DataTableProps {
   onRunAiColumn?: (name: string) => void;
   /** Toolbar action: add the pages of the DESELECTED rows to the Blockliste */
   onBlockPages?: (rows: Record<string, any>[]) => void;
+  /** Weitere Export-Buttons neben ↓ CSV / ↓ XLSX (z.B. Outreach-CSV) */
+  exportPresets?: ExportPreset[];
 }
 
 interface ColFilter { text: string; values: Set<string> | null }
@@ -158,6 +172,7 @@ function FilterDropdown({
 export function DataTable({
   data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange,
   stats, scrollSignal = 0, onAddAiColumn, onConfigureAiColumn, onRunAiColumn, onBlockPages,
+  exportPresets = [],
 }: DataTableProps) {
   const [globalSearch, setGlobalSearch]   = useState('');
   const [colFilters,   setColFilters]     = useState<Record<string, ColFilter>>({});
@@ -266,9 +281,10 @@ export function DataTable({
 
   const activeFilters = Object.values(colFilters).filter(f => f.text || f.values !== null).length;
 
-  const exportCsv = () => {
-    const rows = sorted.filter(row => !excludedRows.has(row._idx));
-    const cols = allColumns;
+  /** Sichtbare, nicht abgewählte Zeilen — Basis für jeden Export */
+  const exportRows = () => sorted.filter(row => !excludedRows.has(row._idx));
+
+  const downloadCsv = (filename: string, cols: string[], rows: Record<string, unknown>[]) => {
     const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
     const header = cols.map(esc).join(',');
     const lines = rows.map(row => cols.map(c => esc(String(row[c] ?? ''))).join(','));
@@ -276,11 +292,19 @@ export function DataTable({
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `export_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const exportCsv = () =>
+    downloadCsv(`export_${new Date().toISOString().slice(0, 10)}.csv`, allColumns, exportRows());
+
+  const exportPreset = (p: ExportPreset) => {
+    const out = p.transform(exportRows());
+    if (out) downloadCsv(out.filename, out.columns, out.rows);
   };
 
   const exportXlsx = () => {
@@ -491,6 +515,15 @@ export function DataTable({
           title="Als Excel exportieren"
           style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(79,209,197,.3)', background: 'rgba(79,209,197,.06)', color: '#4fd1c5', opacity: sorted.length === 0 ? 0.4 : 1 }}
         >↓ XLSX</button>
+        {exportPresets.map(p => (
+          <button
+            key={p.label}
+            onClick={() => exportPreset(p)}
+            disabled={sorted.length === 0}
+            title={p.title}
+            style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(232,176,75,.35)', background: 'rgba(232,176,75,.08)', color: '#e8b04b', whiteSpace: 'nowrap', opacity: sorted.length === 0 ? 0.4 : 1 }}
+          >{p.label}</button>
+        ))}
       </div>
 
       {/* Table */}

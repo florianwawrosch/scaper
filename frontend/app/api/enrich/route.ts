@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { envKey } from '@/lib/serverKeys';
+import { fetchRetry } from '@/lib/serverRetry';
 
 /**
  * E-Mail enrichment (Hunter.io + FindyMail) — port of the enrich endpoint
@@ -17,7 +18,7 @@ async function enrichHunter(name: string, company: string, key: string): Promise
     company,
     api_key: key,
   });
-  const res = await fetch(`https://api.hunter.io/v2/email-finder?${params}`, {
+  const res = await fetchRetry(`https://api.hunter.io/v2/email-finder?${params}`, {
     signal: AbortSignal.timeout(10_000),
   });
   if (res.status === 404) return null; // no email found — not an error
@@ -32,7 +33,7 @@ async function enrichHunter(name: string, company: string, key: string): Promise
 }
 
 async function enrichFindymail(name: string, company: string, key: string): Promise<string | null> {
-  const res = await fetch('https://app.findymail.com/api/search/name', {
+  const res = await fetchRetry('https://app.findymail.com/api/search/name', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: name.trim(), domain: company }),
