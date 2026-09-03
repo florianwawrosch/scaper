@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
 import { deleteCsvText } from '@/lib/csvStorage';
+import { loadSavedSearches, saveSavedSearch, deleteSavedSearch, type SavedSearch } from '@/lib/savedSearches';
 import { createCsvRun } from '@/lib/csvRuns';
 import { api, type ScrapeRun } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
@@ -14,6 +15,7 @@ import { useCsvImport } from '@/app/hooks/useCsvImport';
 import { useToast } from '@/app/components/Toast';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { PresetSelector } from '@/app/components/PresetSelector';
+import { SavedSearchesModal } from '@/app/components/SavedSearchesModal';
 import { TagInput } from '@/app/components/TagInput';
 import { CountrySelect } from '@/app/components/CountrySelect';
 import { T } from '@/app/theme';
@@ -47,13 +49,6 @@ const LANGUAGE_OPTIONS = [
   { value: 'pl', label: 'PL' },
 ];
 const LIMIT_OPTIONS = [50, 100, 250, 500, 1000];
-
-/** Gespeicherte Suche (localStorage "presets") */
-interface SavedSearch {
-  keywords?: string[]; country?: string; countries?: string[]; platforms?: string[];
-  adStatus?: string; mediaType?: string; searchType?: string; languages?: string[];
-  dateMin?: string; dateMax?: string; limit?: number; bylines?: string; savedAt?: string;
-}
 
 const STATUS_PILL: Record<ScrapeRun['status'], { label: string; cls: string }> = {
   draft:         { label: 'Draft',    cls: 'muted' },
@@ -131,9 +126,8 @@ export default function Home() {
     // Local history renders instantly — no waiting for any network call.
     // localStorage gibt es erst im Browser: ein lazy useState würde beim
     // SSR-Prerender leer rendern und beim Hydrate springen — daher Effect.
-    const saved = localStorage.getItem('presets');
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (saved) setPresets(JSON.parse(saved));
+    setPresets(loadSavedSearches());
     const csvItems: {id:string;filename:string;createdAt:string;rowCount:number}[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -219,10 +213,7 @@ export default function Home() {
   const savePreset = () => {
     const auto = tags[0] ?? new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
     const name = presetName.trim() || auto;
-    const cfg = { keywords: tags, country, platforms, adStatus, mediaType, searchType, languages, dateMin, dateMax, limit, bylines, savedAt: new Date().toISOString() };
-    const next = { ...presets, [name]: cfg };
-    setPresets(next);
-    localStorage.setItem('presets', JSON.stringify(next));
+    setPresets(saveSavedSearch(name, { keywords: tags, country, platforms, adStatus, mediaType, searchType, languages, dateMin, dateMax, limit, bylines }));
     setPresetName('');
   };
 
@@ -241,13 +232,6 @@ export default function Home() {
     if (p.limit) setLimit(p.limit);
     if (p.bylines !== undefined) setBylines(p.bylines);
     setShowPresets(false);
-  };
-
-  const deletePreset = (name: string) => {
-    const next = { ...presets };
-    delete next[name];
-    setPresets(next);
-    localStorage.setItem('presets', JSON.stringify(next));
   };
 
   const startScrape = async () => {
@@ -656,61 +640,12 @@ export default function Home() {
 
       {/* ── Saved Searches Modal ── */}
       {showPresets && (
-        <div
-          onClick={() => setShowPresets(false)}
-          style={{ position: 'fixed', inset: 0, zIndex: 9980, background: 'rgba(7,7,10,.7)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 12, boxShadow: '0 16px 48px rgba(0,0,0,.5)', width: '100%', maxWidth: 540, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: `1px solid ${T.lineS}` }}>
-              <p style={{ fontFamily: T.ffMono, fontSize: 12, fontWeight: 600, color: T.ink }}>Gespeicherte Suchen</p>
-              <button onClick={() => setShowPresets(false)} style={{ fontFamily: T.ffMono, fontSize: 16, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
-            </div>
-            <div style={{ overflowY: 'auto', padding: '8px 0' }}>
-              {Object.keys(presets).length === 0 ? (
-                <p style={{ padding: '24px 18px', textAlign: 'center', fontFamily: T.ffMono, fontSize: 12, color: T.inkF }}>
-                  Noch keine Suchen gespeichert.<br />
-                  <span style={{ fontSize: 11, opacity: .6 }}>Filter setzen, benennen und „Speichern“ klicken.</span>
-                </p>
-              ) : (
-                Object.entries(presets).map(([name, p]) => {
-                  const kws: string[] = p.keywords ?? [];
-                  const plats: string[] = p.platforms ?? [];
-                  const c: string = p.country ?? p.countries?.[0] ?? '—';
-                  const savedAt = p.savedAt ? new Date(p.savedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-                  return (
-                    <div key={name} style={{ padding: '12px 18px', borderBottom: `1px solid ${T.lineS}` }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
-                        <div>
-                          <p style={{ fontFamily: T.ffMono, fontSize: 13, fontWeight: 600, color: T.ink }}>{name}</p>
-                          {savedAt && <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF, marginTop: 1 }}>gespeichert am {savedAt}</p>}
-                        </div>
-                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                          <button
-                            onClick={() => loadPreset(name)}
-                            style={{ fontFamily: T.ffMono, fontSize: 11, padding: '4px 14px', borderRadius: 5, background: T.gold, border: 'none', color: '#07070a', fontWeight: 600, cursor: 'pointer' }}
-                          >Laden</button>
-                          <ConfirmDelete onConfirm={() => deletePreset(name)} title="Suche löschen" style={{ display: 'flex', alignItems: 'center' }} />
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                        <span style={{ fontFamily: T.ffMono, fontSize: 10, padding: '2px 7px', borderRadius: 3, background: T.panel2, border: `1px solid ${T.lineS}`, color: T.inkD }}>{c === 'ALL' ? 'Alle Länder' : c}</span>
-                        {plats.map(pl => <span key={pl} style={{ fontFamily: T.ffMono, fontSize: 10, padding: '2px 7px', borderRadius: 3, background: T.panel2, border: `1px solid ${T.lineS}`, color: T.inkD }}>{pl}</span>)}
-                        {p.adStatus && <span style={{ fontFamily: T.ffMono, fontSize: 10, padding: '2px 7px', borderRadius: 3, background: T.panel2, border: `1px solid ${T.lineS}`, color: T.inkD }}>Status: {p.adStatus}</span>}
-                        {kws.slice(0, 4).map((kw: string) => (
-                          <span key={kw} style={{ fontFamily: T.ffMono, fontSize: 10, padding: '2px 7px', borderRadius: 3, background: T.goldD, border: `1px solid ${T.line}`, color: T.gold }}>🔍 {kw}</span>
-                        ))}
-                        {kws.length > 4 && <span style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF }}>+{kws.length - 4} weitere</span>}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
+        <SavedSearchesModal
+          searches={presets}
+          onLoad={loadPreset}
+          onDelete={(name) => setPresets(deleteSavedSearch(name))}
+          onClose={() => setShowPresets(false)}
+        />
       )}
 
       {/* ── KI-Spalten-Preset nach LinkedIn-Upload ── */}
