@@ -1,16 +1,28 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { mono } from '@/app/theme';
 
 const NAV = [
   { href: '/',         label: 'Import' },
-  { href: '/runs',     label: 'Runs' },
+  { href: '/runs',     label: 'Verlauf' },
   { href: '/settings', label: 'Einstellungen' },
 ];
 
 export function Header() {
   const router   = useRouter();
   const pathname = usePathname();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  /** Session-Cookie serverseitig löschen, dann zur Login-Seite */
+  const logout = async () => {
+    setLoggingOut(true);
+    try { await fetch('/api/auth', { method: 'DELETE' }); } catch {}
+    router.push('/login');
+    router.refresh();
+    setLoggingOut(false);
+  };
 
   return (
     <header style={{
@@ -74,6 +86,21 @@ export function Header() {
               </button>
             );
           })}
+          {pathname !== '/login' && (
+            <button
+              onClick={logout}
+              disabled={loggingOut}
+              title="Abmelden — der Login-Cookie dieses Browsers wird gelöscht"
+              data-testid="logout"
+              style={{
+                ...mono, fontSize: 11, letterSpacing: '.06em', marginLeft: 10,
+                color: '#5f6e87', background: 'none', border: '1px solid transparent',
+                borderRadius: 8, padding: '5px 10px', cursor: 'pointer', opacity: loggingOut ? .5 : 1,
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#e8736b'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#5f6e87'; }}
+            >Abmelden</button>
+          )}
         </nav>
       </div>
     </header>
