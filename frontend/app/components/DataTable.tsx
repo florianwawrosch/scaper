@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { isPendingAiValue, isAiError } from '@/lib/ai';
+import { Glyph } from './Glyph';
 
 interface AiColumn { name: string; values: string[]; label?: string }
 
@@ -21,6 +22,8 @@ export interface StatChip {
  */
 export interface ExportPreset {
   label: string;
+  /** Unicode-Icon vor dem Label, z.B. '↓' */
+  icon?: string;
   title?: string;
   transform: (rows: Record<string, unknown>[]) => { filename: string; columns: string[]; rows: Record<string, string>[] } | null;
 }
@@ -440,7 +443,7 @@ export function DataTable({
                 border: '1px solid rgba(232,115,107,.35)', background: 'rgba(232,115,107,.08)', color: '#e8736b',
                 opacity: pageCount === 0 ? 0.4 : 1,
               }}
-            >🚫 {pageCount} {pageCount === 1 ? 'Seite' : 'Seiten'} blocken</button>
+            ><Glyph>🚫</Glyph>{pageCount} {pageCount === 1 ? 'Seite' : 'Seiten'} blocken</button>
           );
         })()}
         <span style={{ ...mono, fontSize: 10, color: '#5f6e87', marginLeft: 'auto' }}>
@@ -459,7 +462,7 @@ export function DataTable({
               background: hiddenCols.size > 0 ? 'rgba(232,176,75,.08)' : 'transparent',
               color: hiddenCols.size > 0 ? '#e8b04b' : '#9aa7bd',
             }}
-          >⊞ Spalten{hiddenCols.size > 0 ? ` (${visibleRawColumns.length}/${rawColumns.length})` : ''}</button>
+          ><Glyph>⊞</Glyph>Spalten{hiddenCols.size > 0 ? ` (${visibleRawColumns.length}/${rawColumns.length})` : ''}</button>
           {colMenuOpen && (
             <>
               <div onClick={() => setColMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
@@ -501,20 +504,20 @@ export function DataTable({
             onClick={onAddAiColumn}
             title="Neue KI-Spalte anlegen"
             style={{ ...mono, fontSize: 10, padding: '2px 10px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(232,176,75,.35)', background: 'rgba(232,176,75,.08)', color: '#e8b04b', whiteSpace: 'nowrap' }}
-          >+ KI-Spalte</button>
+          ><Glyph>+</Glyph>KI-Spalte</button>
         )}
         <button
           onClick={exportCsv}
           disabled={sorted.length === 0}
           title="Als CSV exportieren"
           style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(79,209,197,.3)', background: 'rgba(79,209,197,.06)', color: '#4fd1c5', opacity: sorted.length === 0 ? 0.4 : 1 }}
-        >↓ CSV</button>
+        ><Glyph>↓</Glyph>CSV</button>
         <button
           onClick={exportXlsx}
           disabled={sorted.length === 0}
           title="Als Excel exportieren"
           style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(79,209,197,.3)', background: 'rgba(79,209,197,.06)', color: '#4fd1c5', opacity: sorted.length === 0 ? 0.4 : 1 }}
-        >↓ XLSX</button>
+        ><Glyph>↓</Glyph>XLSX</button>
         {exportPresets.map(p => (
           <button
             key={p.label}
@@ -522,7 +525,7 @@ export function DataTable({
             disabled={sorted.length === 0}
             title={p.title}
             style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(232,176,75,.35)', background: 'rgba(232,176,75,.08)', color: '#e8b04b', whiteSpace: 'nowrap', opacity: sorted.length === 0 ? 0.4 : 1 }}
-          >{p.label}</button>
+          >{p.icon && <Glyph>{p.icon}</Glyph>}{p.label}</button>
         ))}
       </div>
 

@@ -6,6 +6,7 @@ import { getApiKey, loadSettings } from '@/lib/settings';
 import { apiFetch } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { useToast } from './Toast';
+import { Glyph } from './Glyph';
 
 interface Props {
   runId: string;
@@ -262,7 +263,7 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
             opacity: running || leadsCount === 0 ? 0.4 : 1,
           }}
         >
-          {running ? '↻ Läuft…' : '▶ Enrichment starten'}
+          {running ? <><Glyph>↻</Glyph>Läuft…</> : <><Glyph>▶</Glyph>Enrichment starten</>}
         </button>
         )}
 

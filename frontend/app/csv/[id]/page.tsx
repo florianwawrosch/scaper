@@ -12,6 +12,7 @@ import { runAiColumn, defaultModel, providerLabel, splitMultiOutput, applyDerive
 import { useToast } from '@/app/components/Toast';
 import { DataTable, type StatChip, type ExportPreset } from '@/app/components/DataTable';
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
+import { Glyph } from '@/app/components/Glyph';
 import type { AnalysisConfig } from '@/app/components/AnalysisPanel';
 
 interface CsvRun {
@@ -368,7 +369,7 @@ export default function CsvViewer() {
     const rule = findDerivedRule(aiConfigs, run.fields);
     const audience = rule ? { column: rule.name, value: rule.then } : null;
     return [{
-      label: '↓ Outreach',
+      label: 'Outreach', icon: '↓',
       title: `Cold-Email-CSV: nur Zeilen mit E-Mail${audience ? ` und ${audience.column} = ${audience.value}` : ''}, Spalten email / first_name / last_name / company / … — direkt in Smartlead & Co. importierbar`,
       transform: (rows) => {
         const out = buildOutreachExport(rows, run.fields, { audience });
@@ -409,7 +410,7 @@ export default function CsvViewer() {
           <button
             onClick={() => router.push('/')}
             style={{ fontFamily: T.ffMono, fontSize: 11, padding: '5px 11px', borderRadius: 5, background: 'transparent', border: `1px solid ${T.lineS}`, color: T.inkD, cursor: 'pointer', flexShrink: 0, marginTop: 2 }}
-          >← Import</button>
+          ><Glyph>←</Glyph>Import</button>
           <div style={{ flex: 1 }}>
             <h1 style={{ fontFamily: T.ffDisp, fontSize: 20, fontWeight: 700, color: T.ink, marginBottom: 3 }}>
               {run.filename}
@@ -430,7 +431,7 @@ export default function CsvViewer() {
                 border: `1px solid ${T.lineS}`, background: 'transparent',
                 color: T.inkD, cursor: 'pointer', flexShrink: 0, marginTop: 2, letterSpacing: '.04em',
               }}
-            >↻ Erneut scrapen</button>
+            ><Glyph>↻</Glyph>Erneut scrapen</button>
           )}
           <button
             onClick={() => router.push(`/csv/${id}/enrich`)}
@@ -439,7 +440,7 @@ export default function CsvViewer() {
               border: '1px solid rgba(79,209,197,.35)', background: 'rgba(79,209,197,.07)',
               color: '#4fd1c5', cursor: 'pointer', flexShrink: 0, marginTop: 2, letterSpacing: '.04em',
             }}
-          >Enrichment starten →</button>
+          >Enrichment starten<Glyph after>→</Glyph></button>
         </div>
 
         {/* Quellen-Statistik: Zielgruppen-Quote pro Big Player (wie das statistik-Blatt) */}

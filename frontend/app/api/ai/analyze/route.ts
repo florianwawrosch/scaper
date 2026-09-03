@@ -79,7 +79,7 @@ async function callAi(provider: string, model: string, prompt: string, key: stri
 /** Translate common provider errors into actionable German messages. */
 function friendlyAiError(msg: string): string {
   const m = msg.toLowerCase();
-  if (m.includes('exceeded your current quota') || m.includes('insufficient_quota')) {
+  if (m.includes('exceeded your current quota') || m.includes('insufficient_quota') || m.includes('no credits remaining')) {
     return 'OpenAI-Guthaben aufgebraucht — unter platform.openai.com → Billing aufladen.';
   }
   if (m.includes('incorrect api key') || m.includes('invalid api key') || m.includes('invalid x-api-key') || m.includes('api key not valid')) {

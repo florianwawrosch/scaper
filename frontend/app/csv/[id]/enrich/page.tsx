@@ -6,6 +6,7 @@ import { loadCsvRun, saveCsvRunColumns, type CsvRunMeta } from '@/lib/csvRuns';
 import { loadAiConfigs, findDerivedRule } from '@/lib/analysisConfigs';
 import { EnrichmentPanel } from '@/app/components/EnrichmentPanel';
 import { useToast } from '@/app/components/Toast';
+import { Glyph } from '@/app/components/Glyph';
 
 const T = {
   panel:  'var(--th-panel)',
@@ -90,7 +91,7 @@ export default function EnrichPage() {
           <button
             onClick={() => router.push(`/csv/${id}`)}
             style={{ fontFamily: T.ffMono, fontSize: 11, padding: '5px 11px', borderRadius: 5, background: 'transparent', border: `1px solid ${T.lineS}`, color: T.inkD, cursor: 'pointer', flexShrink: 0, marginTop: 2 }}
-          >← Tabelle</button>
+          ><Glyph>←</Glyph>Tabelle</button>
           <div>
             <h1 style={{ fontFamily: T.ffDisp, fontSize: 20, fontWeight: 700, color: T.ink, marginBottom: 3 }}>
               Enrichment
