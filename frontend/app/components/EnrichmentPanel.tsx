@@ -3,23 +3,20 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getApiKey, loadSettings } from '@/lib/settings';
-import { apiFetch } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { useToast } from './Toast';
 import { Glyph } from './Glyph';
 import { T, mono } from '@/app/theme';
 
 interface Props {
-  runId: string;
   leadsCount: number;
   onEnrichmentComplete?: () => void;
   /** For CSV imports: pick which columns hold name + company */
   availableColumns?: string[];
-  resolveRunId?: () => Promise<string>;
   /** Called with the enriched email values so the caller can add a table column */
   onEmailColumn?: (values: { email: string }[]) => void;
-  /** When provided, enrichment runs directly via the Vercel route /api/enrich */
-  rows?: Record<string, string>[];
+  /** Zeilen, die enricht werden (Enrichment läuft über die Vercel-Route /api/enrich) */
+  rows: Record<string, string>[];
 }
 
 type ProviderStatus = 'idle' | 'running' | 'done' | 'error';
@@ -29,7 +26,7 @@ const ALL_PROVIDERS = [
   { id: 'findymail', label: 'FindyMail', desc: 'E-Mail Verifikation' },
 ] as const;
 
-export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, availableColumns, resolveRunId, onEmailColumn, rows }: Props) {
+export function EnrichmentPanel({ leadsCount, onEnrichmentComplete, availableColumns, onEmailColumn, rows }: Props) {
   const { showToast } = useToast();
   const router = useRouter();
   const [running, setRunning] = useState(false);
@@ -82,35 +79,17 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
     setStatus(p => ({ ...p, [selected]: 'running' }));
 
     try {
-      // Backend run id only needed when no rows were passed (backend mode)
-      let rid = '';
-      if (!rows?.length) {
-        rid = runId || (resolveRunId ? await resolveRunId() : '');
-        if (!rid) throw new Error('Kein Backend verbunden');
-      }
-
-      // Direct mode (rows given): Vercel route, no Python backend needed
-      const res = rows?.length
-        ? await fetch('/api/enrich', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider: selected,
-              rows,
-              nameColumn: effNameCol,
-              companyColumn: effCompanyCol,
-              ...(apiKey && { apiKey }),
-            }),
-          })
-        : await apiFetch(`/api/runs/${rid}/enrich`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider: selected,
-              ...(apiKey && { apiKey }),
-              ...(needsMapping && { nameColumn: effNameCol, companyColumn: effCompanyCol }),
-            }),
-          });
+      const res = await fetch('/api/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: selected,
+          rows,
+          nameColumn: effNameCol,
+          companyColumn: effCompanyCol,
+          ...(apiKey && { apiKey }),
+        }),
+      });
 
       if (!res.ok) {
         let msg = await res.text();

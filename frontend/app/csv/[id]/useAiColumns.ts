@@ -14,7 +14,6 @@ export interface CsvRun {
   fields: string[];
   filename: string;
   createdAt: string;
-  backendRunId?: string;
   scrapeConfig?: Record<string, unknown>;
 }
 
@@ -55,7 +54,6 @@ export function useAiColumns(id: string) {
           fields: meta.fields,
           filename: meta.filename,
           createdAt: meta.createdAt,
-          backendRunId: meta.backendRunId,
           scrapeConfig: meta.scrapeConfig,
         };
         runRef.current = next;

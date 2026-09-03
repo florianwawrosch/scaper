@@ -6,7 +6,6 @@ import Papa from 'papaparse';
 import { deleteCsvText } from '@/lib/csvStorage';
 import { loadSavedSearches, saveSavedSearch, deleteSavedSearch, type SavedSearch } from '@/lib/savedSearches';
 import { createCsvRun } from '@/lib/csvRuns';
-import { api, type ScrapeRun } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
@@ -50,15 +49,6 @@ const LANGUAGE_OPTIONS = [
 ];
 const LIMIT_OPTIONS = [50, 100, 250, 500, 1000];
 
-const STATUS_PILL: Record<ScrapeRun['status'], { label: string; cls: string }> = {
-  draft:         { label: 'Draft',    cls: 'muted' },
-  scraping:      { label: 'Scraping', cls: 'warn'  },
-  dataset_ready: { label: 'Bereit',   cls: 'good'  },
-  in_progress:   { label: 'Aktiv',    cls: 'warn'  },
-  completed:     { label: 'Fertig',   cls: 'good'  },
-  failed:        { label: 'Fehler',   cls: 'bad'   },
-};
-
 function ChipGroup({ options, value, onChange }: { options: { value: string; label: string }[]; value: string[]; onChange: (v: string[]) => void }) {
   const toggle = (v: string) => onChange(value.includes(v) ? value.filter(x => x !== v) : [...value, v]);
   return (
@@ -81,9 +71,7 @@ export default function Home() {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [runs,           setRuns]           = useState<ScrapeRun[]>([]);
   const [csvRuns,        setCsvRuns]        = useState<{id:string;filename:string;createdAt:string;rowCount:number}[]>([]);
-  const [loading,        setLoading]        = useState(true);
   const [creating,       setCreating]       = useState(false);
   const [tags,           setTags]           = useState<string[]>([]);
   const [country,        setCountry]        = useState('DE');
@@ -105,23 +93,6 @@ export default function Home() {
   const [blockCount,     setBlockCount]     = useState(0);
   const [groupByPage,    setGroupByPage]    = useState(true);
 
-  /** Suchmaske aus einer gespeicherten Scrape-Konfiguration (Backend-Run) befüllen */
-  const applyRunConfig = (cfg: Record<string, unknown>) => {
-    const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : null);
-    const text = (v: unknown) => (typeof v === 'string' && v ? v : null);
-    if (cfg.keywords) setTags(list(cfg.keywords) ?? String(cfg.keywords).split('\n').filter(Boolean));
-    if (cfg.countries) setCountry(list(cfg.countries)?.[0] ?? text(cfg.countries) ?? 'DE');
-    const platforms  = list(cfg.platforms);            if (platforms)  setPlatforms(platforms);
-    const adStatus   = text(cfg.ad_status);            if (adStatus)   setAdStatus(adStatus);
-    const mediaType  = text(cfg.media_type);           if (mediaType)  setMediaType(mediaType);
-    const searchType = text(cfg.search_type);          if (searchType) setSearchType(searchType);
-    const languages  = list(cfg.languages);            if (languages)  setLanguages(languages);
-    const dateMin    = text(cfg.ad_delivery_date_min); if (dateMin)    setDateMin(dateMin);
-    const dateMax    = text(cfg.ad_delivery_date_max); if (dateMax)    setDateMax(dateMax);
-    const limit      = Number(cfg.limit);              if (limit)      setLimit(limit);
-    const bylines    = text(cfg.bylines);              if (bylines)    setBylines(bylines);
-  };
-
   useEffect(() => {
     // Local history renders instantly — no waiting for any network call.
     // localStorage gibt es erst im Browser: ein lazy useState würde beim
@@ -142,15 +113,12 @@ export default function Home() {
     csvItems.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     setCsvRuns(csvItems);
     setBlockCount(loadBlocklist().length);
-    setLoading(false);
 
     // "Erneut scrapen": prefill the form from a stored run config
-    let hadRescrape = false;
     try {
       const rc = localStorage.getItem('rescrape_config');
       if (rc) {
         const c = JSON.parse(rc);
-        hadRescrape = true;
         if (Array.isArray(c.keywords)) setTags(c.keywords);
         if (c.country)                 setCountry(c.country);
         if (Array.isArray(c.platforms)) setPlatforms(c.platforms);
@@ -165,13 +133,6 @@ export default function Home() {
         localStorage.removeItem('rescrape_config');
       }
     } catch {}
-
-    // Backend history (if a backend exists) merges in afterwards
-    api.runs.list().then(runs => {
-      setRuns(runs);
-      const last = runs[0];
-      if (!hadRescrape && last?.scraper_config) applyRunConfig(last.scraper_config as Record<string, unknown>);
-    }).catch(() => {});
     fetchKeyAvailability().then(setBackendKeys);
   }, []);
 
@@ -553,9 +514,7 @@ export default function Home() {
                 <button onClick={() => router.push('/runs')} style={{ fontFamily: T.ffMono, fontSize: 10, color: T.gold, background: 'none', border: 'none', cursor: 'pointer' }}>Alle Runs →</button>
               </div>
 
-              {loading ? (
-                <div style={{ padding: '16px', textAlign: 'center', fontFamily: T.ffMono, fontSize: 11, color: T.inkF }}>Lädt…</div>
-              ) : (runs.length === 0 && csvRuns.length === 0) ? (
+              {csvRuns.length === 0 ? (
                 <div style={{ padding: '20px 14px', textAlign: 'center' }}>
                   <p style={{ fontFamily: T.ffBody, fontSize: 13, color: T.inkF }}>Noch keine Importe</p>
                 </div>
@@ -564,13 +523,11 @@ export default function Home() {
                   {/* Merge and sort by date */}
                   {[
                     ...csvRuns.map(c => ({ kind: 'csv' as const, date: c.createdAt, csv: c })),
-                    ...runs.map(r => ({ kind: 'run' as const, date: r.created_at, run: r })),
                   ]
                     .sort((a, b) => b.date.localeCompare(a.date))
                     .slice(0, 12)
                     .map(item => {
-                      if (item.kind === 'csv') {
-                        const { csv } = item;
+                      const { csv } = item;
                         return (
                           <div key={`csv-${csv.id}`} style={{ borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'stretch' }}>
                             <button
@@ -597,38 +554,6 @@ export default function Home() {
                             </div>
                           </div>
                         );
-                      }
-                      const { run } = item;
-                      const s = STATUS_PILL[run.status];
-                      const cr = Object.values(run.classification_results)[0];
-                      return (
-                        <div key={`run-${run.id}`} style={{ borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'stretch' }}>
-                          <button
-                            onClick={() => router.push(`/runs/${run.id}`)}
-                            style={{ flex: 1, padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'; }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-                          >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{run.source}</p>
-                              <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(run.created_at)}</p>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                              {(cr?.keep ?? 0) > 0 && <span style={{ fontFamily: T.ffDisp, fontSize: 15, color: T.teal, fontWeight: 600 }}>{cr!.keep}</span>}
-                              <span className={`pill ${s.cls}`}>{s.label}</span>
-                            </div>
-                          </button>
-                          {run.scraper_config && (
-                            <button
-                              onClick={() => { applyRunConfig(run.scraper_config as Record<string, unknown>); showToast('Einstellungen geladen', 'success'); }}
-                              title="Einstellungen laden"
-                              style={{ padding: '0 10px', background: 'none', border: 'none', borderLeft: `1px solid ${T.lineS}`, cursor: 'pointer', fontFamily: T.ffMono, fontSize: 12, color: T.inkF, transition: 'color .15s', flexShrink: 0 }}
-                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = T.gold; }}
-                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = T.inkF; }}
-                            >↩</button>
-                          )}
-                        </div>
-                      );
                     })}
                 </div>
               )}

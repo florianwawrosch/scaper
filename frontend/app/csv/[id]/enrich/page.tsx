@@ -126,7 +126,6 @@ export default function EnrichPage() {
         )}
 
         <EnrichmentPanel
-          runId=""
           rows={activeRows}
           leadsCount={activeRows.length}
           availableColumns={meta?.fields ?? []}

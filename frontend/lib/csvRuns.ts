@@ -6,7 +6,6 @@ export interface CsvRunMeta {
   filename: string;
   createdAt: string;
   rowCount?: number;
-  backendRunId?: string;
   scrapeConfig?: Record<string, unknown>;
   // legacy formats stored data/csv inline in localStorage
   data?: Record<string, string>[];
