@@ -1,30 +1,18 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { loadCsvRun, saveCsvRunColumns } from '@/lib/csvRuns';
 import { addToBlocklist } from '@/lib/blocklist';
-import { loadSettings } from '@/lib/settings';
-import { fetchKeyAvailability } from '@/lib/keyAvailability';
-import { loadAiConfigs, saveAiConfigs, findDerivedRule } from '@/lib/analysisConfigs';
-import { getEffectivePresets, applyPresets, presetFromConfigs, saveUserPreset, readAutorunIds, AUTORUN_KEY, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
+import { findDerivedRule } from '@/lib/analysisConfigs';
+import { getEffectivePresets } from '@/lib/aiTemplates';
 import { buildOutreachExport } from '@/lib/outreachExport';
-import { runAiColumn, defaultModel, providerLabel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, isAiError, normalizeMultiOutput, PENDING } from '@/lib/ai';
+import { providerLabel, isUsableAiValue } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
 import { DataTable, type StatChip, type ExportPreset } from '@/app/components/DataTable';
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
 import { PresetMenu } from '@/app/components/PresetMenu';
 import { Glyph } from '@/app/components/Glyph';
-import type { AnalysisConfig } from '@/app/components/AnalysisPanel';
-
-interface CsvRun {
-  data: Record<string, string>[];
-  fields: string[];
-  filename: string;
-  createdAt: string;
-  backendRunId?: string;
-  scrapeConfig?: Record<string, unknown>;
-}
+import { useAiColumns } from './useAiColumns';
 
 const T = {
   bg:     'var(--th-bg)',
@@ -48,287 +36,17 @@ export default function CsvViewer() {
   const { showToast } = useToast();
   const { id } = useParams<{ id: string }>();
 
-  const [run,        setRun]        = useState<CsvRun | null>(null);
-  // Immer der aktuelle Datensatz — runColumn-Closures (z.B. mehrere Spalten
-  // nacheinander per Autorun) würden sonst mit veraltetem run.data speichern
-  // und die bereits persistierten Spalten des vorherigen Laufs aus der CSV
-  // verdrängen. Schreibvorgänge laufen zusätzlich seriell (persistQueue).
-  const runRef       = useRef<CsvRun | null>(null);
-  const persistQueue = useRef<Promise<void>>(Promise.resolve());
-  const [error,      setError]      = useState('');
   const [showSrcStats, setShowSrcStats] = useState(false);
-  const [aiColumns,  setAiColumns]  = useState<{ name: string; values: string[] }[]>([]);
   const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
 
-  // AI column configs (owned here; edited via the ⚙ side panel)
-  // Lazy aus localStorage; SSR rendert ohnehin nur "Lädt…" bis run da ist
-  const [aiConfigs,   setAiConfigs]   = useState<AnalysisConfig[]>(() => (typeof window === 'undefined' ? [] : loadAiConfigs(id)));
-  const [editingId,   setEditingId]   = useState<string | null>(null);
-  const [colRunning,  setColRunning]  = useState<Record<string, boolean>>({});
-  const [colProgress, setColProgress] = useState<Record<string, number>>({});
-  const [providers,   setProviders]   = useState<string[]>([]);
-  const [scrollSignal, setScrollSignal] = useState(0);
-
-  useEffect(() => {
-    fetchKeyAvailability().then(server => {
-      const local = loadSettings().apiKeys as Record<string, string>;
-      setProviders(['gemini', 'anthropic', 'openai'].filter(p => local[p] || server[p]));
-    });
-  }, []);
-
-  const persistConfigs = (next: AnalysisConfig[]) => {
-    setAiConfigs(next);
-    saveAiConfigs(id, next);
-  };
-
-  const upsertAiColumn = (name: string, values: string[]) =>
-    setAiColumns(prev => {
-      const idx = prev.findIndex(c => c.name === name);
-      if (idx >= 0) { const next = [...prev]; next[idx] = { name, values }; return next; }
-      return [...prev, { name, values }];
-    });
-
-  const renameAiColumn = (oldName: string, newName: string) =>
-    setAiColumns(prev => prev.map(c => c.name === oldName ? { ...c, name: newName } : c));
-
-  const updateRun = (next: CsvRun) => { runRef.current = next; setRun(next); };
-
-  /**
-   * Merge finished values into the stored CSV so the columns survive reloads.
-   * Reads the LATEST rows (ref) and writes them back into state, so a second
-   * column's save keeps the first column's values instead of overwriting them.
-   */
-  const persistColumnsToCsv = (cols: Record<string, string[]>): Promise<void> => {
-    const job = async () => {
-      const cur = runRef.current;
-      if (!cur) return;
-      try {
-        const merged = await saveCsvRunColumns(id, cur.data, cols);
-        const fields = [...cur.fields];
-        for (const n of Object.keys(cols)) if (!fields.includes(n)) fields.push(n);
-        updateRun({ ...cur, data: merged, fields });
-      } catch {
-        showToast('Ergebnisse konnten nicht gespeichert werden — Browser-Speicher voll? Bitte Seite nicht neu laden.', 'error', 10000);
-      }
-    };
-    const next = persistQueue.current.then(job, job);
-    persistQueue.current = next;
-    return next;
-  };
-
-  // Alle Spalten, die zu einer KI-Config gehören (Roh-Antwort, Splits, Regeln)
-  const aiOwnedNames = useMemo(() => {
-    const s = new Set<string>();
-    for (const cfg of aiConfigs) {
-      s.add(cfg.name);
-      cfg.outputFields?.forEach(f => s.add(f));
-      cfg.derived?.forEach(d => s.add(d.name));
-    }
-    return s;
-  }, [aiConfigs]);
-
-  // Config-Spalten immer als KI-Spalten zeigen: noch nicht gelaufene als
-  // '·'-Platzhalter, bereits persistierte (nach Reload) mit ihren CSV-Werten —
-  // so behalten sie ⚙/▶ und können erneut laufen (Cache überspringt Unverändertes).
-  // Abgeleitet statt in den State synchronisiert: aiColumns hält nur, was
-  // tatsächlich gelaufen ist; Platzhalter entstehen beim Rendern. Reihenfolge
-  // folgt den Configs (Roh-Antwort, Splits, Regeln), Fremdspalten hinten.
-  const displayAiColumns = useMemo(() => {
-    if (!run) return aiColumns;
-    const byName = new Map(aiColumns.map(c => [c.name, c]));
-    const ordered: typeof aiColumns = [];
-    for (const n of aiOwnedNames) {
-      ordered.push(byName.get(n) ?? {
-        name: n,
-        values: run.fields.includes(n) ? run.data.map(r => r[n] ?? '') : Array(run.data.length).fill(PENDING),
-      });
-    }
-    for (const c of aiColumns) if (!aiOwnedNames.has(c.name)) ordered.push(c);
-    return ordered;
-  }, [run, aiColumns, aiOwnedNames]);
-
-  /** "+ KI-Spalte": column appears in the table immediately, no popup */
-  const addAiColumn = () => {
-    if (!run) return;
-    if (providers.length === 0) return showToast('Kein KI-API Key konfiguriert — Einstellungen prüfen', 'warning');
-    let n = aiConfigs.length + 1;
-    let name = `Analyse ${n}`;
-    while (aiColumns.some(c => c.name === name) || aiConfigs.some(c => c.name === name)) name = `Analyse ${++n}`;
-    const provider = providers[0];
-    const cfg: AnalysisConfig = {
-      id: `cfg_${Date.now()}`, name, provider,
-      model: defaultModel(provider), prompt: '',
-    };
-    persistConfigs([...aiConfigs, cfg]);
-    upsertAiColumn(name, Array(run.data.length).fill(PENDING));
-    setScrollSignal(s => s + 1); // Tabelle scrollt zur neuen Spalte am rechten Ende
-    // Open the editor right away so it's obvious the column was created
-    setEditingId(cfg.id);
-    showToast(`Spalte «${name}» angelegt — Prompt eingeben und Analysieren`, 'info');
-  };
-
-  const runColumn = async (cfg: AnalysisConfig) => {
-    if (!run || colRunning[cfg.id]) return;
-    if (!cfg.prompt.trim()) { setEditingId(cfg.id); return showToast('Erst einen Prompt eingeben (⚙)', 'warning'); }
-    setColRunning(p => ({ ...p, [cfg.id]: true }));
-
-    // Declared outside the try so a mid-run failure (e.g. chunk 3 of 5 hits a
-    // network error) can still persist whatever chunks already completed —
-    // otherwise already-paid-for API results only ever lived in React state
-    // and a reload (or even a bare retry, since the cache hash never saved)
-    // would silently discard and re-bill them.
-    let merged: string[] | null = null;
-    let lastSplit: Record<string, string[]> | null = null;
-    const promptHash = shortHash([cfg.provider, cfg.model, cfg.prompt, ...(cfg.inputColumns ?? [])].join('\x1f'));
-    const rowHashes = run.data.map(r => rowFingerprint(r, cfg.inputColumns));
-    const hashKey = `analysis_hashes_${id}`;
-    let allHashes: Record<string, { promptHash: string; rowHashes: string[] }> = {};
-    try { allHashes = JSON.parse(localStorage.getItem(hashKey) ?? '{}'); } catch {}
-
-    const persistProgress = async () => {
-      if (!merged || !merged.some(v => v !== PENDING)) return;
-      const derived = lastSplit && cfg.derived?.length ? applyDerivedRules(cfg.derived, lastSplit, run.data.length) : {};
-      for (const [n, v] of Object.entries(derived)) upsertAiColumn(n, v);
-      await persistColumnsToCsv({ [cfg.name]: merged, ...(lastSplit ?? {}), ...derived });
-      allHashes[cfg.id] = { promptHash, rowHashes };
-      try { localStorage.setItem(hashKey, JSON.stringify(allHashes)); } catch {}
-      return derived;
-    };
-
-    try {
-      const apiKey = (loadSettings().apiKeys as Record<string, string>)[cfg.provider] || undefined;
-      const multi = !!cfg.outputFields?.length;
-
-      // feld_hash-Caching (wie im Sheet): Zeilen mit unverändertem Prompt und
-      // unveränderten Eingabewerten, die schon ein brauchbares Ergebnis haben,
-      // werden nicht erneut klassifiziert. Fehler-Zeilen laufen automatisch neu.
-      const prev = allHashes[cfg.id];
-      const existing = displayAiColumns.find(c => c.name === cfg.name)?.values
-        ?? run.data.map(r => r[cfg.name] ?? '');
-      const todo: number[] = [];
-      for (let i = 0; i < run.data.length; i++) {
-        const cached = prev?.promptHash === promptHash
-          && prev.rowHashes[i] === rowHashes[i]
-          && isUsableAiValue(existing[i]);
-        if (!cached) todo.push(i);
-      }
-      if (todo.length === 0) {
-        showToast('Alle Zeilen bereits klassifiziert — nichts zu tun', 'info');
-        return;
-      }
-      const skipped = run.data.length - todo.length;
-      const todoSet = new Set(todo);
-      // Persistenter Mal-Puffer: fertige Werte werden genau EINMAL normalisiert
-      // (statt bei jedem Progress-Tick die ganze Liste erneut) und dann nur noch
-      // kopiert — bei 1000 Zeilen × 50 Chunks spart das ~98% der Normalisierung.
-      merged = run.data.map((_, i) => (todoSet.has(i) ? PENDING : existing[i]));
-      let normalizedUpTo = 0;
-      const paint = (vals: string[]) => {
-        for (let j = normalizedUpTo; j < vals.length; j++) {
-          if (vals[j] === PENDING) continue;
-          merged![todo[j]] = multi ? normalizeMultiOutput(vals[j], cfg.outputFields!, cfg.outputEnums) : vals[j];
-          if (j === normalizedUpTo) normalizedUpTo++;
-        }
-        upsertAiColumn(cfg.name, [...merged!]);
-        // Multi-Output: Antwort live in die Einzelspalten splitten
-        if (multi) {
-          const split = splitMultiOutput(merged!, cfg.outputFields!);
-          for (const [n, v] of Object.entries(split)) upsertAiColumn(n, v);
-          lastSplit = split;
-          return split;
-        }
-        return null;
-      };
-
-      const subValues = await runAiColumn({
-        rows: todo.map(i => run.data[i]),
-        provider: cfg.provider,
-        model: cfg.model,
-        prompt: cfg.prompt,
-        apiKey,
-        inputColumns: cfg.inputColumns,
-        multiOutput: multi,
-        onProgress: (partial) => {
-          paint(partial);
-          setColProgress(p => ({ ...p, [cfg.id]: merged!.filter(v => v !== PENDING).length }));
-        },
-      });
-      paint(subValues);
-      const failed = todo.filter(i => isAiError(merged![i])).length;
-
-      await persistProgress();
-      const parts: string[] = [`${todo.length - failed} klassifiziert`];
-      if (skipped > 0) parts.push(`${skipped} übersprungen (unverändert)`);
-      if (failed > 0) parts.push(`${failed} ungültig — erneut ▶ drücken`);
-      showToast(`«${cfg.name}»: ${parts.join(', ')}`, failed > 0 ? 'warning' : 'success', failed > 0 ? 7000 : undefined);
-    } catch (e) {
-      // Whatever chunks completed before the failure are still worth keeping —
-      // save them so a retry only redoes what's actually still pending.
-      const savedPartial = await persistProgress().catch(() => undefined) !== undefined;
-      const msg = e instanceof Error ? e.message : 'Fehler';
-      showToast(savedPartial ? `${msg} — bereits klassifizierte Zeilen wurden gespeichert.` : msg, 'error', 8000);
-    } finally {
-      setColRunning(p => ({ ...p, [cfg.id]: false }));
-      setColProgress(p => ({ ...p, [cfg.id]: 0 }));
-    }
-  };
-
-  // Autorun («▶ Laden + Analysieren», Instant-Load-Vorlagen mit «direkt
-  // ausfüllen», «▶» im Vorlagen-Menü): der Viewer füllt die vorgemerkten
-  // Spalten selbst aus, sobald Daten und Configs da sind — nacheinander, damit
-  // Provider-Rate-Limits nicht doppelt getroffen werden. Das Flag wird sofort
-  // entfernt, damit auch StrictMode-Doppel-Effekte nur einmal starten.
-  useEffect(() => {
-    if (!run || aiConfigs.length === 0) return;
-    const ids = readAutorunIds(id);
-    if (!ids) return;
-    try { localStorage.removeItem(AUTORUN_KEY(id)); } catch {}
-    const list = (ids === 'first'
-      ? [aiConfigs.find(c => c.prompt.trim())]
-      : ids.map(i => aiConfigs.find(c => c.id === i && c.prompt.trim()))
-    ).filter((c): c is AnalysisConfig => !!c);
-    if (list.length === 0) return;
-    // Nach dem Commit starten — kein synchrones setState im Effect
-    queueMicrotask(async () => {
-      showToast(list.length === 1 ? `Klassifizierung «${list[0].name}» startet…` : `${list.length} KI-Spalten werden ausgefüllt…`, 'info');
-      for (const cfg of list) await runColumn(cfg);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run, aiConfigs, id]);
-
-  /** Vorlage in diesen Datensatz laden (Spalten anhängen; autoRun = sofort ausfüllen) */
-  const loadPresetIntoRun = (preset: ImportPreset, autoRun: boolean) => {
-    if (!run) return;
-    if (providers.length === 0) return showToast('Kein KI-API Key konfiguriert — Einstellungen prüfen', 'warning');
-    const provider = providers.includes('anthropic') ? 'anthropic' : providers[0];
-    const { added, autoRun: toRun } = applyPresets(id, [preset], provider, { forceAutoRun: autoRun });
-    if (added.length === 0) return showToast(`Alle Spalten von «${preset.name}» sind schon vorhanden`, 'info');
-    setAiConfigs(loadAiConfigs(id)); // löst bei autoRun den Autorun-Effect aus
-    setScrollSignal(s => s + 1);
-    if (toRun.length === 0) {
-      showToast(`Vorlage «${preset.name}» geladen — ${added.length} ${added.length === 1 ? 'Spalte' : 'Spalten'} angehängt, mit ▶ ausfüllen`, 'success');
-    }
-  };
-
-  /** KI-Spalten als wiederverwendbare Vorlage sichern (⚙-Panel oder ☆-Menü) */
-  const saveTemplate = (name: string, flags: PresetFlags, configs: AnalysisConfig[]) => {
-    const withPrompt = configs.filter(c => c.prompt.trim());
-    if (withPrompt.length === 0) return showToast('Keine Spalte mit Prompt zum Speichern', 'warning');
-    const preset = saveUserPreset(presetFromConfigs(name, withPrompt, flags));
-    const auto = Object.values(flags.autoAdd ?? {}).some(Boolean);
-    showToast(
-      `Vorlage «${preset.name}» gespeichert${auto ? ` — wird beim Import automatisch geladen${flags.autoRun ? ' und ausgefüllt' : ''}` : ''} · verwalten unter Einstellungen → KI-Vorlagen`,
-      'success', 6000,
-    );
-  };
-
-  const editingCfg = aiConfigs.find(c => c.id === editingId) ?? null;
-
-  /** Config zu einer Spalte finden — auch für gesplittete Output-/Regel-Spalten */
-  const findCfgForColumn = useCallback((name: string) =>
-    aiConfigs.find(c =>
-      c.name === name || c.outputFields?.includes(name) || c.derived?.some(d => d.name === name)),
-  [aiConfigs]);
+  const {
+    run, error, providers,
+    aiConfigs, aiOwnedNames, displayAiColumns,
+    colRunning, colProgress, scrollSignal,
+    setEditingId, editingCfg,
+    findCfgForColumn, addAiColumn, updateConfig, deleteConfig,
+    runColumn, runColumnByName, loadPreset, saveTemplate,
+  } = useAiColumns(id);
 
   // ── Memoisierte DataTable-Props: neue Array-Identitäten pro Render würden
   //    die komplette Memo-Kette der Tabelle (extended → filtered → sorted)
@@ -404,23 +122,6 @@ export default function CsvViewer() {
     if (rows.length < 2) return null;
     return { srcCol, rule, rows };
   }, [run, aiConfigs, displayAiColumns]);
-
-  useEffect(() => {
-    loadCsvRun(id)
-      .then(({ meta, rows }) => {
-        const next: CsvRun = {
-          data: rows,
-          fields: meta.fields,
-          filename: meta.filename,
-          createdAt: meta.createdAt,
-          backendRunId: meta.backendRunId,
-          scrapeConfig: meta.scrapeConfig,
-        };
-        runRef.current = next;
-        setRun(next);
-      })
-      .catch(e => setError(e instanceof Error ? e.message : 'Fehler beim Laden der Datei.'));
-  }, [id]);
 
   // „↓ Outreach": nur Zielgruppe + gefundene E-Mail, auf Cold-Email-Spalten
   // gemappt. Erscheint erst, wenn der Datensatz eine E-Mail-Spalte hat —
@@ -553,7 +254,7 @@ export default function CsvViewer() {
           toolbarExtra={
             <PresetMenu
               loadPresets={getEffectivePresets}
-              onLoad={loadPresetIntoRun}
+              onLoad={loadPreset}
               onSaveCurrent={(name, flags) => saveTemplate(name, flags, aiConfigs)}
               currentColumnCount={aiConfigs.filter(c => c.prompt.trim()).length}
             />
@@ -579,11 +280,7 @@ export default function CsvViewer() {
             if (cfg) setEditingId(cfg.id);
             else showToast('Für diese Spalte gibt es keine Konfiguration', 'warning');
           }}
-          onRunAiColumn={(name) => {
-            const cfg = findCfgForColumn(name);
-            if (cfg) runColumn(cfg);
-            else showToast('Für diese Spalte gibt es keine Konfiguration', 'warning');
-          }}
+          onRunAiColumn={runColumnByName}
         />
 
         {/* ⚙ side panel for the selected AI column */}
@@ -595,30 +292,13 @@ export default function CsvViewer() {
             providers={providers}
             running={!!colRunning[editingCfg.id]}
             progress={colProgress[editingCfg.id] ?? 0}
-            onChange={(patch) => {
-              if (patch.name && patch.name !== editingCfg.name) {
-                renameAiColumn(editingCfg.name, patch.name);
-              }
-              persistConfigs(aiConfigs.map(c => {
-                if (c.id !== editingCfg.id) return c;
-                const next = { ...c, ...patch };
-                // Vorlagen-Version als angepasst markieren, sobald der Prompt abweicht
-                if (patch.prompt !== undefined && patch.prompt !== c.prompt && c.promptVersion && !c.promptVersion.endsWith('*')) {
-                  next.promptVersion = `${c.promptVersion}*`;
-                }
-                return next;
-              }));
-            }}
+            onChange={(patch) => updateConfig(editingCfg.id, patch)}
             onSave={() => {
               setEditingId(null);
               showToast(`Spalte «${editingCfg.name}» gespeichert`, 'success');
             }}
             onRun={() => runColumn(aiConfigs.find(c => c.id === editingCfg.id) ?? editingCfg)}
-            onDelete={() => {
-              setAiColumns(prev => prev.filter(c => c.name !== editingCfg.name));
-              persistConfigs(aiConfigs.filter(c => c.id !== editingCfg.id));
-              setEditingId(null);
-            }}
+            onDelete={() => deleteConfig(editingCfg.id)}
             onClose={() => setEditingId(null)}
             onSaveAsTemplate={(name, flags) => saveTemplate(name, flags, [aiConfigs.find(c => c.id === editingCfg.id) ?? editingCfg])}
           />
