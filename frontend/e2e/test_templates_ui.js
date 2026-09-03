@@ -142,7 +142,7 @@ fs.writeFileSync(PLAIN_CSV, 'page_name,ad_text,email\nCoach Anna,Ich helfe dir b
   await page.goto(`${BASE}/settings`, { waitUntil: 'networkidle' });
   await page.click('text=KI-Vorlagen');
   await page.waitForSelector(`[data-testid="tpl-${fid}"]`);
-  await page.locator(`[data-testid="tpl-${fid}"] button[title="Vorlage löschen"]`).click();
+  await page.locator(`[data-testid="tpl-${fid}"] [data-testid="tpl-delete-${fid}"]`).click();
   await page.locator(`[data-testid="tpl-${fid}"] button:has-text("Ja")`).click();
   await page.waitForTimeout(300);
   ok((await page.locator(`[data-testid="tpl-${fid}"]`).count()) === 0, 'Settings: eigene Vorlage gelöscht');

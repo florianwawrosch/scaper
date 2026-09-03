@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   getEffectivePresets, savePromptOverride, resetPresetOverrides, hasOverride,
   saveUserPreset, deleteUserPreset, newPresetId, setPresetFlags, loadUserPresets,
@@ -28,6 +28,8 @@ export function TemplatesTab({ onCountChange }: Props) {
   // Eigene Vorlagen werden als Ganzes bearbeitet (Name, Beschreibung, Spalten)
   const [tplDrafts,     setTplDrafts]     = useState<Record<string, ImportPreset>>({});
   const [tplError,      setTplError]      = useState<Record<string, string>>({});
+  // Frisch angelegte/kopierte Vorlage: nach dem Render hinscrollen und Spaltenname fokussieren
+  const focusRef = useRef<string | null>(null);
 
   const reloadTemplates = () => {
     const eff = getEffectivePresets();
@@ -56,11 +58,44 @@ export function TemplatesTab({ onCountChange }: Props) {
     reloadTemplates();
   };
 
+  /** Neue KI-Spalte = neue eigene Vorlage mit einer leeren Spalte (beliebig viele möglich) */
   const createUserPreset = () => {
     const n = loadUserPresets().length + 1;
-    saveUserPreset({ id: newPresetId(), name: `Neue Vorlage ${n}`, columns: [{ name: `ki_spalte_${n}`, prompt: '' }], userDefined: true });
+    const id = newPresetId();
+    saveUserPreset({ id, name: `Neue KI-Spalte ${n}`, columns: [{ name: `ki_spalte_${n}`, prompt: '' }], userDefined: true });
+    reloadTemplates();
+    focusRef.current = id;
+  };
+
+  /** Eingebaute Vorlage als eigene, frei editierbare Kopie übernehmen (Spalten hinzufügen/löschen) */
+  const duplicatePreset = (preset: ImportPreset) => {
+    const id = newPresetId();
+    saveUserPreset({
+      id, name: `${preset.name} (Kopie)`, description: preset.description, promptVersion: preset.promptVersion,
+      columns: JSON.parse(JSON.stringify(preset.columns)), userDefined: true,
+      autoAdd: preset.autoAdd, autoRun: preset.autoRun,
+    });
+    reloadTemplates();
+    focusRef.current = id;
+  };
+
+  /** Spalte einer eigenen Vorlage löschen — sofort gespeichert; die letzte Spalte löscht die Vorlage */
+  const deleteColumn = (preset: ImportPreset, ci: number) => {
+    const d = tplDrafts[preset.id] ?? preset;
+    if (d.columns.length <= 1) { deleteUserPreset(preset.id); reloadTemplates(); return; }
+    const next = { ...d, columns: d.columns.filter((_, i) => i !== ci) };
+    saveUserPreset({ id: next.id, name: next.name, description: next.description, promptVersion: next.promptVersion, columns: next.columns, userDefined: true });
     reloadTemplates();
   };
+
+  useEffect(() => {
+    const id = focusRef.current;
+    if (!id) return;
+    focusRef.current = null;
+    const card = document.querySelector<HTMLElement>(`[data-testid="tpl-${id}"]`);
+    card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    card?.querySelector<HTMLInputElement>('input[placeholder="spaltenname"]')?.focus();
+  }, [tplPresets]);
 
   const editDraft = (id: string, fn: (d: ImportPreset) => ImportPreset) =>
     setTplDrafts(p => ({ ...p, [id]: fn(p[id]) }));
@@ -100,16 +135,16 @@ export function TemplatesTab({ onCountChange }: Props) {
             KI-<em style={{ color: T.gold }}>Vorlagen</em>
           </h1>
           <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
-            Vorlagen für KI-Spalten. <strong style={{ color: T.inkD }}>⚡ Instant Load</strong> hängt die Spalten beim Import
-            automatisch an — bei CSV/Excel-Upload und/oder Meta-Scrape — ohne Dialog; <strong style={{ color: T.inkD }}>▶ direkt
-            ausfüllen</strong> startet die KI dazu sofort (kostet Credits). Eigene Vorlagen entstehen hier oder in der
-            Tabelle (⚙ Spalte → «Als Vorlage speichern», ☆ Vorlage → «Aktuelle KI-Spalten speichern»). Prompt-Änderungen
-            gelten für zukünftige Importe; bestehende Datensätze behalten ihre Konfiguration.
+            Beliebig viele KI-Spalten anlegen: jede Vorlage enthält eine oder mehrere Spalten mit eigenem Prompt.
+            <strong style={{ color: T.inkD }}> ⚡ Instant Load</strong> hängt die Spalten beim Import automatisch an — bei
+            CSV/Excel-Upload und/oder Meta-Scrape — ohne Dialog; <strong style={{ color: T.inkD }}>▶ direkt ausfüllen</strong> startet
+            die KI dazu sofort (kostet Credits). Eingebaute Vorlagen lassen sich als Kopie übernehmen und dann frei erweitern.
+            Prompt-Änderungen gelten für zukünftige Importe; bestehende Datensätze behalten ihre Konfiguration.
           </p>
         </div>
         <button type="button" onClick={createUserPreset} data-testid="tpl-new"
           style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, padding: '9px 16px', borderRadius: 6, border: 'none', background: T.gold, color: '#07070a', cursor: 'pointer', flexShrink: 0, marginTop: 4 }}>
-          + Neue Vorlage
+          + Neue KI-Spalte
         </button>
       </div>
 
@@ -155,10 +190,21 @@ export function TemplatesTab({ onCountChange }: Props) {
                     </button>
                   </>
                 )}
+                {!preset.userDefined && (
+                  <button type="button"
+                    onClick={() => duplicatePreset(preset)}
+                    data-testid={`tpl-copy-${preset.id}`}
+                    title="Als eigene Vorlage kopieren — dann Spalten hinzufügen, umbenennen, löschen"
+                    style={{ fontFamily: T.mono, fontSize: 10, padding: '3px 9px', borderRadius: 4, background: 'rgba(232,176,75,.08)', border: '1px solid rgba(232,176,75,.35)', color: T.gold, cursor: 'pointer' }}>
+                    ⧉ Kopieren & bearbeiten
+                  </button>
+                )}
                 {preset.userDefined && (
                   <ConfirmDelete
-                    title="Vorlage löschen"
-                    question="Vorlage löschen?"
+                    label="Vorlage löschen"
+                    title="Diese Vorlage mit allen Spalten löschen"
+                    question="Ganze Vorlage löschen?"
+                    testId={`tpl-delete-${preset.id}`}
                     onConfirm={() => { deleteUserPreset(preset.id); reloadTemplates(); }}
                     style={{ display: 'flex', alignItems: 'center' }}
                   />
@@ -221,11 +267,14 @@ export function TemplatesTab({ onCountChange }: Props) {
                           placeholder="z.B. v1"
                           style={{ width: 52, fontFamily: T.mono, fontSize: 10, padding: '3px 7px', borderRadius: 4, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none' }}
                         />
-                        {draft.columns.length > 1 && (
-                          <button type="button" title="Spalte entfernen"
-                            onClick={() => editDraft(preset.id, d => ({ ...d, columns: d.columns.filter((_, i) => i !== ci) }))}
-                            style={{ fontSize: 14, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, opacity: .6 }}>×</button>
-                        )}
+                        <ConfirmDelete
+                          label="Spalte löschen"
+                          title={draft.columns.length > 1 ? 'Diese Spalte aus der Vorlage löschen' : 'Letzte Spalte — löscht die ganze Vorlage'}
+                          question={draft.columns.length > 1 ? 'Spalte löschen?' : 'Letzte Spalte — Vorlage löschen?'}
+                          testId={`tpl-col-delete-${preset.id}-${ci}`}
+                          onConfirm={() => deleteColumn(preset, ci)}
+                          style={{ display: 'flex', alignItems: 'center' }}
+                        />
                       </div>
                       {col.inputColumns && (
                         <p style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF, opacity: .7, marginBottom: 6 }}>
@@ -251,8 +300,9 @@ export function TemplatesTab({ onCountChange }: Props) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
                     <button type="button"
                       onClick={() => editDraft(preset.id, d => ({ ...d, columns: [...d.columns, { name: `ki_spalte_${d.columns.length + 1}`, prompt: '' }] }))}
-                      style={{ fontFamily: T.mono, fontSize: 10, padding: '4px 10px', borderRadius: 4, background: 'transparent', border: `1px dashed ${T.line}`, color: T.inkD, cursor: 'pointer' }}>
-                      + Spalte
+                      data-testid={`tpl-col-add-${preset.id}`}
+                      style={{ fontFamily: T.mono, fontSize: 11, padding: '5px 12px', borderRadius: 4, background: 'rgba(79,209,197,.06)', border: '1px dashed rgba(79,209,197,.4)', color: T.teal, cursor: 'pointer' }}>
+                      + Spalte hinzufügen
                     </button>
                     <div style={{ flex: 1 }}>
                       {tplError[preset.id] && (
@@ -348,6 +398,12 @@ export function TemplatesTab({ onCountChange }: Props) {
           );
         })}
       </div>
+
+      {/* Immer erreichbar — auch nach vielen Vorlagen */}
+      <button type="button" onClick={createUserPreset} data-testid="tpl-new-bottom"
+        style={{ width: '100%', marginTop: 20, padding: '14px 0', borderRadius: 8, cursor: 'pointer', fontFamily: T.mono, fontSize: 12, fontWeight: 600, letterSpacing: '.04em', background: 'transparent', border: `1px dashed rgba(232,176,75,.45)`, color: T.gold }}>
+        + Neue KI-Spalte anlegen
+      </button>
     </>
   );
 }

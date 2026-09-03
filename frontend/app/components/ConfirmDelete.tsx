@@ -11,6 +11,10 @@ interface Props {
   question?: string;
   /** Extra style for the outer wrapper */
   style?: React.CSSProperties;
+  /** Sichtbarer Text statt des kleinen × (z.B. «Spalte löschen») */
+  label?: string;
+  /** Test-Hook für den auslösenden Button */
+  testId?: string;
 }
 
 /**
@@ -19,7 +23,7 @@ interface Props {
  * or an outside click) cancels. Self-contained state so it can be dropped
  * anywhere without lifting state up.
  */
-export function ConfirmDelete({ onConfirm, title = 'Löschen', question = 'Löschen?', style }: Props) {
+export function ConfirmDelete({ onConfirm, title = 'Löschen', question = 'Löschen?', style, label, testId }: Props) {
   const [armed, setArmed] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
@@ -46,10 +50,13 @@ export function ConfirmDelete({ onConfirm, title = 'Löschen', question = 'Lösc
         <button
           onClick={e => { e.stopPropagation(); arm(); }}
           title={title}
-          style={{ ...mono, fontSize: 13, color: '#5f6e87', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '0 2px', opacity: .6 }}
+          data-testid={testId}
+          style={label
+            ? { ...mono, fontSize: 10, padding: '3px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(232,115,107,.3)', background: 'transparent', color: '#e8736b', whiteSpace: 'nowrap', opacity: .85 }
+            : { ...mono, fontSize: 13, color: '#5f6e87', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '0 2px', opacity: .6 }}
           onMouseEnter={e => ((e.currentTarget as HTMLElement).style.opacity = '1')}
-          onMouseLeave={e => ((e.currentTarget as HTMLElement).style.opacity = '.6')}
-        >×</button>
+          onMouseLeave={e => ((e.currentTarget as HTMLElement).style.opacity = label ? '.85' : '.6')}
+        >{label ? `🗑 ${label}` : '×'}</button>
       </div>
     );
   }
