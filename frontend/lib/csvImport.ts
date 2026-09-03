@@ -7,7 +7,7 @@ export interface ParsedImport {
   rowCount: number;
 }
 
-export const IMPORT_EXTENSIONS = ['.csv', '.xlsx', '.xls'];
+const IMPORT_EXTENSIONS = ['.csv', '.xlsx', '.xls'];
 
 export function isImportFile(name: string): boolean {
   const n = name.toLowerCase();

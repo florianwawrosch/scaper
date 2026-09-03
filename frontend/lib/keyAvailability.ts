@@ -26,5 +26,3 @@ export function fetchKeyAvailability(timeoutMs = 4000): Promise<Record<string, b
   return promise;
 }
 
-/** Nach dem Speichern von Keys in den Einstellungen: nächste Abfrage frisch */
-export function invalidateKeyAvailability(): void { cached = null; }

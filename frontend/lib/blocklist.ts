@@ -17,7 +17,7 @@ export function loadBlocklist(): BlockEntry[] {
   } catch { return []; }
 }
 
-export function saveBlocklist(list: BlockEntry[]): void {
+function saveBlocklist(list: BlockEntry[]): void {
   try { localStorage.setItem(KEY, JSON.stringify(list)); } catch {}
 }
 
