@@ -2,91 +2,60 @@
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  getEffectivePresets, savePromptOverride, resetPresetOverrides, hasOverride,
+  getEffectivePresets, resetPresetOverrides, hasOverride,
   saveUserPreset, deleteUserPreset, newPresetId, setPresetFlags, loadUserPresets,
   PRESET_SOURCES, type ImportPreset, type PresetFlags,
 } from '@/lib/aiTemplates';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { T } from '@/app/theme';
+import { InstantLoadRow } from './templates/InstantLoadRow';
+import { BuiltinColumnEditor } from './templates/BuiltinColumnEditor';
+import { UserPresetEditor } from './templates/UserPresetEditor';
 
 interface Props {
   /** Anzahl der Vorlagen (für das Badge in der Navigation) */
   onCountChange?: (n: number) => void;
 }
 
+/** Nur die speicherbaren Felder einer eigenen Vorlage (Flags liegen separat) */
+const stored = (d: ImportPreset): ImportPreset => ({
+  id: d.id, name: d.name, description: d.description, promptVersion: d.promptVersion, columns: d.columns, userDefined: true,
+});
+
+const draftDirty = (a: ImportPreset, b: ImportPreset) =>
+  JSON.stringify([a.name, a.description ?? '', a.columns]) !== JSON.stringify([b.name, b.description ?? '', b.columns]);
+
 /**
- * Einstellungen → KI-Vorlagen: eingebaute Vorlagen (Prompt-Override, ↺ Standard),
- * eigene Vorlagen (anlegen, bearbeiten, löschen) und die Instant-Load-Schalter.
+ * Einstellungen → KI-Vorlagen: beliebig viele KI-Spalten. Eingebaute Vorlagen
+ * (Prompt-Override, ↺ Standard, Kopieren), eigene Vorlagen (Spalten anlegen/
+ * löschen, speichern, Vorlage löschen) und die Instant-Load-Schalter.
  */
 export function TemplatesTab({ onCountChange }: Props) {
-  // KI-Vorlagen: effektive Presets + lokale Editier-Zustände (Key: presetId:columnName)
-  const [tplPresets,    setTplPresets]    = useState<ImportPreset[]>([]);
-  const [tplPrompts,    setTplPrompts]    = useState<Record<string, string>>({});
-  const [tplVersions,   setTplVersions]   = useState<Record<string, string>>({});
-  const [tplSaved,      setTplSaved]      = useState<string | null>(null);
-  const [tplOverridden, setTplOverridden] = useState<Set<string>>(new Set());
+  const [presets,    setPresets]    = useState<ImportPreset[]>([]);
+  const [overridden, setOverridden] = useState<Set<string>>(new Set());
   // Eigene Vorlagen werden als Ganzes bearbeitet (Name, Beschreibung, Spalten)
-  const [tplDrafts,     setTplDrafts]     = useState<Record<string, ImportPreset>>({});
-  const [tplError,      setTplError]      = useState<Record<string, string>>({});
+  const [drafts,     setDrafts]     = useState<Record<string, ImportPreset>>({});
+  const [errors,     setErrors]     = useState<Record<string, string>>({});
+  const [savedId,    setSavedId]    = useState<string | null>(null);
   // Frisch angelegte/kopierte Vorlage: nach dem Render hinscrollen und Spaltenname fokussieren
   const focusRef = useRef<string | null>(null);
 
-  const reloadTemplates = () => {
+  const reload = () => {
     const eff = getEffectivePresets();
-    setTplPresets(eff);
+    setPresets(eff);
     onCountChange?.(eff.length);
-    const prompts: Record<string, string> = {};
-    const versions: Record<string, string> = {};
-    for (const p of eff) for (const c of p.columns) {
-      prompts[`${p.id}:${c.name}`] = c.prompt;
-      versions[`${p.id}:${c.name}`] = c.promptVersion ?? '';
-    }
-    setTplPrompts(prompts);
-    setTplVersions(versions);
     // Einmal beim (Neu-)Laden ermitteln statt hasOverride() pro Preset pro Render
-    setTplOverridden(new Set(eff.filter(p => hasOverride(p.id)).map(p => p.id)));
-    setTplDrafts(Object.fromEntries(eff.filter(p => p.userDefined).map(p => [p.id, p])));
-    setTplError({});
+    setOverridden(new Set(eff.filter(p => hasOverride(p.id)).map(p => p.id)));
+    setDrafts(Object.fromEntries(eff.filter(p => p.userDefined).map(p => [p.id, p])));
+    setErrors({});
   };
 
-  /** Instant-Load-Schalter einer Vorlage umstellen (sofort gespeichert) */
-  const toggleFlags = (preset: ImportPreset, patch: PresetFlags) => {
-    setPresetFlags(preset.id, {
-      autoAdd: { ...preset.autoAdd, ...patch.autoAdd },
-      autoRun: patch.autoRun ?? preset.autoRun,
-    });
-    reloadTemplates();
-  };
-
-  /** Neue KI-Spalte = neue eigene Vorlage mit einer leeren Spalte (beliebig viele möglich) */
-  const createUserPreset = () => {
-    const n = loadUserPresets().length + 1;
-    const id = newPresetId();
-    saveUserPreset({ id, name: `Neue KI-Spalte ${n}`, columns: [{ name: `ki_spalte_${n}`, prompt: '' }], userDefined: true });
-    reloadTemplates();
-    focusRef.current = id;
-  };
-
-  /** Eingebaute Vorlage als eigene, frei editierbare Kopie übernehmen (Spalten hinzufügen/löschen) */
-  const duplicatePreset = (preset: ImportPreset) => {
-    const id = newPresetId();
-    saveUserPreset({
-      id, name: `${preset.name} (Kopie)`, description: preset.description, promptVersion: preset.promptVersion,
-      columns: JSON.parse(JSON.stringify(preset.columns)), userDefined: true,
-      autoAdd: preset.autoAdd, autoRun: preset.autoRun,
-    });
-    reloadTemplates();
-    focusRef.current = id;
-  };
-
-  /** Spalte einer eigenen Vorlage löschen — sofort gespeichert; die letzte Spalte löscht die Vorlage */
-  const deleteColumn = (preset: ImportPreset, ci: number) => {
-    const d = tplDrafts[preset.id] ?? preset;
-    if (d.columns.length <= 1) { deleteUserPreset(preset.id); reloadTemplates(); return; }
-    const next = { ...d, columns: d.columns.filter((_, i) => i !== ci) };
-    saveUserPreset({ id: next.id, name: next.name, description: next.description, promptVersion: next.promptVersion, columns: next.columns, userDefined: true });
-    reloadTemplates();
-  };
+  useEffect(() => {
+    // localStorage gibt es erst im Browser (SSR-Prerender wäre leer) — daher Effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const id = focusRef.current;
@@ -95,37 +64,66 @@ export function TemplatesTab({ onCountChange }: Props) {
     const card = document.querySelector<HTMLElement>(`[data-testid="tpl-${id}"]`);
     card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     card?.querySelector<HTMLInputElement>('input[placeholder="spaltenname"]')?.focus();
-  }, [tplPresets]);
+  }, [presets]);
 
-  const editDraft = (id: string, fn: (d: ImportPreset) => ImportPreset) =>
-    setTplDrafts(p => ({ ...p, [id]: fn(p[id]) }));
-
-  const draftDirty = (stored: ImportPreset, d: ImportPreset) =>
-    JSON.stringify([stored.name, stored.description ?? '', stored.columns]) !== JSON.stringify([d.name, d.description ?? '', d.columns]);
-
-  const saveDraft = (d: ImportPreset) => {
-    const names = d.columns.map(c => c.name.trim());
-    if (!d.name.trim()) return setTplError(p => ({ ...p, [d.id]: 'Vorlagenname fehlt' }));
-    if (d.columns.length === 0) return setTplError(p => ({ ...p, [d.id]: 'Mindestens eine Spalte anlegen' }));
-    if (names.some(n => !n)) return setTplError(p => ({ ...p, [d.id]: 'Jede Spalte braucht einen Namen' }));
-    if (new Set(names).size !== names.length) return setTplError(p => ({ ...p, [d.id]: 'Spaltennamen müssen eindeutig sein' }));
-    if (d.columns.some(c => !c.prompt.trim())) return setTplError(p => ({ ...p, [d.id]: 'Jede Spalte braucht einen Prompt' }));
-    saveUserPreset({
-      id: d.id, name: d.name.trim(), description: d.description?.trim() || undefined,
-      columns: d.columns.map(c => ({ ...c, name: c.name.trim(), promptVersion: c.promptVersion?.trim() || undefined })),
-      userDefined: true,
-    });
-    reloadTemplates();
-    setTplSaved(d.id);
-    setTimeout(() => setTplSaved(s => (s === d.id ? null : s)), 3000);
+  /** Instant-Load-Schalter einer Vorlage umstellen (sofort gespeichert) */
+  const toggleFlags = (preset: ImportPreset, patch: PresetFlags) => {
+    setPresetFlags(preset.id, { autoAdd: { ...preset.autoAdd, ...patch.autoAdd }, autoRun: patch.autoRun ?? preset.autoRun });
+    reload();
   };
 
-  useEffect(() => {
-    // localStorage gibt es erst im Browser (SSR-Prerender wäre leer) — daher Effect
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    reloadTemplates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  /** Neue KI-Spalte = neue eigene Vorlage mit einer leeren Spalte (beliebig viele möglich) */
+  const createUserPreset = () => {
+    const n = loadUserPresets().length + 1;
+    const id = newPresetId();
+    saveUserPreset({ id, name: `Neue KI-Spalte ${n}`, columns: [{ name: `ki_spalte_${n}`, prompt: '' }], userDefined: true });
+    reload();
+    focusRef.current = id;
+  };
+
+  /** Eingebaute Vorlage als eigene, frei editierbare Kopie übernehmen */
+  const duplicatePreset = (preset: ImportPreset) => {
+    const id = newPresetId();
+    saveUserPreset({
+      id, name: `${preset.name} (Kopie)`, description: preset.description, promptVersion: preset.promptVersion,
+      columns: JSON.parse(JSON.stringify(preset.columns)), userDefined: true,
+      autoAdd: preset.autoAdd, autoRun: preset.autoRun,
+    });
+    reload();
+    focusRef.current = id;
+  };
+
+  /** Spalte einer eigenen Vorlage löschen — sofort gespeichert; die letzte Spalte löscht die Vorlage */
+  const deleteColumn = (preset: ImportPreset, ci: number) => {
+    const d = drafts[preset.id] ?? preset;
+    if (d.columns.length <= 1) { deleteUserPreset(preset.id); reload(); return; }
+    saveUserPreset(stored({ ...d, columns: d.columns.filter((_, i) => i !== ci) }));
+    reload();
+  };
+
+  const saveDraft = (d: ImportPreset) => {
+    const fail = (msg: string) => setErrors(p => ({ ...p, [d.id]: msg }));
+    const names = d.columns.map(c => c.name.trim());
+    if (!d.name.trim()) return fail('Vorlagenname fehlt');
+    if (d.columns.length === 0) return fail('Mindestens eine Spalte anlegen');
+    if (names.some(n => !n)) return fail('Jede Spalte braucht einen Namen');
+    if (new Set(names).size !== names.length) return fail('Spaltennamen müssen eindeutig sein');
+    if (d.columns.some(c => !c.prompt.trim())) return fail('Jede Spalte braucht einen Prompt');
+    saveUserPreset(stored({
+      ...d, name: d.name.trim(), description: d.description?.trim() || undefined,
+      columns: d.columns.map(c => ({ ...c, name: c.name.trim(), promptVersion: c.promptVersion?.trim() || undefined })),
+    }));
+    reload();
+    setSavedId(d.id);
+    setTimeout(() => setSavedId(s => (s === d.id ? null : s)), 3000);
+  };
+
+  const editDraft = (id: string, fn: (d: ImportPreset) => ImportPreset) =>
+    setDrafts(p => ({ ...p, [id]: fn(p[id]) }));
+
+  const badge = (text: string, color: string, bg: string, border: string) => (
+    <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.08em', color, background: bg, border: `1px solid ${border}`, borderRadius: 4, padding: '2px 7px' }}>{text}</span>
+  );
 
   return (
     <>
@@ -149,13 +147,13 @@ export function TemplatesTab({ onCountChange }: Props) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {tplPresets.map(preset => {
-          const overridden = tplOverridden.has(preset.id);
+        {presets.map(preset => {
+          const isOverridden = overridden.has(preset.id);
           const anyAuto = PRESET_SOURCES.some(src => preset.autoAdd?.[src.key]);
-          const draft = preset.userDefined ? (tplDrafts[preset.id] ?? preset) : null;
-          const dirtyDraft = !!draft && draftDirty(preset, draft);
+          const draft = preset.userDefined ? (drafts[preset.id] ?? preset) : null;
+          const dirty = !!draft && draftDirty(preset, draft);
           return (
-            <div key={preset.id} data-testid={`tpl-${preset.id}`} style={{ background: T.panel2, border: `1px solid ${anyAuto ? 'rgba(232,176,75,.35)' : overridden ? 'rgba(232,176,75,.2)' : 'rgba(255,255,255,.06)'}`, borderRadius: 8, padding: '16px 18px' }}>
+            <div key={preset.id} data-testid={`tpl-${preset.id}`} style={{ background: T.panel2, border: `1px solid ${anyAuto ? 'rgba(232,176,75,.35)' : isOverridden ? 'rgba(232,176,75,.2)' : 'rgba(255,255,255,.06)'}`, borderRadius: 8, padding: '16px 18px' }}>
               {/* Kopfzeile: Name (bei eigenen editierbar), Badges, Aktionen */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
                 {draft ? (
@@ -168,22 +166,14 @@ export function TemplatesTab({ onCountChange }: Props) {
                 ) : (
                   <p style={{ fontFamily: T.mono, fontSize: 13, fontWeight: 600, color: T.ink, flex: 1 }}>{preset.name}</p>
                 )}
-                {preset.userDefined ? (
-                  <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.08em', color: T.teal, background: T.tealD, border: `1px solid ${T.tealB}`, borderRadius: 4, padding: '2px 7px' }}>
-                    eigene
-                  </span>
-                ) : (
-                  <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.08em', color: T.inkF, background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 4, padding: '2px 7px' }}>
-                    eingebaut
-                  </span>
-                )}
-                {overridden && (
+                {preset.userDefined
+                  ? badge('eigene', T.teal, T.tealD, T.tealB)
+                  : badge('eingebaut', T.inkF, T.panel, T.lineS)}
+                {isOverridden && (
                   <>
-                    <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.08em', color: T.gold, background: T.goldD, border: '1px solid rgba(232,176,75,.3)', borderRadius: 4, padding: '2px 7px' }}>
-                      angepasst
-                    </span>
+                    {badge('angepasst', T.gold, T.goldD, 'rgba(232,176,75,.3)')}
                     <button type="button"
-                      onClick={() => { resetPresetOverrides(preset.id); reloadTemplates(); }}
+                      onClick={() => { resetPresetOverrides(preset.id); reload(); }}
                       title="Prompt auf den eingebauten Standard zurücksetzen"
                       style={{ fontFamily: T.mono, fontSize: 10, padding: '3px 9px', borderRadius: 4, background: 'transparent', border: '1px solid rgba(255,255,255,.12)', color: T.inkD, cursor: 'pointer' }}>
                       ↺ Standard
@@ -205,7 +195,7 @@ export function TemplatesTab({ onCountChange }: Props) {
                     title="Diese Vorlage mit allen Spalten löschen"
                     question="Ganze Vorlage löschen?"
                     testId={`tpl-delete-${preset.id}`}
-                    onConfirm={() => { deleteUserPreset(preset.id); reloadTemplates(); }}
+                    onConfirm={() => { deleteUserPreset(preset.id); reload(); }}
                     style={{ display: 'flex', alignItems: 'center' }}
                   />
                 )}
@@ -221,179 +211,23 @@ export function TemplatesTab({ onCountChange }: Props) {
                 <p style={{ fontFamily: T.body, fontSize: 11, color: T.inkF, marginBottom: 12 }}>{preset.description}</p>
               )}
 
-              {/* ⚡ Instant Load */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center', padding: '8px 12px', borderRadius: 6, marginBottom: 14, background: anyAuto ? 'rgba(232,176,75,.06)' : 'rgba(255,255,255,.02)', border: `1px solid ${anyAuto ? 'rgba(232,176,75,.3)' : 'rgba(255,255,255,.06)'}` }}>
-                <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', color: anyAuto ? T.gold : T.inkF }}>⚡ INSTANT LOAD</span>
-                {PRESET_SOURCES.map(src => (
-                  <label key={src.key} style={{ fontFamily: T.mono, fontSize: 11, color: preset.autoAdd?.[src.key] ? T.ink : T.inkD, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <input type="checkbox" data-testid={`tpl-auto-${src.key}-${preset.id}`}
-                      checked={!!preset.autoAdd?.[src.key]}
-                      onChange={e => toggleFlags(preset, { autoAdd: { [src.key]: e.target.checked } })}
-                      style={{ accentColor: '#e8b04b', width: 13, height: 13 }} />
-                    bei {src.label}
-                  </label>
-                ))}
-                <label title={anyAuto ? 'Nach dem automatischen Anhängen sofort per KI ausfüllen (kostet API-Credits)' : 'Erst eine Quelle für Instant Load wählen'}
-                  style={{ fontFamily: T.mono, fontSize: 11, color: anyAuto ? (preset.autoRun ? T.teal : T.inkD) : T.inkF, display: 'flex', alignItems: 'center', gap: 6, cursor: anyAuto ? 'pointer' : 'default', opacity: anyAuto ? 1 : .5, marginLeft: 'auto' }}>
-                  <input type="checkbox" data-testid={`tpl-autorun-${preset.id}`}
-                    disabled={!anyAuto}
-                    checked={anyAuto && !!preset.autoRun}
-                    onChange={e => toggleFlags(preset, { autoRun: e.target.checked })}
-                    style={{ accentColor: '#4fd1c5', width: 13, height: 13 }} />
-                  ▶ direkt ausfüllen lassen
-                </label>
-              </div>
+              <InstantLoadRow preset={preset} onToggle={patch => toggleFlags(preset, patch)} />
 
-              {/* Spalten: eigene Vorlage = frei editierbar, eingebaute = Prompt/Version-Override */}
               {draft ? (
-                <>
-                  {draft.columns.map((col, ci) => (
-                    <div key={ci} style={{ marginTop: 4, marginBottom: 12 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <input
-                          value={col.name}
-                          onChange={e => editDraft(preset.id, d => ({ ...d, columns: d.columns.map((c, i) => i === ci ? { ...c, name: e.target.value } : c) }))}
-                          placeholder="spaltenname"
-                          style={{ width: 200, fontFamily: T.mono, fontSize: 11, fontWeight: 600, color: T.teal, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 4, padding: '3px 7px', outline: 'none' }}
-                        />
-                        {col.outputFields && (
-                          <span style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF }}>→ {col.outputFields.join(', ')}</span>
-                        )}
-                        <div style={{ flex: 1 }} />
-                        <label style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF, letterSpacing: '.08em', textTransform: 'uppercase' }}>Version</label>
-                        <input
-                          value={col.promptVersion ?? ''}
-                          onChange={e => editDraft(preset.id, d => ({ ...d, columns: d.columns.map((c, i) => i === ci ? { ...c, promptVersion: e.target.value } : c) }))}
-                          placeholder="z.B. v1"
-                          style={{ width: 52, fontFamily: T.mono, fontSize: 10, padding: '3px 7px', borderRadius: 4, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none' }}
-                        />
-                        <ConfirmDelete
-                          label="Spalte löschen"
-                          title={draft.columns.length > 1 ? 'Diese Spalte aus der Vorlage löschen' : 'Letzte Spalte — löscht die ganze Vorlage'}
-                          question={draft.columns.length > 1 ? 'Spalte löschen?' : 'Letzte Spalte — Vorlage löschen?'}
-                          testId={`tpl-col-delete-${preset.id}-${ci}`}
-                          onConfirm={() => deleteColumn(preset, ci)}
-                          style={{ display: 'flex', alignItems: 'center' }}
-                        />
-                      </div>
-                      {col.inputColumns && (
-                        <p style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF, opacity: .7, marginBottom: 6 }}>
-                          Eingabespalten: {col.inputColumns.join(', ')}
-                        </p>
-                      )}
-                      <textarea
-                        value={col.prompt}
-                        onChange={e => editDraft(preset.id, d => ({ ...d, columns: d.columns.map((c, i) => i === ci ? { ...c, prompt: e.target.value } : c) }))}
-                        rows={5}
-                        spellCheck={false}
-                        placeholder="Prompt… z.B. «Welche Nische hat dieser Coach? Antworte mit einem Wort.»"
-                        style={{
-                          width: '100%', boxSizing: 'border-box', resize: 'vertical',
-                          fontFamily: T.mono, fontSize: 10.5, lineHeight: 1.55,
-                          padding: '10px 12px', borderRadius: 6,
-                          border: `1px solid ${dirtyDraft ? 'rgba(232,176,75,.4)' : T.line}`,
-                          background: T.panel, color: T.ink, outline: 'none',
-                        }}
-                      />
-                    </div>
-                  ))}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                    <button type="button"
-                      onClick={() => editDraft(preset.id, d => ({ ...d, columns: [...d.columns, { name: `ki_spalte_${d.columns.length + 1}`, prompt: '' }] }))}
-                      data-testid={`tpl-col-add-${preset.id}`}
-                      style={{ fontFamily: T.mono, fontSize: 11, padding: '5px 12px', borderRadius: 4, background: 'rgba(79,209,197,.06)', border: '1px dashed rgba(79,209,197,.4)', color: T.teal, cursor: 'pointer' }}>
-                      + Spalte hinzufügen
-                    </button>
-                    <div style={{ flex: 1 }}>
-                      {tplError[preset.id] && (
-                        <span style={{ fontFamily: T.mono, fontSize: 10, color: '#e8736b' }}>⚠ {tplError[preset.id]}</span>
-                      )}
-                      {!tplError[preset.id] && tplSaved === preset.id && (
-                        <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal }}>✓ Gespeichert</span>
-                      )}
-                    </div>
-                    <button type="button"
-                      disabled={!dirtyDraft}
-                      onClick={() => saveDraft(draft)}
-                      data-testid={`tpl-save-${preset.id}`}
-                      style={{
-                        fontFamily: T.mono, fontSize: 11, padding: '5px 14px', borderRadius: 5,
-                        border: `1px solid ${dirtyDraft ? T.gold : 'rgba(255,255,255,.1)'}`,
-                        background: dirtyDraft ? 'rgba(232,176,75,.12)' : 'transparent',
-                        color: dirtyDraft ? T.gold : T.inkF,
-                        cursor: dirtyDraft ? 'pointer' : 'default',
-                      }}>
-                      Speichern
-                    </button>
-                  </div>
-                </>
-              ) : preset.columns.map(col => {
-                const k = `${preset.id}:${col.name}`;
-                const dirty = tplPrompts[k] !== col.prompt || (tplVersions[k] ?? '') !== (col.promptVersion ?? '');
-                return (
-                  <div key={col.name} style={{ marginTop: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 600, color: T.teal }}>{col.name}</span>
-                      {col.outputFields && (
-                        <span style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF }}>→ {col.outputFields.join(', ')}</span>
-                      )}
-                      <div style={{ flex: 1 }} />
-                      <label style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF, letterSpacing: '.08em', textTransform: 'uppercase' }}>Version</label>
-                      <input
-                        value={tplVersions[k] ?? ''}
-                        onChange={e => setTplVersions(p => ({ ...p, [k]: e.target.value }))}
-                        placeholder="z.B. v2"
-                        style={{ width: 52, fontFamily: T.mono, fontSize: 10, padding: '3px 7px', borderRadius: 4, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none' }}
-                      />
-                    </div>
-                    {col.inputColumns && (
-                      <p style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF, opacity: .7, marginBottom: 6 }}>
-                        Eingabespalten: {col.inputColumns.join(', ')}
-                      </p>
-                    )}
-                    <textarea
-                      value={tplPrompts[k] ?? ''}
-                      onChange={e => setTplPrompts(p => ({ ...p, [k]: e.target.value }))}
-                      rows={10}
-                      spellCheck={false}
-                      style={{
-                        width: '100%', boxSizing: 'border-box', resize: 'vertical',
-                        fontFamily: T.mono, fontSize: 10.5, lineHeight: 1.55,
-                        padding: '10px 12px', borderRadius: 6,
-                        border: `1px solid ${dirty ? 'rgba(232,176,75,.4)' : T.line}`,
-                        background: T.panel, color: T.ink, outline: 'none',
-                      }}
-                    />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                      <div style={{ flex: 1 }}>
-                        {tplSaved === k && (
-                          <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal }}>✓ Gespeichert — gilt für neue Importe</span>
-                        )}
-                      </div>
-                      <button type="button"
-                        disabled={!dirty}
-                        onClick={() => {
-                          savePromptOverride(preset.id, col.name, {
-                            prompt: tplPrompts[k] ?? '',
-                            promptVersion: (tplVersions[k] ?? '').trim() || undefined,
-                          });
-                          reloadTemplates();
-                          setTplSaved(k);
-                          setTimeout(() => setTplSaved(s => (s === k ? null : s)), 3000);
-                        }}
-                        style={{
-                          fontFamily: T.mono, fontSize: 11, padding: '5px 14px', borderRadius: 5,
-                          border: `1px solid ${dirty ? T.gold : 'rgba(255,255,255,.1)'}`,
-                          background: dirty ? 'rgba(232,176,75,.12)' : 'transparent',
-                          color: dirty ? T.gold : T.inkF,
-                          cursor: dirty ? 'pointer' : 'default',
-                        }}>
-                        Speichern
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                <UserPresetEditor
+                  preset={preset}
+                  draft={draft}
+                  dirty={dirty}
+                  error={errors[preset.id]}
+                  saved={savedId === preset.id}
+                  onEdit={fn => editDraft(preset.id, fn)}
+                  onSave={() => saveDraft(draft)}
+                  onDeleteColumn={ci => deleteColumn(preset, ci)}
+                />
+              ) : preset.columns.map(col => (
+                // key mit Prompt: nach einem Save (oder ↺ Standard) startet der Entwurf frisch
+                <BuiltinColumnEditor key={`${col.name}:${col.prompt}:${col.promptVersion ?? ''}`} presetId={preset.id} col={col} onSaved={reload} />
+              ))}
             </div>
           );
         })}

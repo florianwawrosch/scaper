@@ -26,11 +26,13 @@ const { chromium } = playwright();
   await page.click('button:has-text("Alle")');
   // Löschen
   await page.locator('button[title="Eintrag löschen"]').first().click();
+  await page.waitForSelector('button:has-text("Ja")', { timeout: 3000 });
   await page.locator('button:has-text("Ja")').click();
   await page.waitForTimeout(200);
   ok((await page.textContent('body')).includes('1 Einträge'), 'Eintrag gelöscht');
   ok(await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('csv_run_')).length) === 1, 'localStorage-Eintrag entfernt');
   // Klick öffnet Viewer
+  await page.waitForSelector('text=leads.csv');
   await page.locator('text=leads.csv').first().click();
   await page.waitForURL(/\/csv\/csv_2/);
   ok(true, 'Klick öffnet den Viewer');
