@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { isPendingAiValue, isAiError } from '@/lib/ai';
 import { Glyph } from './Glyph';
-import { FilterDropdown, type ColFilter } from './FilterDropdown';
+import { FilterDropdown } from './FilterDropdown';
+import { useTableState, PAGE_SIZE as PAGE } from '@/app/hooks/useTableState';
+import { linkTarget } from '@/lib/tableQuery';
 import { downloadCsv, downloadXlsx } from '@/lib/tableExport';
 import { mono } from '@/app/theme';
 
@@ -54,35 +56,20 @@ interface DataTableProps {
   toolbarExtra?: React.ReactNode;
 }
 
-/** Datenzeile plus Original-Index — hält Abwahl/Export über Filter & Sortierung hinweg stabil */
-type Row = Record<string, unknown> & { _idx: number };
-
-const PAGE = 25;
 
 export function DataTable({
   data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange,
   stats, scrollSignal = 0, onAddAiColumn, onConfigureAiColumn, onRunAiColumn, onBlockPages,
   exportPresets = [], toolbarExtra,
 }: DataTableProps) {
-  const [globalSearch, setGlobalSearch]   = useState('');
-  const [colFilters,   setColFilters]     = useState<Record<string, ColFilter>>({});
-  const [sortCol,      setSortCol]        = useState<string | null>(null);
-  const [sortAsc,      setSortAsc]        = useState(true);
-  const [page,         setPage]           = useState(1);
-  const [openFilter,   setOpenFilter]     = useState<{ col: string; rect: DOMRect } | null>(null);
-  const [hiddenCols,   setHiddenCols]     = useState<Set<string>>(new Set());
-  const [colMenuOpen,  setColMenuOpen]    = useState(false);
-
-  const allColumns = useMemo(
-    () => [...rawColumns, ...aiColumns.map(c => c.name)],
-    [rawColumns, aiColumns],
-  );
-
-  // Visible raw columns (AI columns are always shown)
-  const visibleRawColumns = useMemo(
-    () => rawColumns.filter(c => !hiddenCols.has(c)),
-    [rawColumns, hiddenCols],
-  );
+  const {
+    globalSearch, setGlobalSearch, colFilters, setColFilters, activeFilters,
+    sortCol, sortAsc, sort, page, setPage, totalPages, hiddenCols, setHiddenCols,
+    allColumns, visibleRawColumns, extended, uniqueValues, sorted, paginated,
+    chipFilterActive, toggleChipFilter,
+  } = useTableState(data, rawColumns, aiColumns);
+  const [openFilter,  setOpenFilter]  = useState<{ col: string; rect: DOMRect } | null>(null);
+  const [colMenuOpen, setColMenuOpen] = useState(false);
 
   // When the parent creates an AI column it bumps scrollSignal — the new column
   // appears at the right end, so scroll there (otherwise "+ KI-Spalte" feels
@@ -96,56 +83,6 @@ export function DataTable({
     }
     prevScrollSignal.current = scrollSignal;
   }, [scrollSignal]);
-
-  const extended = useMemo(() =>
-    data.map((row, i) => {
-      const r: Row = { ...row, _idx: i };
-      for (const col of aiColumns) r[col.name] = col.values[i] ?? '—';
-      return r;
-    }),
-  [data, aiColumns]);
-
-  const uniqueValues = useMemo(() => {
-    const map: Record<string, string[]> = {};
-    for (const col of allColumns) {
-      const set = new Set(extended.map(row => String(row[col] ?? '')));
-      map[col] = [...set].sort((a, b) => a.localeCompare(b, 'de'));
-    }
-    return map;
-  }, [extended, allColumns]);
-
-  const filtered = useMemo(() => {
-    return extended.filter(row => {
-      if (globalSearch) {
-        const gs = globalSearch.toLowerCase();
-        if (!allColumns.some(c => String(row[c] ?? '').toLowerCase().includes(gs))) return false;
-      }
-      for (const [col, f] of Object.entries(colFilters)) {
-        const cell = String(row[col] ?? '');
-        if (f.text && !cell.toLowerCase().includes(f.text.toLowerCase())) return false;
-        if (f.values !== null && !f.values.has(cell)) return false;
-      }
-      return true;
-    });
-  }, [extended, globalSearch, colFilters, allColumns]);
-
-  const sorted = useMemo(() => {
-    if (!sortCol) return filtered;
-    return [...filtered].sort((a, b) => {
-      const av = String(a[sortCol] ?? '').trim();
-      const bv = String(b[sortCol] ?? '').trim();
-      // Empty cells always sort last, regardless of direction
-      if (!av && bv) return 1;
-      if (av && !bv) return -1;
-      if (!av && !bv) return 0;
-      // numeric:true makes "9" < "104" instead of lexicographic order
-      const cmp = av.localeCompare(bv, 'de', { numeric: true, sensitivity: 'base' });
-      return sortAsc ? cmp : -cmp;
-    });
-  }, [filtered, sortCol, sortAsc]);
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE));
-  const paginated  = sorted.slice((page - 1) * PAGE, page * PAGE);
 
   const toggleExclude = (idx: number) => {
     if (!onExcludeChange) return;
@@ -162,14 +99,6 @@ export function DataTable({
     else paginated.forEach(r => next.delete(r._idx));
     onExcludeChange(next);
   };
-
-  const sort = (col: string) => {
-    if (sortCol === col) setSortAsc(a => !a);
-    else { setSortCol(col); setSortAsc(true); }
-    setPage(1);
-  };
-
-  const activeFilters = Object.values(colFilters).filter(f => f.text || f.values !== null).length;
 
   /** Sichtbare, nicht abgewählte Zeilen — Basis für jeden Export */
   const exportRows = () => sorted.filter(row => !excludedRows.has(row._idx));
@@ -207,42 +136,19 @@ export function DataTable({
 
   // URLs and bare domains (e.g. "app.quiz-akademie.de") become clickable links
   const renderCell = (val: string) => {
-    const v = val.trim();
-    // Full URL, or a bare domain: label.tld optionally with a path, no spaces.
-    // The TLD must be alphabetic (real TLDs never are) so decimals, version
-    // strings ("16.3.3") and IPs ("192.168.1.1") don't get misread as domains.
-    const isUrl    = /^https?:\/\/\S+$/i.test(v);
-    const isDomain = /^(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:\/\S*)?$/i.test(v) && !v.includes('@');
-    if (isUrl || isDomain) {
-      const href = isUrl ? v : `https://${v}`;
-      return (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
-          style={{ color: '#8ab4f8', textDecoration: 'none' }}
-          onMouseEnter={e => ((e.currentTarget as HTMLElement).style.textDecoration = 'underline')}
-          onMouseLeave={e => ((e.currentTarget as HTMLElement).style.textDecoration = 'none')}
-        >{v}</a>
-      );
-    }
-    return val || '—';
-  };
-
-  // Chip-Klick: Spalte auf genau diesen Wert filtern; erneuter Klick hebt auf
-  const chipFilterActive = (f: { column: string; value: string }) => {
-    const cf = colFilters[f.column];
-    return !!cf?.values && cf.values.size === 1 && cf.values.has(f.value);
-  };
-  const toggleChipFilter = (f: { column: string; value: string }) => {
-    setColFilters(prev => {
-      const next = { ...prev };
-      if (chipFilterActive(f)) delete next[f.column];
-      else next[f.column] = { text: '', values: new Set([f.value]) };
-      return next;
-    });
-    setPage(1);
+    const href = linkTarget(val);
+    if (!href) return val || '—';
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={e => e.stopPropagation()}
+        style={{ color: '#8ab4f8', textDecoration: 'none' }}
+        onMouseEnter={e => ((e.currentTarget as HTMLElement).style.textDecoration = 'underline')}
+        onMouseLeave={e => ((e.currentTarget as HTMLElement).style.textDecoration = 'none')}
+      >{val.trim()}</a>
+    );
   };
 
   return (
@@ -278,13 +184,13 @@ export function DataTable({
         <input
           type="text"
           value={globalSearch}
-          onChange={e => { setGlobalSearch(e.target.value); setPage(1); }}
+          onChange={e => setGlobalSearch(e.target.value)}
           placeholder="Alle Spalten durchsuchen…"
           style={{ ...mono, fontSize: 11, flex: 1, maxWidth: 240, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 5, padding: '3px 8px', color: '#f4efe4', outline: 'none' }}
         />
         {activeFilters > 0 && (
           <button
-            onClick={() => { setColFilters({}); setPage(1); }}
+            onClick={() => setColFilters({})}
             style={{ ...mono, fontSize: 10, color: '#e8736b', background: 'rgba(232,115,107,.08)', border: '1px solid rgba(232,115,107,.2)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}
           >
             {activeFilters} Filter ×
@@ -307,7 +213,7 @@ export function DataTable({
           );
         })()}
         <span style={{ ...mono, fontSize: 10, color: '#5f6e87', marginLeft: 'auto' }}>
-          {filtered.length}/{data.length} sichtbar
+          {sorted.length}/{data.length} sichtbar
           {excludedRows.size > 0 && ` · ${includedCount} ausgewählt`}
         </span>
 
@@ -545,10 +451,7 @@ export function DataTable({
           allVals={uniqueValues[openFilter.col] ?? []}
           filter={colFilters[openFilter.col] ?? { text: '', values: null }}
           anchorRect={openFilter.rect}
-          onChange={f => {
-            setColFilters(prev => ({ ...prev, [openFilter.col]: f }));
-            setPage(1);
-          }}
+          onChange={f => setColFilters(prev => ({ ...prev, [openFilter.col]: f }))}
           onClose={() => setOpenFilter(null)}
         />
       )}

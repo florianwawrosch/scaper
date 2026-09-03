@@ -19,7 +19,8 @@
     "../../lib/serverRetry.ts",
     "../../lib/auth.ts",
     "../../lib/loginNotify.ts",
-    "../../lib/enrichMapping.ts"
+    "../../lib/enrichMapping.ts",
+    "../../lib/tableQuery.ts"
   ],
   "include": []
 }
