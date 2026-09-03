@@ -6,9 +6,8 @@ import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { applyPresets, presetFromConfigs, saveUserPreset, readAutorunIds, AUTORUN_KEY, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
-import { runAiColumn, defaultModel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, isAiError, normalizeMultiOutput, PENDING } from '@/lib/ai';
+import { runAiColumn, defaultModel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, isAiError, normalizeMultiOutput, PENDING, type AnalysisConfig } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
-import type { AnalysisConfig } from '@/app/components/AnalysisPanel';
 
 export interface CsvRun {
   data: Record<string, string>[];

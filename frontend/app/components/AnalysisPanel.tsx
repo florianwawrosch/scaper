@@ -5,26 +5,12 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadSettings } from '@/lib/settings';
-import { AI_PROVIDERS as ALL_PROVIDERS, runAiColumn, type DerivedRule } from '@/lib/ai';
+import { AI_PROVIDERS as ALL_PROVIDERS, runAiColumn, type AnalysisConfig } from '@/lib/ai';
+
+// Typ lebt in lib/ai.ts (wird auch von lib/* genutzt) — hier nur re-exportiert
+export type { AnalysisConfig } from '@/lib/ai';
 import { useToast } from './Toast';
 
-export interface AnalysisConfig {
-  id: string;
-  name: string;
-  provider: string;
-  model: string;
-  prompt: string;
-  /** Only these row columns go into the prompt (all non-empty columns otherwise) */
-  inputColumns?: string[];
-  /** Pipe-separated answer is split into these columns (multi-output template) */
-  outputFields?: string[];
-  /** Allowed values per output field — answers outside become "Fehler:" and re-run */
-  outputEnums?: Record<string, string[]>;
-  /** Rule columns computed from the split output fields */
-  derived?: DerivedRule[];
-  /** Template version the prompt came from (e.g. "v5") — shown in the column label */
-  promptVersion?: string;
-}
 
 interface Props {
   runId: string;

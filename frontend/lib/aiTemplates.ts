@@ -4,7 +4,7 @@
 // gesplittet werden; die Zielgruppen-Entscheidung ist eine deterministische
 // Regel über die Ausgaben — keine eigene KI-Frage.
 
-import type { AnalysisConfig } from '@/app/components/AnalysisPanel';
+import type { AnalysisConfig } from '@/lib/ai';
 import type { DerivedRule } from '@/lib/ai';
 import { defaultModel } from '@/lib/ai';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';

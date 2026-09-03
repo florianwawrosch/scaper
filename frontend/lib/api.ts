@@ -9,10 +9,6 @@ export function getApiBase(): string {
   return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 }
 
-const API_BASE = getApiBase();
-
-export const API_URL = API_BASE;
-
 /**
  * All backend calls go through the Next.js server proxy (/api/backend/...):
  * same-origin (no CORS) and the server injects API keys from its env vars
@@ -46,26 +42,7 @@ export interface ScrapeRun {
   scraper_config?: Record<string, unknown>;
 }
 
-export interface Source {
-  key: string;
-  label: string;
-  name?: string;
-  description: string;
-  config_schema: Record<string, unknown>;
-}
-
-export interface Preset {
-  name: string;
-  config: Record<string, unknown>;
-  created_at: string;
-}
-
 export const api = {
-  health: async () => {
-    const res = await apiFetch(`/api/health`);
-    if (!res.ok) return extractError(res, 'Health check fehlgeschlagen');
-    return res.json();
-  },
 
   runs: {
     list: async () => {
@@ -77,16 +54,6 @@ export const api = {
     get: async (runId: string) => {
       const res = await apiFetch(`/api/runs/${runId}`);
       if (!res.ok) return extractError(res, 'Run konnte nicht geladen werden');
-      return res.json() as Promise<ScrapeRun>;
-    },
-
-    create: async (source: string, scraperConfig?: Record<string, unknown>) => {
-      const res = await apiFetch(`/api/runs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, scraper_config: scraperConfig }),
-      });
-      if (!res.ok) return extractError(res, 'Run konnte nicht erstellt werden');
       return res.json() as Promise<ScrapeRun>;
     },
 
@@ -106,35 +73,6 @@ export const api = {
       return res.json();
     },
 
-    saveDataset: async (runId: string, dfData: unknown[], mapping: Record<string, unknown>) => {
-      const res = await apiFetch(`/api/runs/${runId}/dataset`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ df_data: dfData, mapping }),
-      });
-      if (!res.ok) return extractError(res, 'Datensatz konnte nicht gespeichert werden');
-      return res.json();
-    },
-
-    upload: async (runId: string, formData: FormData) => {
-      const res = await apiFetch(`/api/runs/${runId}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-      if (!res.ok) return extractError(res, 'Upload fehlgeschlagen');
-      return res.json();
-    },
-
-    classify: async (runId: string, aiProvider: string, aiModel: string, dfData?: unknown[], mapping?: Record<string, unknown>, apiKey?: string) => {
-      const res = await apiFetch(`/api/runs/${runId}/classify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aiProvider, aiModel, df_data: dfData, mapping, apiKey }),
-      });
-      if (!res.ok) return extractError(res, 'Klassifizierung fehlgeschlagen');
-      return res.json();
-    },
-
     analyze: async (runId: string, aiProvider: string, aiModel: string, prompt: string, columnName: string, apiKey?: string) => {
       const res = await apiFetch(`/api/runs/${runId}/analyze`, {
         method: 'POST',
@@ -146,27 +84,4 @@ export const api = {
     },
   },
 
-  sources: {
-    list: async () => {
-      const res = await apiFetch(`/api/sources`);
-      if (!res.ok) return extractError(res, 'Quellen konnten nicht geladen werden');
-      return res.json() as Promise<Source[]>;
-    },
-
-    getPresets: async (sourceKey: string) => {
-      const res = await apiFetch(`/api/sources/${sourceKey}/presets`);
-      if (!res.ok) return extractError(res, 'Presets konnten nicht geladen werden');
-      return res.json() as Promise<Preset[]>;
-    },
-
-    savePreset: async (sourceKey: string, name: string, config: Record<string, unknown>) => {
-      const res = await apiFetch(`/api/sources/${sourceKey}/presets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, config }),
-      });
-      if (!res.ok) return extractError(res, 'Preset konnte nicht gespeichert werden');
-      return res.json() as Promise<Preset>;
-    },
-  },
 };

@@ -1,4 +1,4 @@
-import type { AnalysisConfig } from '@/app/components/AnalysisPanel';
+import type { AnalysisConfig } from '@/lib/ai';
 import type { DerivedRule } from '@/lib/ai';
 
 /**

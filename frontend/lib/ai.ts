@@ -118,6 +118,25 @@ export interface DerivedRule {
   else: string;
 }
 
+/** Eine KI-Spalte eines Datensatzes (Konfiguration, ohne Ergebnisse) */
+export interface AnalysisConfig {
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  prompt: string;
+  /** Only these row columns go into the prompt (all non-empty columns otherwise) */
+  inputColumns?: string[];
+  /** Pipe-separated answer is split into these columns (multi-output template) */
+  outputFields?: string[];
+  /** Allowed values per output field — answers outside become "Fehler:" and re-run */
+  outputEnums?: Record<string, string[]>;
+  /** Rule columns computed from the split output fields */
+  derived?: DerivedRule[];
+  /** Template version the prompt came from (e.g. "v5") — shown in the column label */
+  promptVersion?: string;
+}
+
 /** Compute derived columns from already-split output columns. */
 export function applyDerivedRules(
   rules: DerivedRule[],
