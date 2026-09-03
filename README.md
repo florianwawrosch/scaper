@@ -84,6 +84,14 @@ frontend/                    Next.js-App (deployt auf Vercel)
   app/api/enrich/            E-Mail-Enrichment: Hunter.io + FindyMail
   app/api/keys/              Keys für eingeloggte Browser (nur mit APP_PASSWORD)
   app/api/keys/available/    Welche Keys der Server hat (Booleans)
+  app/api/enrich/account/    Guthaben + Abrechnungsregel je Enrichment-Anbieter
+  app/hooks/                 Seiten-Logik als Hooks: useScrapeForm, useCsvImport,
+                             useAiColumns (csv/[id]), useEnrichmentRun, useTableState
+  app/components/            DataTable, FilterDropdown, EnrichmentPanel (+ enrichment/),
+                             PresetMenu, TemplateSaveForm, AiColumnEditor, …
+  app/settings/              page.tsx (Sidebar) + IntegrationsTab, TemplatesTab
+                             (+ templates/), BlocklistTab, DesignTab
+  app/theme.ts               Design-Tokens (CSS-Variablen) + Monospace-Style
   lib/serverKeys.ts          Env-Variablen-Namen ↔ Provider-Zuordnung
   lib/blocklist.ts           Blockliste (immer ausgeschlossene Seiten)
   lib/csvStorage.ts          IndexedDB-Speicher für Scrape-/CSV-Daten
@@ -92,6 +100,11 @@ frontend/                    Next.js-App (deployt auf Vercel)
                              Enum-Validierung, Regel-Spalten, feld_hash-Cache
   lib/aiTemplates.ts         KI-Spalten-Vorlagen (eingebaut + eigene), Instant Load, Overrides
   lib/analysisConfigs.ts     KI-Spalten-Konfiguration pro Datensatz
+  lib/tableQuery.ts          Filtern/Sortieren/Link-Erkennung der Tabelle (pur, getestet)
+  lib/tableExport.ts         CSV/XLSX-Download (xlsx wird erst beim Klick geladen)
+  lib/enrichMapping.ts       Spalten-Vorschläge fürs Enrichment (pur, getestet)
+  lib/outreachExport.ts      Outreach-CSV-Mapping (pur, getestet)
+  lib/savedSearches.ts       Gespeicherte Suchen der Scrape-Maske
 
 main.py + core/              Altes FastAPI-Backend (Railway) — vom Frontend
                              nicht mehr angebunden; die App läuft komplett
