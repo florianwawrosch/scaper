@@ -6,7 +6,7 @@ import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, type BlockEntry } from '@/lib/blocklist';
 import { getEffectivePresets } from '@/lib/aiTemplates';
 import { TemplatesTab } from './TemplatesTab';
-import { T } from './theme';
+import { T } from '@/app/theme';
 
 interface Service { key: string; label: string; hint: string; desc: string }
 interface Group   { key: string; label: string; desc: string; services: Service[] }

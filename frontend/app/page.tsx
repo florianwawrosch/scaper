@@ -16,7 +16,7 @@ import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { PresetSelector } from '@/app/components/PresetSelector';
 import { TagInput } from '@/app/components/TagInput';
 import { CountrySelect } from '@/app/components/CountrySelect';
-
+import { T } from '@/app/theme';
 
 const PLATFORM_OPTIONS = [
   { value: 'FACEBOOK',  label: 'Facebook'  },
@@ -62,24 +62,6 @@ const STATUS_PILL: Record<ScrapeRun['status'], { label: string; cls: string }> =
   in_progress:   { label: 'Aktiv',    cls: 'warn'  },
   completed:     { label: 'Fertig',   cls: 'good'  },
   failed:        { label: 'Fehler',   cls: 'bad'   },
-};
-
-const T = {
-  bg:      'var(--th-bg)',
-  panel:   'var(--th-panel)',
-  panel2:  'var(--th-panel2)',
-  line:    'var(--th-line)',
-  lineS:   'var(--th-line-soft)',
-  gold:    'var(--th-gold)',
-  goldD:   'var(--th-gold-d)',
-  teal:    'var(--th-teal)',
-  rose:    'var(--th-rose)',
-  ink:     'var(--th-ink)',
-  inkD:    'var(--th-ink-d)',
-  inkF:    'var(--th-ink-f)',
-  ffDisp:  'var(--ff-disp)',
-  ffBody:  'var(--ff-body)',
-  ffMono:  'var(--ff-mono)',
 };
 
 function ChipGroup({ options, value, onChange }: { options: { value: string; label: string }[]; value: string[]; onChange: (v: string[]) => void }) {

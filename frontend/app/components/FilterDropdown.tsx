@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { mono } from '@/app/theme';
 
 /** Filterzustand einer Spalte: Textsuche + Werte-Auswahl (null = alle) */
 export interface ColFilter { text: string; values: Set<string> | null }
-
-const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
 
 /** Excel-artiges Filter-Popover unter einem Spaltenkopf (Text + Werte-Checkboxen) */
 export function FilterDropdown({

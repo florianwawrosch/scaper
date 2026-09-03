@@ -7,18 +7,7 @@ import { loadAiConfigs, findDerivedRule } from '@/lib/analysisConfigs';
 import { EnrichmentPanel } from '@/app/components/EnrichmentPanel';
 import { useToast } from '@/app/components/Toast';
 import { Glyph } from '@/app/components/Glyph';
-
-const T = {
-  panel:  'var(--th-panel)',
-  line:   'var(--th-line)',
-  lineS:  'var(--th-line-soft)',
-  gold:   'var(--th-gold)',
-  ink:    'var(--th-ink)',
-  inkD:   'var(--th-ink-d)',
-  inkF:   'var(--th-ink-f)',
-  ffMono: 'var(--ff-mono)',
-  ffDisp: 'var(--ff-disp)',
-};
+import { T } from '@/app/theme';
 
 export default function EnrichPage() {
   const router = useRouter();

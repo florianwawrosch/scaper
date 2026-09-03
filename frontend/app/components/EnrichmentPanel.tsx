@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { useToast } from './Toast';
 import { Glyph } from './Glyph';
+import { T, mono } from '@/app/theme';
 
 interface Props {
   runId: string;
@@ -27,19 +28,6 @@ const ALL_PROVIDERS = [
   { id: 'hunter_io', label: 'Hunter.io', desc: 'E-Mail Finder' },
   { id: 'findymail', label: 'FindyMail', desc: 'E-Mail Verifikation' },
 ] as const;
-
-const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
-
-const T = {
-  panel:  'var(--th-panel)',
-  panel2: 'var(--th-panel2)',
-  line:   'var(--th-line)',
-  lineS:  'var(--th-line-soft)',
-  gold:   'var(--th-gold)',
-  ink:    'var(--th-ink)',
-  inkD:   'var(--th-ink-d)',
-  inkF:   'var(--th-ink-f)',
-};
 
 export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, availableColumns, resolveRunId, onEmailColumn, rows }: Props) {
   const { showToast } = useToast();

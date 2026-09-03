@@ -5,22 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api, type ScrapeRun } from '@/lib/api';
 import { deleteCsvText } from '@/lib/csvStorage';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
-
-const T = {
-  bg:    'var(--th-bg)',
-  panel: 'var(--th-panel)',
-  panel2:'var(--th-panel2)',
-  line:  'var(--th-line)',
-  lineS: 'var(--th-line-soft)',
-  gold:  'var(--th-gold)',
-  goldD: 'var(--th-gold-d)',
-  ink:   'var(--th-ink)',
-  inkD:  'var(--th-ink-d)',
-  inkF:  'var(--th-ink-f)',
-  teal:  'var(--th-teal)',
-  mono:  'var(--ff-mono)',
-  disp:  'var(--ff-disp)',
-};
+import { T } from '@/app/theme';
 
 const STATUS: Record<ScrapeRun['status'], { label: string; color: string; bg: string; border: string }> = {
   draft:         { label: 'Draft',    color: '#9aa7bd', bg: 'rgba(154,167,189,.08)', border: 'rgba(154,167,189,.2)'  },

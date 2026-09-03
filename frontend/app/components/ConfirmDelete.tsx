@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-
-const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
+import { mono } from '@/app/theme';
 
 interface Props {
   onConfirm: () => void;

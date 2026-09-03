@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { PRESET_SOURCES, type PresetFlags } from '@/lib/aiTemplates';
-
-const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
+import { mono } from '@/app/theme';
 
 interface Props {
   /** Vorbelegter Vorlagenname (z.B. Spaltenname) */

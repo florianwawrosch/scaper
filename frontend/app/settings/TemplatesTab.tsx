@@ -7,7 +7,7 @@ import {
   PRESET_SOURCES, type ImportPreset, type PresetFlags,
 } from '@/lib/aiTemplates';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
-import { T } from './theme';
+import { T } from '@/app/theme';
 
 interface Props {
   /** Anzahl der Vorlagen (für das Badge in der Navigation) */

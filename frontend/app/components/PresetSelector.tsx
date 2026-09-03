@@ -2,20 +2,7 @@
 
 import { useState } from 'react';
 import type { ImportPreset } from '@/lib/aiTemplates';
-
-const T = {
-  bg:    'var(--th-bg)',
-  panel: 'var(--th-panel)',
-  line:  'var(--th-line)',
-  lineS: 'var(--th-line-soft)',
-  gold:  'var(--th-gold)',
-  ink:   'var(--th-ink)',
-  inkD:  'var(--th-ink-d)',
-  inkF:  'var(--th-ink-f)',
-  teal:  'var(--th-teal)',
-  ffMono: 'var(--ff-mono)',
-  ffDisp: 'var(--ff-disp)',
-};
+import { T } from '@/app/theme';
 
 interface Props {
   presets: ImportPreset[];

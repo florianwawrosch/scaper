@@ -5,8 +5,7 @@ import { modelsFor, providerLabel } from '@/lib/ai';
 import type { PresetFlags } from '@/lib/aiTemplates';
 import type { AnalysisConfig } from '@/lib/ai';
 import { TemplateSaveForm } from './TemplateSaveForm';
-
-const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
+import { mono } from '@/app/theme';
 
 interface Props {
   config: AnalysisConfig;

@@ -5,6 +5,7 @@ import { isPendingAiValue, isAiError } from '@/lib/ai';
 import { Glyph } from './Glyph';
 import { FilterDropdown, type ColFilter } from './FilterDropdown';
 import { downloadCsv, downloadXlsx } from '@/lib/tableExport';
+import { mono } from '@/app/theme';
 
 interface AiColumn { name: string; values: string[]; label?: string }
 
@@ -53,12 +54,10 @@ interface DataTableProps {
   toolbarExtra?: React.ReactNode;
 }
 
-
 /** Datenzeile plus Original-Index — hält Abwahl/Export über Filter & Sortierung hinweg stabil */
 type Row = Record<string, unknown> & { _idx: number };
 
 const PAGE = 25;
-const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
 
 export function DataTable({
   data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange,

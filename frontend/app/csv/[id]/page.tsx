@@ -13,23 +13,7 @@ import { AiColumnEditor } from '@/app/components/AiColumnEditor';
 import { PresetMenu } from '@/app/components/PresetMenu';
 import { Glyph } from '@/app/components/Glyph';
 import { useAiColumns } from './useAiColumns';
-
-const T = {
-  bg:     'var(--th-bg)',
-  panel:  'var(--th-panel)',
-  panel2: 'var(--th-panel2)',
-  line:   'var(--th-line)',
-  lineS:  'var(--th-line-soft)',
-  gold:   'var(--th-gold)',
-  goldD:  'var(--th-gold-d)',
-  ink:    'var(--th-ink)',
-  inkD:   'var(--th-ink-d)',
-  inkF:   'var(--th-ink-f)',
-  teal:   'var(--th-teal)',
-  ffMono: 'var(--ff-mono)',
-  ffBody: 'var(--ff-body)',
-  ffDisp: 'var(--ff-disp)',
-};
+import { T } from '@/app/theme';
 
 export default function CsvViewer() {
   const router = useRouter();

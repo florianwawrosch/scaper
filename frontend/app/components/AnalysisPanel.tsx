@@ -10,7 +10,7 @@ import { AI_PROVIDERS as ALL_PROVIDERS, runAiColumn, type AnalysisConfig } from 
 // Typ lebt in lib/ai.ts (wird auch von lib/* genutzt) — hier nur re-exportiert
 export type { AnalysisConfig } from '@/lib/ai';
 import { useToast } from './Toast';
-
+import { mono } from '@/app/theme';
 
 interface Props {
   runId: string;
@@ -21,8 +21,6 @@ interface Props {
    *  (chunked) — no separate Python backend needed. */
   rows?: Record<string, string>[];
 }
-
-const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
 
 export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, rows }: Props) {
   const { showToast } = useToast();

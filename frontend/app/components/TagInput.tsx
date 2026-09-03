@@ -1,19 +1,7 @@
 'use client';
 
 import { useState, useRef, KeyboardEvent } from 'react';
-
-const T = {
-  panel2:  'var(--th-panel2)',
-  line:    'var(--th-line)',
-  lineS:   'var(--th-line-soft)',
-  gold:    'var(--th-gold)',
-  goldD:   'var(--th-gold-d)',
-  ink:     'var(--th-ink)',
-  inkD:    'var(--th-ink-d)',
-  inkF:    'var(--th-ink-f)',
-  ffMono:  'var(--ff-mono)',
-  ffBody:  'var(--ff-body)',
-};
+import { T } from '@/app/theme';
 
 interface Props {
   tags: string[];

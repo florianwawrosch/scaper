@@ -4,8 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import type { ImportPreset, PresetFlags } from '@/lib/aiTemplates';
 import { Glyph } from './Glyph';
 import { TemplateSaveForm } from './TemplateSaveForm';
-
-const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
+import { mono } from '@/app/theme';
 
 interface Props {
   /** Alle Vorlagen (eingebaut + eigene) — werden beim Öffnen frisch geladen */

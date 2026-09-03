@@ -3,24 +3,12 @@
 import { useState } from 'react';
 import { exportToCSV, exportToXLSX, getFilenameWithTimestamp, type ExportRow } from '@/lib/export';
 import { useToast } from './Toast';
+import { T, mono } from '@/app/theme';
 
 interface ExportPanelProps {
   runId: string;
   leads: ExportRow[];
 }
-
-const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
-
-const T = {
-  panel:  'var(--th-panel)',
-  panel2: 'var(--th-panel2)',
-  line:   'var(--th-line)',
-  lineS:  'var(--th-line-soft)',
-  gold:   'var(--th-gold)',
-  ink:    'var(--th-ink)',
-  inkD:   'var(--th-ink-d)',
-  inkF:   'var(--th-ink-f)',
-};
 
 export function ExportPanel({ runId, leads }: ExportPanelProps) {
   const { showToast } = useToast();
