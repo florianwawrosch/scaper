@@ -48,6 +48,8 @@ interface DataTableProps {
   onBlockPages?: (rows: Record<string, unknown>[]) => void;
   /** Weitere Export-Buttons neben ↓ CSV / ↓ XLSX (z.B. Outreach-CSV) */
   exportPresets?: ExportPreset[];
+  /** Zusätzliches Toolbar-Element links von «+ KI-Spalte» (z.B. Vorlagen-Menü) */
+  toolbarExtra?: React.ReactNode;
 }
 
 interface ColFilter { text: string; values: Set<string> | null }
@@ -175,7 +177,7 @@ function FilterDropdown({
 export function DataTable({
   data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange,
   stats, scrollSignal = 0, onAddAiColumn, onConfigureAiColumn, onRunAiColumn, onBlockPages,
-  exportPresets = [],
+  exportPresets = [], toolbarExtra,
 }: DataTableProps) {
   const [globalSearch, setGlobalSearch]   = useState('');
   const [colFilters,   setColFilters]     = useState<Record<string, ColFilter>>({});
@@ -499,6 +501,7 @@ export function DataTable({
           )}
         </div>
 
+        {toolbarExtra}
         {onAddAiColumn && (
           <button
             onClick={onAddAiColumn}

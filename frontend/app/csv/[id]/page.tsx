@@ -1,17 +1,19 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { loadCsvRun, saveCsvRunColumns } from '@/lib/csvRuns';
 import { addToBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadAiConfigs, saveAiConfigs, findDerivedRule } from '@/lib/analysisConfigs';
+import { getEffectivePresets, applyPresets, presetFromConfigs, saveUserPreset, readAutorunIds, AUTORUN_KEY, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
 import { buildOutreachExport } from '@/lib/outreachExport';
 import { runAiColumn, defaultModel, providerLabel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, isAiError, normalizeMultiOutput, PENDING } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
 import { DataTable, type StatChip, type ExportPreset } from '@/app/components/DataTable';
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
+import { PresetMenu } from '@/app/components/PresetMenu';
 import { Glyph } from '@/app/components/Glyph';
 import type { AnalysisConfig } from '@/app/components/AnalysisPanel';
 
@@ -47,6 +49,12 @@ export default function CsvViewer() {
   const { id } = useParams<{ id: string }>();
 
   const [run,        setRun]        = useState<CsvRun | null>(null);
+  // Immer der aktuelle Datensatz — runColumn-Closures (z.B. mehrere Spalten
+  // nacheinander per Autorun) würden sonst mit veraltetem run.data speichern
+  // und die bereits persistierten Spalten des vorherigen Laufs aus der CSV
+  // verdrängen. Schreibvorgänge laufen zusätzlich seriell (persistQueue).
+  const runRef       = useRef<CsvRun | null>(null);
+  const persistQueue = useRef<Promise<void>>(Promise.resolve());
   const [error,      setError]      = useState('');
   const [showSrcStats, setShowSrcStats] = useState(false);
   const [aiColumns,  setAiColumns]  = useState<{ name: string; values: string[] }[]>([]);
@@ -83,11 +91,29 @@ export default function CsvViewer() {
   const renameAiColumn = (oldName: string, newName: string) =>
     setAiColumns(prev => prev.map(c => c.name === oldName ? { ...c, name: newName } : c));
 
-  /** Merge finished values into the stored CSV so the columns survive reloads */
-  const persistColumnsToCsv = async (cols: Record<string, string[]>) => {
-    if (!run) return;
-    try { await saveCsvRunColumns(id, run.data, cols); }
-    catch { showToast('Ergebnisse konnten nicht gespeichert werden — Browser-Speicher voll? Bitte Seite nicht neu laden.', 'error', 10000); }
+  const updateRun = (next: CsvRun) => { runRef.current = next; setRun(next); };
+
+  /**
+   * Merge finished values into the stored CSV so the columns survive reloads.
+   * Reads the LATEST rows (ref) and writes them back into state, so a second
+   * column's save keeps the first column's values instead of overwriting them.
+   */
+  const persistColumnsToCsv = (cols: Record<string, string[]>): Promise<void> => {
+    const job = async () => {
+      const cur = runRef.current;
+      if (!cur) return;
+      try {
+        const merged = await saveCsvRunColumns(id, cur.data, cols);
+        const fields = [...cur.fields];
+        for (const n of Object.keys(cols)) if (!fields.includes(n)) fields.push(n);
+        updateRun({ ...cur, data: merged, fields });
+      } catch {
+        showToast('Ergebnisse konnten nicht gespeichert werden — Browser-Speicher voll? Bitte Seite nicht neu laden.', 'error', 10000);
+      }
+    };
+    const next = persistQueue.current.then(job, job);
+    persistQueue.current = next;
+    return next;
   };
 
   // Alle Spalten, die zu einer KI-Config gehören (Roh-Antwort, Splits, Regeln)
@@ -247,21 +273,54 @@ export default function CsvViewer() {
     }
   };
 
-  // "▶ Laden + Analysieren" im Import-Dialog: der Viewer startet die
-  // Klassifizierung selbst, sobald Daten und Configs da sind. Das Flag wird
-  // sofort entfernt, damit auch StrictMode-Doppel-Effekte nur einmal starten.
+  // Autorun («▶ Laden + Analysieren», Instant-Load-Vorlagen mit «direkt
+  // ausfüllen», «▶» im Vorlagen-Menü): der Viewer füllt die vorgemerkten
+  // Spalten selbst aus, sobald Daten und Configs da sind — nacheinander, damit
+  // Provider-Rate-Limits nicht doppelt getroffen werden. Das Flag wird sofort
+  // entfernt, damit auch StrictMode-Doppel-Effekte nur einmal starten.
   useEffect(() => {
     if (!run || aiConfigs.length === 0) return;
-    try {
-      const k = `autorun_analysis_${id}`;
-      if (!localStorage.getItem(k)) return;
-      localStorage.removeItem(k);
-      const cfg = aiConfigs.find(c => c.prompt.trim());
-      // Nach dem Commit starten — kein synchrones setState im Effect
-      if (cfg) queueMicrotask(() => { showToast(`Klassifizierung «${cfg.name}» startet…`, 'info'); runColumn(cfg); });
-    } catch {}
+    const ids = readAutorunIds(id);
+    if (!ids) return;
+    try { localStorage.removeItem(AUTORUN_KEY(id)); } catch {}
+    const list = (ids === 'first'
+      ? [aiConfigs.find(c => c.prompt.trim())]
+      : ids.map(i => aiConfigs.find(c => c.id === i && c.prompt.trim()))
+    ).filter((c): c is AnalysisConfig => !!c);
+    if (list.length === 0) return;
+    // Nach dem Commit starten — kein synchrones setState im Effect
+    queueMicrotask(async () => {
+      showToast(list.length === 1 ? `Klassifizierung «${list[0].name}» startet…` : `${list.length} KI-Spalten werden ausgefüllt…`, 'info');
+      for (const cfg of list) await runColumn(cfg);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, aiConfigs, id]);
+
+  /** Vorlage in diesen Datensatz laden (Spalten anhängen; autoRun = sofort ausfüllen) */
+  const loadPresetIntoRun = (preset: ImportPreset, autoRun: boolean) => {
+    if (!run) return;
+    if (providers.length === 0) return showToast('Kein KI-API Key konfiguriert — Einstellungen prüfen', 'warning');
+    const provider = providers.includes('anthropic') ? 'anthropic' : providers[0];
+    const { added, autoRun: toRun } = applyPresets(id, [preset], provider, { forceAutoRun: autoRun });
+    if (added.length === 0) return showToast(`Alle Spalten von «${preset.name}» sind schon vorhanden`, 'info');
+    setAiConfigs(loadAiConfigs(id)); // löst bei autoRun den Autorun-Effect aus
+    setScrollSignal(s => s + 1);
+    if (toRun.length === 0) {
+      showToast(`Vorlage «${preset.name}» geladen — ${added.length} ${added.length === 1 ? 'Spalte' : 'Spalten'} angehängt, mit ▶ ausfüllen`, 'success');
+    }
+  };
+
+  /** KI-Spalten als wiederverwendbare Vorlage sichern (⚙-Panel oder ☆-Menü) */
+  const saveTemplate = (name: string, flags: PresetFlags, configs: AnalysisConfig[]) => {
+    const withPrompt = configs.filter(c => c.prompt.trim());
+    if (withPrompt.length === 0) return showToast('Keine Spalte mit Prompt zum Speichern', 'warning');
+    const preset = saveUserPreset(presetFromConfigs(name, withPrompt, flags));
+    const auto = Object.values(flags.autoAdd ?? {}).some(Boolean);
+    showToast(
+      `Vorlage «${preset.name}» gespeichert${auto ? ` — wird beim Import automatisch geladen${flags.autoRun ? ' und ausgefüllt' : ''}` : ''} · verwalten unter Einstellungen → KI-Vorlagen`,
+      'success', 6000,
+    );
+  };
 
   const editingCfg = aiConfigs.find(c => c.id === editingId) ?? null;
 
@@ -348,14 +407,18 @@ export default function CsvViewer() {
 
   useEffect(() => {
     loadCsvRun(id)
-      .then(({ meta, rows }) => setRun({
-        data: rows,
-        fields: meta.fields,
-        filename: meta.filename,
-        createdAt: meta.createdAt,
-        backendRunId: meta.backendRunId,
-        scrapeConfig: meta.scrapeConfig,
-      }))
+      .then(({ meta, rows }) => {
+        const next: CsvRun = {
+          data: rows,
+          fields: meta.fields,
+          filename: meta.filename,
+          createdAt: meta.createdAt,
+          backendRunId: meta.backendRunId,
+          scrapeConfig: meta.scrapeConfig,
+        };
+        runRef.current = next;
+        setRun(next);
+      })
       .catch(e => setError(e instanceof Error ? e.message : 'Fehler beim Laden der Datei.'));
   }, [id]);
 
@@ -487,6 +550,14 @@ export default function CsvViewer() {
           excludedRows={excludedRows}
           onExcludeChange={setExcludedRows}
           exportPresets={exportPresets}
+          toolbarExtra={
+            <PresetMenu
+              loadPresets={getEffectivePresets}
+              onLoad={loadPresetIntoRun}
+              onSaveCurrent={(name, flags) => saveTemplate(name, flags, aiConfigs)}
+              currentColumnCount={aiConfigs.filter(c => c.prompt.trim()).length}
+            />
+          }
           onBlockPages={run.fields.includes('page_name') ? (rows) => {
             const names = new Set<string>();
             for (const row of rows) {
@@ -549,6 +620,7 @@ export default function CsvViewer() {
               setEditingId(null);
             }}
             onClose={() => setEditingId(null)}
+            onSaveAsTemplate={(name, flags) => saveTemplate(name, flags, [aiConfigs.find(c => c.id === editingCfg.id) ?? editingCfg])}
           />
         )}
 

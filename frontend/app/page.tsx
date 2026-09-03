@@ -8,9 +8,7 @@ import { api, type ScrapeRun } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
-import { getEffectivePresets, detectPreset, presetToConfigs, type ImportPreset } from '@/lib/aiTemplates';
-import { saveAiConfigs } from '@/lib/analysisConfigs';
-import { AI_PROVIDERS } from '@/lib/ai';
+import { getEffectivePresets, detectPreset, presetsForSource, applyPresets, pickPresetProvider, type ImportPreset, type PresetSource } from '@/lib/aiTemplates';
 import { useToast } from '@/app/components/Toast';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { PresetSelector } from '@/app/components/PresetSelector';
@@ -216,6 +214,27 @@ export default function Home() {
     }
   };
 
+  /**
+   * Instant-Load-Vorlagen (Einstellungen → KI-Vorlagen) für eine Import-Quelle
+   * direkt anhängen — ohne Dialog; «direkt ausfüllen» startet der Viewer beim
+   * Laden. Liefert die IDs der geladenen Vorlagen.
+   */
+  const autoApplyPresets = useCallback((runId: string, source: PresetSource): Set<string> => {
+    const presets = presetsForSource(source);
+    if (presets.length === 0) return new Set();
+    const { added, autoRun } = applyPresets(runId, presets, pickPresetProvider(backendKeys));
+    if (added.length > 0) {
+      const names = presets.map(p => `«${p.name}»`).join(', ');
+      showToast(
+        autoRun.length > 0
+          ? `${presets.length === 1 ? 'Vorlage' : 'Vorlagen'} ${names} geladen — KI füllt die Spalten direkt aus`
+          : `${presets.length === 1 ? 'Vorlage' : 'Vorlagen'} ${names} automatisch geladen — Spalten mit ▶ ausfüllen`,
+        'success', 5000,
+      );
+    }
+    return new Set(presets.map(p => p.id));
+  }, [backendKeys, showToast]);
+
   const uploadCsv = useCallback((file: File) => {
     setUploading(true);
     setFormError('');
@@ -241,12 +260,14 @@ export default function Home() {
         return;
       }
       setUploading(false);
-      // LinkedIn-Daten erkannt? → Preset-Auswahl anbieten statt direkt zu navigieren.
+      const auto = autoApplyPresets(id, 'csv');
+      // LinkedIn-Daten erkannt? → Preset-Auswahl anbieten statt direkt zu
+      // navigieren — außer die Vorlage wurde ohnehin schon automatisch geladen.
       // Die Liste (erkanntes Preset zuerst) wird EINMAL hier berechnet — nicht
       // bei jedem Render, das würde den Override-Store wiederholt parsen.
       const detected = detectPreset(fields);
-      if (detected) {
-        const others = getEffectivePresets().filter(p => p.id !== detected.id);
+      if (detected && !auto.has(detected.id)) {
+        const others = getEffectivePresets().filter(p => p.id !== detected.id && !auto.has(p.id));
         setAiPresetPrompt({ id, filename: file.name, presets: [detected, ...others] });
         return;
       }
@@ -294,7 +315,7 @@ export default function Home() {
       };
       reader.readAsText(file, 'UTF-8');
     }
-  }, [router]);
+  }, [router, autoApplyPresets]);
 
   // Global drag-to-drop listeners
   const onWindowDragEnter = useCallback((e: DragEvent) => {
@@ -456,6 +477,7 @@ export default function Home() {
           languages, dateMin, dateMax, limit, bylines,
         },
       }));
+      autoApplyPresets(id, 'meta');
       router.push(`/csv/${id}`);
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Fehler beim Scrapen');
@@ -841,16 +863,10 @@ export default function Home() {
             if (presetId) {
               const preset = aiPresetPrompt.presets.find(p => p.id === presetId);
               if (preset) {
-                const local = loadSettings().apiKeys as Record<string, string>;
-                // anthropic bevorzugt (der v5-Prompt ist auf Claude abgestimmt),
-                // sonst der erste Provider aus AI_PROVIDERS mit Key
-                const ids = AI_PROVIDERS.map(p => p.id);
-                const provider = ['anthropic', ...ids].find(p => local[p] || backendKeys[p]) ?? ids[0];
-                saveAiConfigs(id, presetToConfigs(preset, provider));
-                if (autoRun) {
-                  // Der Viewer liest das Flag beim Laden und startet die Analyse
-                  try { localStorage.setItem(`autorun_analysis_${id}`, '1'); } catch {}
-                } else {
+                // Spalten anhängen (Instant-Load-Vorlagen sind evtl. schon drin);
+                // bei autoRun merkt applyPresets die Configs für den Viewer vor
+                const { added, autoRun: toRun } = applyPresets(id, [preset], pickPresetProvider(backendKeys), { forceAutoRun: !!autoRun });
+                if (added.length > 0 && toRun.length === 0) {
                   showToast(`Vorlage «${preset.name}» geladen — Spalten mit ▶ analysieren`, 'success');
                 }
               }

@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { modelsFor, providerLabel } from '@/lib/ai';
+import type { PresetFlags } from '@/lib/aiTemplates';
 import type { AnalysisConfig } from './AnalysisPanel';
+import { TemplateSaveForm } from './TemplateSaveForm';
 
 const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
 
@@ -18,13 +20,16 @@ interface Props {
   onRun: () => void;
   onDelete: () => void;
   onClose: () => void;
+  /** «☆ Als Vorlage speichern»: diese Spalte als wiederverwendbare Vorlage sichern */
+  onSaveAsTemplate?: (name: string, flags: PresetFlags) => void;
 }
 
 /** Fixed side panel that edits ONE AI column (name, model, prompt). */
-export function AiColumnEditor({ config, rowCount, providers, running, progress, onChange, onSave, onRun, onDelete, onClose }: Props) {
+export function AiColumnEditor({ config, rowCount, providers, running, progress, onChange, onSave, onRun, onDelete, onClose, onSaveAsTemplate }: Props) {
   // Parent keys this panel by config.id, so switching columns remounts it
   // with a fresh draft — no effect needed to reset the name.
   const [draftName, setDraftName] = useState(config.name);
+  const [savingTpl, setSavingTpl] = useState(false);
 
   return (
     <div style={{
@@ -109,6 +114,26 @@ export function AiColumnEditor({ config, rowCount, providers, running, progress,
           style={{ ...mono, fontSize: 12, marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#e8736b', opacity: .7, padding: 0 }}
         >🗑</button>
       </div>
+
+      {/* Als Vorlage sichern — damit die Spalte beim nächsten Import per Klick (oder automatisch) da ist */}
+      {onSaveAsTemplate && (
+        savingTpl ? (
+          <TemplateSaveForm
+            defaultName={draftName}
+            hint="1 Spalte"
+            onSave={(name, flags) => { onChange({ name: draftName }); onSaveAsTemplate(name, flags); setSavingTpl(false); }}
+            onCancel={() => setSavingTpl(false)}
+          />
+        ) : (
+          <button
+            onClick={() => setSavingTpl(true)}
+            disabled={!config.prompt.trim()}
+            title={config.prompt.trim() ? 'Diese Spalte als Vorlage speichern (Einstellungen → KI-Vorlagen)' : 'Erst einen Prompt eingeben'}
+            data-testid="editor-save-template"
+            style={{ ...mono, fontSize: 10, padding: '5px 10px', borderRadius: 6, cursor: config.prompt.trim() ? 'pointer' : 'default', border: '1px dashed rgba(232,176,75,.3)', background: 'transparent', color: '#e8b04b', opacity: config.prompt.trim() ? .9 : .4, textAlign: 'left' }}
+          >☆ Als Vorlage speichern</button>
+        )
+      )}
     </div>
   );
 }

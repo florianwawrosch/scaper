@@ -91,7 +91,7 @@ frontend/                    Next.js-App (deployt auf Vercel)
   lib/csvRuns.ts             Laden/Speichern eines Datensatzes (CSV + Meta)
   lib/ai.ts                  KI-Pipeline: Prompts, Chunks, Multi-Output-Split,
                              Enum-Validierung, Regel-Spalten, feld_hash-Cache
-  lib/aiTemplates.ts         Import-Vorlagen (LinkedIn v5, KEEP/DROP) + Overrides
+  lib/aiTemplates.ts         KI-Spalten-Vorlagen (eingebaut + eigene), Instant Load, Overrides
   lib/analysisConfigs.ts     KI-Spalten-Konfiguration pro Datensatz
 
 main.py + core/              Optionales FastAPI-Backend (Railway) — wird nur
@@ -161,6 +161,37 @@ Vorlage **LinkedIn-Klassifizierung (v5)** an:
 
 Der eingebaute v5-Prompt, die Eingabespalten, die erlaubten Werte und die
 Zielgruppen-Regel stehen in `frontend/lib/aiTemplates.ts`.
+
+## KI-Spalten-Vorlagen & Instant Load
+
+KI-Spalten müssen nicht bei jedem Datensatz neu konfiguriert werden — sie
+lassen sich als **Vorlage** speichern, laden und automatisch anhängen:
+
+- **Speichern (in der Tabelle)**: ⚙ an einer KI-Spalte → «☆ Als Vorlage
+  speichern» sichert diese Spalte (Name, Prompt, Splits, Regeln). Über den
+  Toolbar-Button **☆ Vorlage** → «Aktuelle KI-Spalten als Vorlage speichern»
+  werden alle KI-Spalten des Datensatzes als eine Vorlage gesichert.
+  Provider/Modell werden nicht mitgespeichert; beim Laden wird der erste
+  verfügbare Provider gewählt (Claude bevorzugt).
+- **Laden (in der Tabelle)**: **☆ Vorlage** → «Laden» hängt die Spalten an
+  (bereits vorhandene Spaltennamen werden übersprungen), **▶** hängt an und
+  füllt sofort aus. Kein Dialog, kein Neuanlegen.
+- **⚡ Instant Load**: Pro Vorlage lässt sich in Einstellungen → **KI-Vorlagen**
+  (oder direkt beim Speichern) festlegen, dass sie bei **CSV/Excel-Upload**
+  und/oder **Meta-Scrape** automatisch angehängt wird — ohne Auswahl-Dialog.
+  Mit **▶ direkt ausfüllen lassen** startet die KI dazu sofort nach dem Import
+  (kostet Credits). Der LinkedIn-Dialog erscheint nur noch, wenn die erkannte
+  Vorlage nicht ohnehin schon per Instant Load geladen wurde.
+- **Verwalten**: Einstellungen → **KI-Vorlagen** — eigene Vorlagen anlegen
+  («+ Neue Vorlage»), Name/Beschreibung/Spalten/Prompts bearbeiten, Spalten
+  hinzufügen oder entfernen, löschen; eingebaute Vorlagen (LinkedIn v5,
+  KEEP/DROP) behalten die Prompt-Override-Logik («↺ Standard»). Die
+  Instant-Load-Schalter gelten für eingebaute und eigene Vorlagen.
+
+Ablage im Browser (localStorage): eigene Vorlagen in `user_presets`,
+Instant-Load-Schalter in `preset_flags`, Prompt-Overrides eingebauter Vorlagen
+in `preset_overrides`. Die Logik (`applyPresets`, `presetsForSource`,
+`presetFromConfigs`) liegt in `frontend/lib/aiTemplates.ts`.
 
 ## Lokal entwickeln
 
