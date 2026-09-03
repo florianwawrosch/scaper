@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs", "moduleResolution": "node", "jsx": "preserve",
+    "outDir": ".out", "rootDir": "../..", "noEmit": false, "incremental": false, "plugins": [],
+    "types": ["node"]
+  },
+  "files": [
+    "../../lib/aiTemplates.ts", "../../lib/outreachExport.ts", "../../lib/serverRetry.ts",
+    "../../lib/auth.ts", "../../lib/loginNotify.ts"
+  ],
+  "include": []
+}

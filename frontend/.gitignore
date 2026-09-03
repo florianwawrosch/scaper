@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# tests
+/e2e/.shots/
+/e2e/fixtures/plain_test.csv
+/tests/unit/.out/

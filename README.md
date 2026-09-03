@@ -193,6 +193,26 @@ Instant-Load-Schalter in `preset_flags`, Prompt-Overrides eingebauter Vorlagen
 in `preset_overrides`. Die Logik (`applyPresets`, `presetsForSource`,
 `presetFromConfigs`) liegt in `frontend/lib/aiTemplates.ts`.
 
+## Tests
+
+```bash
+cd frontend
+npm run test:unit   # Bibliotheks-Tests (Vorlagen, Login-Token, Retry, Outreach-Mapping) — ohne Server
+npm run dev         # in einem zweiten Terminal
+npm run e2e         # Playwright-Durchläufe gegen http://localhost:3000 (Login per APP_USER/APP_PASSWORD)
+npm run e2e -- templates   # nur Tests, deren Dateiname "templates" enthält
+```
+
+- `tests/unit/` kompiliert die getesteten `lib/*.ts` nach `tests/unit/.out` und
+  führt alle `*.test.{js,mjs}` in Node aus (localStorage-Shim, `@/`-Alias).
+- `e2e/` fährt die App wie ein Nutzer durch: CSV-Upload, LinkedIn-Vorlage,
+  KI-Spalten (mit gemocktem `/api/ai/analyze`), Vorlagen/Instant Load,
+  Enrichment-Filter, Tabelle, Outreach-Export, Einstellungen. Voraussetzung:
+  laufender Dev-Server, `.env.local` mit `APP_USER`/`APP_PASSWORD` und dieselben
+  Werte als Umgebungsvariablen (Standard `florian`/`testpass123`), Chromium
+  (`npx playwright install chromium` oder `PLAYWRIGHT_BROWSERS_PATH`).
+  Screenshots landen in `e2e/.shots/`.
+
 ## Lokal entwickeln
 
 ```bash
