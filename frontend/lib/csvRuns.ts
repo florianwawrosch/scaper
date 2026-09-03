@@ -19,6 +19,30 @@ export interface LoadedCsvRun {
 }
 
 /**
+ * Neuen Datensatz anlegen (Scrape-Ergebnis oder Import): CSV-Text nach
+ * IndexedDB, Meta nach localStorage. Liefert die Run-ID für /csv/<id>.
+ */
+export async function createCsvRun(input: {
+  filename: string;
+  fields: string[];
+  csvText: string;
+  rowCount: number;
+  scrapeConfig?: Record<string, unknown>;
+}): Promise<string> {
+  const id = `csv_${Date.now()}`;
+  await saveCsvText(id, input.csvText);
+  const meta: CsvRunMeta = {
+    fields: input.fields,
+    filename: input.filename,
+    createdAt: new Date().toISOString(),
+    rowCount: input.rowCount,
+    ...(input.scrapeConfig && { scrapeConfig: input.scrapeConfig }),
+  };
+  localStorage.setItem(`csv_run_${id}`, JSON.stringify(meta));
+  return id;
+}
+
+/**
  * Load a stored CSV run (scrape result or import) by id.
  * Handles all three storage formats: parsed rows inline (legacy A),
  * raw CSV text inline (legacy B), raw CSV text in IndexedDB (current).

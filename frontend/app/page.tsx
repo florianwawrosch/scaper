@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
-import { saveCsvText, deleteCsvText } from '@/lib/csvStorage';
+import { deleteCsvText } from '@/lib/csvStorage';
+import { createCsvRun } from '@/lib/csvRuns';
 import { api, type ScrapeRun } from '@/lib/api';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
-import { getEffectivePresets, detectPreset, presetsForSource, applyPresets, pickPresetProvider, type ImportPreset, type PresetSource } from '@/lib/aiTemplates';
+import { presetsForSource, applyPresets, pickPresetProvider, type PresetSource } from '@/lib/aiTemplates';
+import { useCsvImport } from '@/app/hooks/useCsvImport';
 import { useToast } from '@/app/components/Toast';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { PresetSelector } from '@/app/components/PresetSelector';
@@ -101,7 +103,6 @@ export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const dragCounter = useRef(0);
 
   const [runs,           setRuns]           = useState<ScrapeRun[]>([]);
   const [csvRuns,        setCsvRuns]        = useState<{id:string;filename:string;createdAt:string;rowCount:number}[]>([]);
@@ -118,19 +119,14 @@ export default function Home() {
   const [dateMax,        setDateMax]        = useState('');
   const [limit,          setLimit]          = useState(100);
   const [bylines,        setBylines]        = useState('');
-  const [csvFile,        setCsvFile]        = useState<File | null>(null);
-  const [dragOver,       setDragOver]       = useState(false);
   const [presets,        setPresets]        = useState<Record<string, SavedSearch>>({});
   const [presetName,     setPresetName]     = useState('');
   const [showPresets,    setShowPresets]    = useState(false);
   const [formError,      setFormError]      = useState('');
-  const [uploading,      setUploading]      = useState(false);
   const [backendKeys,    setBackendKeys]    = useState<Record<string, boolean>>({});
   const [useBlocklist,   setUseBlocklist]   = useState(true);
   const [blockCount,     setBlockCount]     = useState(0);
   const [groupByPage,    setGroupByPage]    = useState(true);
-  // Nach Upload erkanntes KI-Spalten-Preset (LinkedIn etc.) — Modal vor der Navigation
-  const [aiPresetPrompt, setAiPresetPrompt] = useState<{ id: string; filename: string; presets: ImportPreset[] } | null>(null);
 
   /** Suchmaske aus einer gespeicherten Scrape-Konfiguration (Backend-Run) befüllen */
   const applyRunConfig = (cfg: Record<string, unknown>) => {
@@ -235,123 +231,8 @@ export default function Home() {
     return new Set(presets.map(p => p.id));
   }, [backendKeys, showToast]);
 
-  const uploadCsv = useCallback((file: File) => {
-    setUploading(true);
-    setFormError('');
-
-    // Persist parsed rows through the shared CSV pipeline (IndexedDB + viewer)
-    const store = async (fields: string[], csvText: string, rowCount: number) => {
-      if (rowCount === 0) {
-        setUploading(false);
-        setFormError('Datei enthält keine Zeilen.');
-        setCsvFile(null);
-        return;
-      }
-      const id = `csv_${Date.now()}`;
-      try {
-        await saveCsvText(id, csvText);
-        localStorage.setItem(`csv_run_${id}`, JSON.stringify({
-          fields, filename: file.name, createdAt: new Date().toISOString(), rowCount,
-        }));
-      } catch {
-        setUploading(false);
-        setFormError('Datei konnte nicht gespeichert werden. Bitte Browser-Speicher prüfen.');
-        setCsvFile(null);
-        return;
-      }
-      setUploading(false);
-      const auto = autoApplyPresets(id, 'csv');
-      // LinkedIn-Daten erkannt? → Preset-Auswahl anbieten statt direkt zu
-      // navigieren — außer die Vorlage wurde ohnehin schon automatisch geladen.
-      // Die Liste (erkanntes Preset zuerst) wird EINMAL hier berechnet — nicht
-      // bei jedem Render, das würde den Override-Store wiederholt parsen.
-      const detected = detectPreset(fields);
-      if (detected && !auto.has(detected.id)) {
-        const others = getEffectivePresets().filter(p => p.id !== detected.id && !auto.has(p.id));
-        setAiPresetPrompt({ id, filename: file.name, presets: [detected, ...others] });
-        return;
-      }
-      router.push(`/csv/${id}`);
-    };
-
-    const isExcel = /\.xlsx?$/i.test(file.name);
-    const reader = new FileReader();
-    reader.onerror = () => {
-      setUploading(false);
-      setFormError('Datei konnte nicht gelesen werden.');
-      setCsvFile(null);
-    };
-
-    if (isExcel) {
-      // Excel is binary — read as ArrayBuffer, convert to rows via the xlsx lib
-      reader.onload = async (e) => {
-        try {
-          const XLSX = await import('xlsx');
-          const wb = XLSX.read(e.target?.result as ArrayBuffer, { type: 'array' });
-          const sheet = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' });
-          const fields = rows.length ? Object.keys(rows[0]) : [];
-          await store(fields, Papa.unparse(rows), rows.length);
-        } catch (err) {
-          setUploading(false);
-          setFormError(`Excel-Datei konnte nicht gelesen werden: ${err instanceof Error ? err.message : ''}`);
-          setCsvFile(null);
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    } else {
-      reader.onload = (e) => {
-        const rawText = e.target?.result as string;
-        Papa.parse<Record<string, string>>(rawText, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => store(results.meta.fields ?? [], rawText, results.data.length),
-          error: (err: Error) => {
-            setUploading(false);
-            setFormError(`CSV konnte nicht gelesen werden: ${err.message}`);
-            setCsvFile(null);
-          },
-        });
-      };
-      reader.readAsText(file, 'UTF-8');
-    }
-  }, [router, autoApplyPresets]);
-
-  // Global drag-to-drop listeners
-  const onWindowDragEnter = useCallback((e: DragEvent) => {
-    if (e.dataTransfer?.types.includes('Files')) { dragCounter.current++; setDragOver(true); }
-  }, []);
-  const onWindowDragLeave = useCallback(() => {
-    dragCounter.current--;
-    if (dragCounter.current <= 0) { dragCounter.current = 0; setDragOver(false); }
-  }, []);
-  const onWindowDragOver = useCallback((e: DragEvent) => { e.preventDefault(); }, []);
-  const onWindowDrop = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    dragCounter.current = 0;
-    setDragOver(false);
-    const file = e.dataTransfer?.files[0];
-    if (file && (file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
-      setCsvFile(file);
-      setFormError('');
-      uploadCsv(file);
-    } else if (file) {
-      setFormError('Nur CSV/Excel-Dateien (.csv, .xlsx, .xls)');
-    }
-  }, [uploadCsv]);
-
-  useEffect(() => {
-    window.addEventListener('dragenter', onWindowDragEnter);
-    window.addEventListener('dragleave', onWindowDragLeave);
-    window.addEventListener('dragover', onWindowDragOver);
-    window.addEventListener('drop', onWindowDrop);
-    return () => {
-      window.removeEventListener('dragenter', onWindowDragEnter);
-      window.removeEventListener('dragleave', onWindowDragLeave);
-      window.removeEventListener('dragover', onWindowDragOver);
-      window.removeEventListener('drop', onWindowDrop);
-    };
-  }, [onWindowDragEnter, onWindowDragLeave, onWindowDragOver, onWindowDrop]);
+  const { csvFile, uploading, dragOver, importFile, aiPresetPrompt, setAiPresetPrompt } =
+    useCsvImport({ autoApplyPresets, onError: setFormError });
 
   const savePreset = () => {
     const auto = tags[0] ?? new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -463,20 +344,17 @@ export default function Home() {
       }
 
       // Store the result through the proven CSV pipeline (IndexedDB + viewer)
-      const id = `csv_${Date.now()}`;
-      const csvText = Papa.unparse(finalRows);
-      await saveCsvText(id, csvText);
-      localStorage.setItem(`csv_run_${id}`, JSON.stringify({
-        fields: Object.keys(finalRows[0]),
+      const id = await createCsvRun({
         filename: `Meta: ${tags.join(', ')}`,
-        createdAt: new Date().toISOString(),
+        fields: Object.keys(finalRows[0]),
+        csvText: Papa.unparse(finalRows),
         rowCount: finalRows.length,
         // Saved so the run can be repeated with the same settings
         scrapeConfig: {
           keywords: tags, country, platforms, adStatus, mediaType, searchType,
           languages, dateMin, dateMax, limit, bylines,
         },
-      }));
+      });
       autoApplyPresets(id, 'meta');
       router.push(`/csv/${id}`);
     } catch (e) {
@@ -697,7 +575,7 @@ export default function Home() {
             )}
 
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) { setCsvFile(f); uploadCsv(f); } }} />
+              onChange={e => { const f = e.target.files?.[0]; if (f) importFile(f); }} />
 
           </div>
 
