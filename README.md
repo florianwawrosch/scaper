@@ -107,7 +107,19 @@ pages/ + app.py              Alte Streamlit-Oberfläche (Vorgänger, ungenutzt)
    Analysieren → `/api/ai/analyze` in 20er-Chunks → Ergebnisse werden in die
    gespeicherte CSV geschrieben (überleben Reload).
 3. **Enrichment**: „Enrichment starten →" → eigene Seite, nur konfigurierte
-   Provider → `/api/enrich` → E-Mails als Spalte `email_enriched`.
+   Provider. **Was holen?** E-Mail (Hunter.io oder FindyMail, aus Name +
+   Firma/Domain) und/oder Telefonnummer (nur FindyMail, aus der LinkedIn-URL).
+   Die Spalten-Zuordnung ist vorbelegt (Vorschlag anhand der Spaltennamen,
+   Beispielwert daneben). Vor dem Start eine **zweistufige Bestätigung**:
+   Guthaben live vom Anbieter (`/api/enrich/account`), Kosten «bis zu N
+   Credits» je Feld plus Abrechnungsregel des Anbieters (beide berechnen nur
+   Treffer), ab 100 Leads zusätzlich ein Häkchen. Der Lauf verarbeitet alle
+   Chargen à 50 Zeilen automatisch, speichert nach jeder Charge und lässt sich
+   abbrechen. Ergebnis: Spalten `email_enriched` / `phone_enriched` im
+   Datensatz — Tabelle, CSV/XLSX und Outreach-Export (`phone`). Bereits
+   gefüllte Zeilen werden beim nächsten Start übersprungen. Hinweis: Der
+   FindyMail-Telefon-Endpunkt (`/api/search/phone`) ist nach Doku umgesetzt,
+   aber ohne Live-Key nicht gegen die echte API getestet.
 4. **Export**: ↓ CSV / ↓ XLSX direkt aus der Tabelle (alle Spalten, Filter
    und Abwahl der Tabelle gelten). **↓ Outreach** erscheint, sobald eine
    E-Mail-Spalte da ist: nur Zielgruppen-Treffer mit gefundener E-Mail, auf

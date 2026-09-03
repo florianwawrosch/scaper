@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { loadCsvRun, saveCsvRunColumns, type CsvRunMeta } from '@/lib/csvRuns';
 import { loadAiConfigs, findDerivedRule } from '@/lib/analysisConfigs';
-import { EnrichmentPanel } from '@/app/components/EnrichmentPanel';
+import { EnrichmentPanel, type EnrichFields, type EnrichResult } from '@/app/components/EnrichmentPanel';
 import { useToast } from '@/app/components/Toast';
 import { Glyph } from '@/app/components/Glyph';
 import { T } from '@/app/theme';
@@ -21,6 +21,8 @@ export default function EnrichPage() {
   // Zielgruppen-Filter: Regel-Spalte (z.B. ki_zielgruppe) aus den KI-Configs
   const [audience,     setAudience]     = useState<{ column: string; value: string } | null>(null);
   const [onlyAudience, setOnlyAudience] = useState(true);
+  // Was geholt wird — bestimmt, welche Zeilen noch «offen» sind
+  const [fields,       setFields]       = useState<EnrichFields>({ email: true, phone: false });
 
   useEffect(() => {
     loadCsvRun(id)
@@ -36,31 +38,44 @@ export default function EnrichPage() {
   }, [id]);
 
   // Nur Zeilen mit Zielgruppen-Treffer enrichen (spart Credits); bereits
-  // enrichte Zeilen werden übersprungen, damit ein erneuter Lauf bei Listen
-  // über dem 50er-Limit automatisch mit der nächsten Charge weitermacht.
+  // enrichte Zeilen werden übersprungen — ein abgebrochener Lauf macht beim
+  // nächsten Start genau dort weiter.
   // Mapping zurück auf die Original-Indizes über activeIdx
   const audienceActive = !!audience && onlyAudience;
+  // Eine Zeile ist «offen», wenn ihr ein gewünschtes Feld noch fehlt
+  const isOpen = (r: Record<string, string>) =>
+    (fields.email && !String(r.email_enriched ?? '').trim()) || (fields.phone && !String(r.phone_enriched ?? '').trim());
   const { activeIdx, activeRows } = useMemo(() => {
     const idx = rows
       .map((_, i) => i)
       .filter(i => !audienceActive || String(rows[i][audience!.column] ?? '').trim() === audience!.value)
-      .filter(i => !String(rows[i].email_enriched ?? '').trim());
+      .filter(i => isOpen(rows[i]));
     return { activeIdx: idx, activeRows: idx.map(i => rows[i]) };
-  }, [rows, audienceActive, audience]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, audienceActive, audience, fields]);
 
-  const alreadyEnrichedCount = rows.filter(r => String(r.email_enriched ?? '').trim()).length;
+  const emailCount = rows.filter(r => String(r.email_enriched ?? '').trim()).length;
+  const phoneCount = rows.filter(r => String(r.phone_enriched ?? '').trim()).length;
+  const alreadyEnrichedCount = rows.length - rows.filter(isOpen).length;
 
-  // Merge enriched emails back into the stored CSV so the table keeps them
-  const persistEmails = async (results: { email: string }[]) => {
+  // Merge enriched values back into the stored CSV so the table keeps them
+  const persistEmails = async (results: EnrichResult[]) => {
     if (!meta) return;
     try {
       const emailCol = rows.map(r => r.email_enriched ?? '');
-      results.forEach((res, j) => { if (res?.email) emailCol[activeIdx[j]] = res.email; });
-      const merged = await saveCsvRunColumns(id, rows, { email_enriched: emailCol });
+      const phoneCol = rows.map(r => r.phone_enriched ?? '');
+      results.forEach((res, j) => {
+        if (res?.email) emailCol[activeIdx[j]] = res.email;
+        if (res?.phone) phoneCol[activeIdx[j]] = res.phone;
+      });
+      const cols: Record<string, string[]> = {};
+      if (fields.email || results.some(r => r?.email)) cols.email_enriched = emailCol;
+      if (fields.phone || results.some(r => r?.phone)) cols.phone_enriched = phoneCol;
+      const merged = await saveCsvRunColumns(id, rows, cols);
       setRows(merged);
       setSaved(true);
     } catch {
-      showToast('E-Mails konnten nicht gespeichert werden — Browser-Speicher voll? Bitte Seite nicht neu laden.', 'error', 10000);
+      showToast('Ergebnisse konnten nicht gespeichert werden — Browser-Speicher voll? Bitte Seite nicht neu laden.', 'error', 10000);
     }
   };
 
@@ -86,23 +101,26 @@ export default function EnrichPage() {
               Enrichment
             </h1>
             <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF, letterSpacing: '.04em' }}>
-              {meta?.filename ?? '…'} · {rows.length} Zeilen
+              {meta?.filename ?? '…'}
             </p>
           </div>
         </div>
 
         {saved && (
-          <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8, border: '1px solid rgba(79,209,197,.3)', background: 'rgba(79,209,197,.06)' }}>
-            <p style={{ fontFamily: T.ffMono, fontSize: 11, color: '#4fd1c5' }}>
-              ✓ E-Mails als Spalte «email_enriched» in die Tabelle übernommen.
+          <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8, border: '1px solid rgba(79,209,197,.3)', background: 'rgba(79,209,197,.06)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <p style={{ fontFamily: T.ffMono, fontSize: 11, color: '#4fd1c5', flex: 1 }}>
+              ✓ Gespeichert: {emailCount.toLocaleString('de')} E-Mails («email_enriched»){phoneCount > 0 ? `, ${phoneCount.toLocaleString('de')} Telefonnummern («phone_enriched»)` : ''}.
             </p>
+            <button
+              onClick={() => router.push(`/csv/${id}`)}
+              style={{ fontFamily: T.ffMono, fontSize: 11, padding: '5px 12px', borderRadius: 5, background: 'rgba(79,209,197,.12)', border: '1px solid rgba(79,209,197,.35)', color: '#4fd1c5', cursor: 'pointer', flexShrink: 0 }}
+            >Tabelle öffnen<Glyph after>→</Glyph></button>
           </div>
         )}
 
         {alreadyEnrichedCount > 0 && (
           <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkF, marginBottom: 14 }}>
             ⓘ {alreadyEnrichedCount} Zeile{alreadyEnrichedCount === 1 ? '' : 'n'} bereits enricht — werden übersprungen.
-            {activeRows.length > 0 && ' Erneut „Enrichment starten" klicken für die nächste Charge.'}
           </p>
         )}
 
@@ -130,6 +148,8 @@ export default function EnrichPage() {
           leadsCount={activeRows.length}
           availableColumns={meta?.fields ?? []}
           onEmailColumn={persistEmails}
+          fields={fields}
+          onFieldsChange={setFields}
         />
 
       </div>

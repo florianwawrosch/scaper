@@ -28,6 +28,7 @@ const LAST_COLUMNS    = ['nachname', 'last_name', 'lastname'];
 const COMPANY_COLUMNS = ['firma', 'company', 'company_name', 'unternehmen', 'page_name'];
 const WEBSITE_COLUMNS = ['website', 'domain', 'company_domain', 'url'];
 const LINKEDIN_COLS   = ['linkedin_url', 'linkedin', 'linkedin_profile', 'profil_url'];
+const PHONE_COLUMNS   = ['phone_enriched', 'phone', 'telefon', 'mobile', 'handy', 'phone_number'];
 
 /** Zusätzliche Spalten, 1:1 übernommen wenn vorhanden — Personalisierung im Template */
 const CONTEXT_COLUMNS: [source: string, target: string][] = [
@@ -66,6 +67,7 @@ export function buildOutreachExport(rows: Row[], fields: string[], opts: Outreac
   const companyCol = findColumn(fields, COMPANY_COLUMNS);
   const websiteCol = findColumn(fields, WEBSITE_COLUMNS);
   const liCol      = findColumn(fields, LINKEDIN_COLS);
+  const phoneCol   = findColumn(fields, PHONE_COLUMNS);
   const context = CONTEXT_COLUMNS
     .map(([src, dst]) => [findColumn(fields, [src]), dst] as const)
     .filter((e): e is readonly [string, string] => !!e[0]);
@@ -93,10 +95,12 @@ export function buildOutreachExport(rows: Row[], fields: string[], opts: Outreac
       website:    websiteCol ? str(r[websiteCol]) : '',
       linkedin_profile: liCol ? str(r[liCol]) : '',
     };
+    // Telefon nur als Spalte, wenn der Datensatz eine hat (Smartlead: Custom-Variable «phone»)
+    if (phoneCol) row.phone = str(r[phoneCol]);
     for (const [src, dst] of contextCols) row[dst] = str(r[src]);
     out.push(row);
   }
 
-  const columns = ['email', 'first_name', 'last_name', 'company', 'website', 'linkedin_profile', ...contextCols.map(([, dst]) => dst)];
+  const columns = ['email', 'first_name', 'last_name', 'company', 'website', 'linkedin_profile', ...(phoneCol ? ['phone'] : []), ...contextCols.map(([, dst]) => dst)];
   return { columns, rows: out, dropped, emailColumn: emailCol };
 }

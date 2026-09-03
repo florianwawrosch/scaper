@@ -55,7 +55,7 @@ const { chromium } = playwright();
   const bodyText = await page.locator('body').textContent();
   console.log('Shows "2 Zeilen bereits enricht":', bodyText.includes('2 Zeile') && bodyText.includes('bereits enricht'));
   console.log('Shows "3 Leads" (only unenriched):', bodyText.includes('3 Leads'));
-  console.log('Shows batch hint:', bodyText.includes('nächste Charge'));
+  console.log('Shows skip hint:', bodyText.includes('werden übersprungen'));
 
   await page.screenshot({ path: shot('batch_enrich.png') });
 
