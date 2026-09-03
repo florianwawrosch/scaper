@@ -55,7 +55,7 @@ export default function RunDetail() {
   const [rating,       setRating]       = useState(0);
   const [feedback,     setFeedback]     = useState('');
   const [savingRating, setSavingRating] = useState(false);
-  const [tableData,    setTableData]    = useState<any[]>([]);
+  const [tableData,    setTableData]    = useState<Record<string, unknown>[]>([]);
   const [aiColumns,    setAiColumns]    = useState<{ name: string; values: string[] }[]>([]);
   const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
 
@@ -76,10 +76,14 @@ export default function RunDetail() {
     }
   }, [runId]);
 
+  // loadRun ist async — jedes setState darin passiert erst nach einem await,
+  // der Linter sieht nur den synchronen Aufruf.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadRun(); }, [loadRun]);
 
+  const status = run?.status;
   useEffect(() => {
-    if (!run || run.status !== 'scraping') return;
+    if (status !== 'scraping') return;
     const t = setInterval(async () => {
       try {
         const data = await api.runs.get(runId);
@@ -94,7 +98,7 @@ export default function RunDetail() {
       } catch {}
     }, 3000);
     return () => clearInterval(t);
-  }, [run?.status, runId]);
+  }, [status, runId]);
 
   const saveRating = async () => {
     if (!run) return;
@@ -120,7 +124,7 @@ export default function RunDetail() {
 
   const s  = STATUS[run.status];
   const cr = Object.values(run.classification_results)[0];
-  const keywords = (run.scraper_config as any)?.keywords;
+  const keywords = run.scraper_config?.keywords;
   const kwLabel = Array.isArray(keywords) ? keywords.join(', ') : (typeof keywords === 'string' ? keywords : run.source);
 
   return (
@@ -314,16 +318,19 @@ export default function RunDetail() {
               leads={tableData
                 .filter((_, i) => !excludedRows.has(i))
                 .slice(0, 500)
-                .map((item, i) => ({
-                  id:        item.id || `lead-${i}`,
-                  name:      item.name || item.company || '—',
-                  email:     item.email || item.contact || undefined,
-                  phone:     item.phone || undefined,
-                  company:   item.company || undefined,
+                .map((item, i) => {
+                  const s = (v: unknown) => (v == null || v === '' ? undefined : String(v));
+                  return ({
+                  id:        s(item.id) ?? `lead-${i}`,
+                  name:      s(item.name) ?? s(item.company) ?? '—',
+                  email:     s(item.email) ?? s(item.contact) ?? '',
+                  phone:     s(item.phone),
+                  company:   s(item.company),
                   status:    'KEEP' as const,
                   reason:    undefined,
                   createdAt: run.created_at,
-                }))}
+                  });
+                })}
             />
           </div>
         )}

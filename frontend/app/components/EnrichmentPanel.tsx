@@ -83,7 +83,7 @@ export function EnrichmentPanel({ runId, leadsCount, onEnrichmentComplete, avail
     if (!selected) return showToast('Kein Enrichment-Provider konfiguriert', 'warning');
     // Key from browser settings if present — otherwise the server reads
     // it from its env vars, so don't block when it's missing locally.
-    const apiKey = getApiKey(selected as any);
+    const apiKey = getApiKey(selected);
     if (leadsCount === 0) return showToast('Keine Leads zum Enrichment', 'warning');
     if (needsMapping && (!effNameCol || !effCompanyCol)) {
       return showToast('Bitte Name- und Firmen-Spalte auswählen', 'warning');

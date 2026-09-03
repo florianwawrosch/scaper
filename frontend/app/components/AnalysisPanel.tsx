@@ -43,7 +43,12 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
   const router = useRouter();
   const storageKey = `analysis_configs_${runId}`;
 
-  const [configs,   setConfigs]   = useState<AnalysisConfig[]>([]);
+  // Lazy aus localStorage — das Panel wird erst clientseitig nach dem Laden
+  // des Runs gerendert, daher kein SSR-Konflikt
+  const [configs,   setConfigs]   = useState<AnalysisConfig[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try { const saved = localStorage.getItem(storageKey); return saved ? JSON.parse(saved) : []; } catch { return []; }
+  });
   const [running,   setRunning]   = useState<Record<string, boolean>>({});
   const [progress,  setProgress]  = useState<Record<string, number>>({});
   const [apiKeys,   setApiKeys]   = useState<Record<string, string>>({});
@@ -62,13 +67,6 @@ export function AnalysisPanel({ runId, resolveRunId, rowCount, onColumnResult, r
     });
     return () => window.removeEventListener('keys-synced', readKeys);
   }, []);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) setConfigs(JSON.parse(saved));
-    } catch {}
-  }, [storageKey]);
 
   // Only show providers with a key: frontend (localStorage / NEXT_PUBLIC_*) or backend env var
   const PROVIDERS = ALL_PROVIDERS.filter(p => !!apiKeys[p.id] || !!backendKeys[p.id]);

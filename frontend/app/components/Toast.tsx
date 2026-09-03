@@ -23,6 +23,10 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
   const showToast = useCallback(
     (message: string, type: ToastType = 'info', duration = 3000) => {
       // Unique even for toasts fired in the same millisecond
@@ -34,12 +38,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         setTimeout(() => removeToast(id), duration);
       }
     },
-    []
+    [removeToast]
   );
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
 
   return (
     <ToastContext.Provider value={{ toasts, showToast, removeToast }}>

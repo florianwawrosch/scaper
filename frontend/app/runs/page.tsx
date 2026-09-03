@@ -47,13 +47,13 @@ interface LocalRun {
 }
 
 /** One-line human summary of the settings a scrape was run with. */
-function summarizeConfig(c: any): string {
+function summarizeConfig(c: Record<string, unknown> | undefined): string {
   if (!c) return '';
   const parts: string[] = [];
   const country = c.country ?? (Array.isArray(c.countries) ? c.countries[0] : undefined);
-  if (country) parts.push(country === 'ALL' ? 'Alle Länder' : country);
-  if (Array.isArray(c.platforms) && c.platforms.length) parts.push(c.platforms.map((p: string) => p[0] + p.slice(1).toLowerCase()).join('+'));
-  if (c.adStatus) parts.push(c.adStatus === 'ACTIVE' ? 'Aktiv' : c.adStatus);
+  if (country) parts.push(country === 'ALL' ? 'Alle Länder' : String(country));
+  if (Array.isArray(c.platforms) && c.platforms.length) parts.push(c.platforms.map((p) => { const s = String(p); return s[0] + s.slice(1).toLowerCase(); }).join('+'));
+  if (c.adStatus) parts.push(c.adStatus === 'ACTIVE' ? 'Aktiv' : String(c.adStatus));
   if (c.limit) parts.push(`max ${c.limit}`);
   return parts.join(' · ');
 }
@@ -92,6 +92,9 @@ export default function RunsList() {
       }
     }
     items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    // localStorage gibt es erst im Browser: ein lazy useState würde beim
+    // SSR-Prerender leer rendern und beim Hydrate springen — daher Effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalRuns(items);
     setLoading(false);
     // Backend runs (if a backend exists) merge in afterwards
@@ -235,7 +238,7 @@ export default function RunsList() {
               const run = entry.run;
               const s  = STATUS[run.status];
               const cr = Object.values(run.classification_results)[0];
-              const keywords = (run.scraper_config as any)?.keywords;
+              const keywords = run.scraper_config?.keywords;
               const kw = Array.isArray(keywords) ? keywords.slice(0, 3).join(', ') : (typeof keywords === 'string' ? keywords : run.source);
               return (
                 <div

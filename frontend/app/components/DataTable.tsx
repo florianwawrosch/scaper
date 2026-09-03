@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { isPendingAiValue, isAiError } from '@/lib/ai';
 
@@ -26,7 +26,7 @@ export interface ExportPreset {
 }
 
 interface DataTableProps {
-  data: Record<string, any>[];
+  data: Record<string, unknown>[];
   rawColumns: string[];
   aiColumns?: AiColumn[];
   excludedRows?: Set<number>;
@@ -42,21 +42,23 @@ interface DataTableProps {
   /** ▶ in an AI column header: run the analysis for that column */
   onRunAiColumn?: (name: string) => void;
   /** Toolbar action: add the pages of the DESELECTED rows to the Blockliste */
-  onBlockPages?: (rows: Record<string, any>[]) => void;
+  onBlockPages?: (rows: Record<string, unknown>[]) => void;
   /** Weitere Export-Buttons neben ↓ CSV / ↓ XLSX (z.B. Outreach-CSV) */
   exportPresets?: ExportPreset[];
 }
 
 interface ColFilter { text: string; values: Set<string> | null }
 
+/** Datenzeile plus Original-Index — hält Abwahl/Export über Filter & Sortierung hinweg stabil */
+type Row = Record<string, unknown> & { _idx: number };
+
 const PAGE = 25;
 const mono: React.CSSProperties = { fontFamily: "'Spline Sans Mono', monospace" };
 
 function FilterDropdown({
-  col, allVals, filter, onClose, onChange,
+  allVals, filter, onClose, onChange,
   anchorRect,
 }: {
-  col: string;
   allVals: string[];
   filter: ColFilter;
   onClose: () => void;
@@ -85,8 +87,6 @@ function FilterDropdown({
     if (next.has(v)) next.delete(v); else next.add(v);
     onChange({ ...filter, values: next.size === allVals.length ? null : next });
   };
-
-  const allChecked = filter.values === null || filter.values.size === allVals.length;
 
   const left = Math.min(anchorRect.left, window.innerWidth - 240);
   const top  = anchorRect.bottom + 4;
@@ -209,7 +209,7 @@ export function DataTable({
 
   const extended = useMemo(() =>
     data.map((row, i) => {
-      const r: Record<string, any> = { ...row, _idx: i };
+      const r: Row = { ...row, _idx: i };
       for (const col of aiColumns) r[col.name] = col.values[i] ?? '—';
       return r;
     }),
@@ -311,7 +311,7 @@ export function DataTable({
     const rows = sorted
       .filter(row => !excludedRows.has(row._idx))
       .map(row => {
-        const o: Record<string, any> = {};
+        const o: Record<string, unknown> = {};
         for (const c of allColumns) o[c] = row[c] ?? '';
         return o;
       });
@@ -678,7 +678,6 @@ export function DataTable({
       {/* Filter dropdown portal */}
       {openFilter && (
         <FilterDropdown
-          col={openFilter.col}
           allVals={uniqueValues[openFilter.col] ?? []}
           filter={colFilters[openFilter.col] ?? { text: '', values: null }}
           anchorRect={openFilter.rect}

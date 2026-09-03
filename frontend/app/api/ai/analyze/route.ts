@@ -14,7 +14,15 @@ import { fetchRetry } from '@/lib/serverRetry';
 
 export const maxDuration = 60;
 
-async function readJson(res: Response): Promise<any> {
+/** Loose shape of the three providers' JSON — only the fields we read. */
+interface ProviderJson {
+  error?: { message?: string };
+  candidates?: { content?: { parts?: { text?: string }[] } }[];
+  content?: { text?: string }[];
+  choices?: { message?: { content?: string } }[];
+}
+
+async function readJson(res: Response): Promise<ProviderJson> {
   const text = await res.text();
   try { return JSON.parse(text); }
   catch { throw new Error(text.slice(0, 200) || `HTTP ${res.status}`); }
@@ -87,7 +95,7 @@ function friendlyAiError(msg: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  let body: any = {};
+  let body: Partial<Record<'provider' | 'model' | 'prompts' | 'apiKey', unknown>> = {};
   try { body = await req.json(); } catch {}
 
   const provider = String(body.provider ?? '').toLowerCase();
@@ -98,7 +106,7 @@ export async function POST(req: NextRequest) {
   if (prompts.length === 0) return NextResponse.json({ values: [] });
   if (prompts.length > 25)  return NextResponse.json({ detail: 'Max. 25 Prompts pro Aufruf' }, { status: 400 });
 
-  const key = body.apiKey || envKey(provider);
+  const key = (typeof body.apiKey === 'string' && body.apiKey) || envKey(provider);
   if (!key) {
     return NextResponse.json(
       { detail: `Kein API-Key für ${provider} — als Umgebungsvariable in Vercel setzen (z.B. OPENAI_API_KEY).` },

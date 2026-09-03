@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { modelsFor, providerLabel } from '@/lib/ai';
 import type { AnalysisConfig } from './AnalysisPanel';
 
@@ -22,8 +22,9 @@ interface Props {
 
 /** Fixed side panel that edits ONE AI column (name, model, prompt). */
 export function AiColumnEditor({ config, rowCount, providers, running, progress, onChange, onSave, onRun, onDelete, onClose }: Props) {
+  // Parent keys this panel by config.id, so switching columns remounts it
+  // with a fresh draft — no effect needed to reset the name.
   const [draftName, setDraftName] = useState(config.name);
-  useEffect(() => setDraftName(config.name), [config.id]);
 
   return (
     <div style={{

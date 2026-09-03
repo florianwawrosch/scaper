@@ -23,7 +23,7 @@ async function enrichHunter(name: string, company: string, key: string): Promise
   });
   if (res.status === 404) return null; // no email found — not an error
   const text = await res.text();
-  let data: any = {};
+  let data: { errors?: { details?: string }[]; message?: string; data?: { email?: string } } = {};
   try { data = JSON.parse(text); } catch {}
   if (!res.ok) {
     const msg = data.errors?.[0]?.details ?? data.message ?? text.slice(0, 150);
@@ -41,7 +41,7 @@ async function enrichFindymail(name: string, company: string, key: string): Prom
   });
   if (res.status === 404) return null;
   const text = await res.text();
-  let data: any = {};
+  let data: { message?: string; error?: string; contact?: { email?: string }; email?: string } = {};
   try { data = JSON.parse(text); } catch {}
   if (!res.ok) {
     const msg = data.message ?? data.error ?? text.slice(0, 150);
@@ -51,7 +51,7 @@ async function enrichFindymail(name: string, company: string, key: string): Prom
 }
 
 export async function POST(req: NextRequest) {
-  let body: any = {};
+  let body: Partial<Record<'provider' | 'rows' | 'nameColumn' | 'companyColumn' | 'apiKey', unknown>> = {};
   try { body = await req.json(); } catch {}
 
   const provider = String(body.provider ?? '');
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   }
   if (rows.length === 0) return NextResponse.json({ detail: 'Keine Zeilen übergeben' }, { status: 400 });
 
-  const key = body.apiKey || envKey(provider);
+  const key = (typeof body.apiKey === 'string' && body.apiKey) || envKey(provider);
   if (!key) {
     return NextResponse.json(
       { detail: `Kein API-Key für ${provider} — als Umgebungsvariable in Vercel setzen (z.B. FINDYMAIL_API_KEY).` },

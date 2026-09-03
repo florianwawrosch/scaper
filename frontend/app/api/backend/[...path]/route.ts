@@ -37,27 +37,31 @@ function backendBase(req: NextRequest): string | null {
  * never injected here (the dedicated /api/scrape, /api/ai, /api/enrich routes
  * handle key injection to fixed provider hosts instead).
  */
-function injectKeys(path: string, body: any, destination: string): any {
+type JsonBody = Record<string, unknown>;
+
+function injectKeys(path: string, body: unknown, destination: string): unknown {
   if (!body || typeof body !== 'object') return body;
+  const b = body as JsonBody;
   const trusted = serverBackend();
   if (!trusted || norm(destination) !== trusted) return body;
 
-  if (path === 'api/runs' && body.source === 'meta_ads_library') {
-    body.scraper_config = body.scraper_config ?? {};
-    if (!body.scraper_config.meta_ads_token) {
+  if (path === 'api/runs' && b.source === 'meta_ads_library') {
+    const sc = (b.scraper_config && typeof b.scraper_config === 'object' ? b.scraper_config : {}) as JsonBody;
+    b.scraper_config = sc;
+    if (!sc.meta_ads_token) {
       const k = envKey('meta_ads');
-      if (k) body.scraper_config.meta_ads_token = k;
+      if (k) sc.meta_ads_token = k;
     }
   }
-  if ((path.endsWith('/analyze') || path.endsWith('/classify')) && !body.apiKey) {
-    const k = envKey(String(body.aiProvider ?? ''));
-    if (k) body.apiKey = k;
+  if ((path.endsWith('/analyze') || path.endsWith('/classify')) && !b.apiKey) {
+    const k = envKey(String(b.aiProvider ?? ''));
+    if (k) b.apiKey = k;
   }
-  if (path.endsWith('/enrich') && !body.apiKey) {
-    const k = envKey(String(body.provider ?? ''));
-    if (k) body.apiKey = k;
+  if (path.endsWith('/enrich') && !b.apiKey) {
+    const k = envKey(String(b.provider ?? ''));
+    if (k) b.apiKey = k;
   }
-  return body;
+  return b;
 }
 
 async function proxy(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
@@ -78,7 +82,7 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
   const contentType = req.headers.get('content-type') ?? '';
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     if (contentType.includes('application/json')) {
-      let body: any = null;
+      let body: unknown = null;
       try { body = await req.json(); } catch {}
       init.body = JSON.stringify(injectKeys(path, body, base));
       init.headers = { 'Content-Type': 'application/json' };
@@ -86,7 +90,7 @@ async function proxy(req: NextRequest, { params }: { params: Promise<{ path: str
       // FormData / binary: stream through untouched
       init.body = req.body;
       init.headers = contentType ? { 'Content-Type': contentType } : undefined;
-      (init as any).duplex = 'half';
+      (init as RequestInit & { duplex?: 'half' }).duplex = 'half';
     }
   }
 

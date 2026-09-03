@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
 import { saveCsvText, deleteCsvText } from '@/lib/csvStorage';
 import { api, type ScrapeRun } from '@/lib/api';
-import { fetchServerStatus } from '@/lib/keyAvailability';
+import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, applyBlocklist } from '@/lib/blocklist';
 import { loadSettings } from '@/lib/settings';
 import { getEffectivePresets, detectPreset, presetToConfigs, type ImportPreset } from '@/lib/aiTemplates';
@@ -47,6 +47,13 @@ const LANGUAGE_OPTIONS = [
   { value: 'pl', label: 'PL' },
 ];
 const LIMIT_OPTIONS = [50, 100, 250, 500, 1000];
+
+/** Gespeicherte Suche (localStorage "presets") */
+interface SavedSearch {
+  keywords?: string[]; country?: string; countries?: string[]; platforms?: string[];
+  adStatus?: string; mediaType?: string; searchType?: string; languages?: string[];
+  dateMin?: string; dateMax?: string; limit?: number; bylines?: string; savedAt?: string;
+}
 
 const STATUS_PILL: Record<ScrapeRun['status'], { label: string; cls: string }> = {
   draft:         { label: 'Draft',    cls: 'muted' },
@@ -115,23 +122,41 @@ export default function Home() {
   const [bylines,        setBylines]        = useState('');
   const [csvFile,        setCsvFile]        = useState<File | null>(null);
   const [dragOver,       setDragOver]       = useState(false);
-  const [presets,        setPresets]        = useState<Record<string, any>>({});
+  const [presets,        setPresets]        = useState<Record<string, SavedSearch>>({});
   const [presetName,     setPresetName]     = useState('');
   const [showPresets,    setShowPresets]    = useState(false);
   const [formError,      setFormError]      = useState('');
   const [uploading,      setUploading]      = useState(false);
   const [backendKeys,    setBackendKeys]    = useState<Record<string, boolean>>({});
-  // null = unknown (status request failed) — no warning flashed on a blip
-  const [pwProtected,    setPwProtected]    = useState<boolean | null>(null);
   const [useBlocklist,   setUseBlocklist]   = useState(true);
   const [blockCount,     setBlockCount]     = useState(0);
   const [groupByPage,    setGroupByPage]    = useState(true);
   // Nach Upload erkanntes KI-Spalten-Preset (LinkedIn etc.) — Modal vor der Navigation
   const [aiPresetPrompt, setAiPresetPrompt] = useState<{ id: string; filename: string; presets: ImportPreset[] } | null>(null);
 
+  /** Suchmaske aus einer gespeicherten Scrape-Konfiguration (Backend-Run) befüllen */
+  const applyRunConfig = (cfg: Record<string, unknown>) => {
+    const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : null);
+    const text = (v: unknown) => (typeof v === 'string' && v ? v : null);
+    if (cfg.keywords) setTags(list(cfg.keywords) ?? String(cfg.keywords).split('\n').filter(Boolean));
+    if (cfg.countries) setCountry(list(cfg.countries)?.[0] ?? text(cfg.countries) ?? 'DE');
+    const platforms  = list(cfg.platforms);            if (platforms)  setPlatforms(platforms);
+    const adStatus   = text(cfg.ad_status);            if (adStatus)   setAdStatus(adStatus);
+    const mediaType  = text(cfg.media_type);           if (mediaType)  setMediaType(mediaType);
+    const searchType = text(cfg.search_type);          if (searchType) setSearchType(searchType);
+    const languages  = list(cfg.languages);            if (languages)  setLanguages(languages);
+    const dateMin    = text(cfg.ad_delivery_date_min); if (dateMin)    setDateMin(dateMin);
+    const dateMax    = text(cfg.ad_delivery_date_max); if (dateMax)    setDateMax(dateMax);
+    const limit      = Number(cfg.limit);              if (limit)      setLimit(limit);
+    const bylines    = text(cfg.bylines);              if (bylines)    setBylines(bylines);
+  };
+
   useEffect(() => {
-    // Local history renders instantly — no waiting for any network call
+    // Local history renders instantly — no waiting for any network call.
+    // localStorage gibt es erst im Browser: ein lazy useState würde beim
+    // SSR-Prerender leer rendern und beim Hydrate springen — daher Effect.
     const saved = localStorage.getItem('presets');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved) setPresets(JSON.parse(saved));
     const csvItems: {id:string;filename:string;createdAt:string;rowCount:number}[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -175,9 +200,9 @@ export default function Home() {
     api.runs.list().then(runs => {
       setRuns(runs);
       const last = runs[0];
-      if (!hadRescrape && last?.scraper_config) applyRunConfig(last.scraper_config as Record<string, any>);
+      if (!hadRescrape && last?.scraper_config) applyRunConfig(last.scraper_config as Record<string, unknown>);
     }).catch(() => {});
-    fetchServerStatus().then(s => { setBackendKeys(s.keys); setPwProtected(s.passwordProtected); });
+    fetchKeyAvailability().then(setBackendKeys);
   }, []);
 
   const deleteCsvImport = async (csvId: string) => {
@@ -306,23 +331,6 @@ export default function Home() {
       window.removeEventListener('drop', onWindowDrop);
     };
   }, [onWindowDragEnter, onWindowDragLeave, onWindowDragOver, onWindowDrop]);
-
-  const applyRunConfig = (cfg: Record<string, any>) => {
-    if (cfg.keywords) setTags(Array.isArray(cfg.keywords) ? cfg.keywords : cfg.keywords.split('\n').filter(Boolean));
-    if (cfg.countries) {
-      const c = Array.isArray(cfg.countries) ? cfg.countries[0] : cfg.countries;
-      setCountry(c ?? 'DE');
-    }
-    if (cfg.platforms) setPlatforms(cfg.platforms);
-    if (cfg.ad_status) setAdStatus(cfg.ad_status);
-    if (cfg.media_type) setMediaType(cfg.media_type);
-    if (cfg.search_type) setSearchType(cfg.search_type);
-    if (cfg.languages) setLanguages(cfg.languages);
-    if (cfg.ad_delivery_date_min) setDateMin(cfg.ad_delivery_date_min);
-    if (cfg.ad_delivery_date_max) setDateMax(cfg.ad_delivery_date_max);
-    if (cfg.limit) setLimit(cfg.limit);
-    if (cfg.bylines) setBylines(cfg.bylines);
-  };
 
   const savePreset = () => {
     const auto = tags[0] ?? new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -462,30 +470,6 @@ export default function Home() {
   return (
     <div style={{ minHeight: '100vh' }}>
       <div style={{ maxWidth: 1060, margin: '0 auto', padding: '20px 20px 48px' }}>
-
-        {/* Server hat API-Keys, aber kein APP_PASSWORD: jeder mit der URL kann
-            auf Kosten dieser Keys scrapen/klassifizieren/enrichen. */}
-        {pwProtected === false && Object.values(backendKeys).some(Boolean) && (
-          <div style={{
-            marginBottom: 16, padding: '11px 14px', borderRadius: 8,
-            border: '1px solid rgba(232,115,107,.45)', background: 'rgba(232,115,107,.08)',
-            display: 'flex', alignItems: 'center', gap: 12,
-          }}>
-            <span style={{ fontSize: 16, flexShrink: 0 }}>⚠</span>
-            <div style={{ flex: 1 }}>
-              <p style={{ fontFamily: T.ffMono, fontSize: 12, fontWeight: 600, color: T.rose }}>
-                App ist ohne Passwort öffentlich — Server-API-Keys sind für jeden nutzbar
-              </p>
-              <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, marginTop: 3, lineHeight: 1.5 }}>
-                In Vercel die Umgebungsvariable <code>APP_PASSWORD</code> setzen und neu deployen.
-                Bis dahin kann jeder mit dieser URL auf Kosten eurer Meta-/KI-/Enrichment-Credits arbeiten.
-              </p>
-            </div>
-            <button onClick={() => router.push('/settings')} className="btn-ghost" style={{ padding: '4px 10px', fontSize: 11, flexShrink: 0 }}>
-              Einstellungen →
-            </button>
-          </div>
-        )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, alignItems: 'start' }}>
 
           {/* ── Left: Scraper config ── */}
@@ -770,7 +754,7 @@ export default function Home() {
                           </button>
                           {run.scraper_config && (
                             <button
-                              onClick={() => { applyRunConfig(run.scraper_config as Record<string, any>); showToast('Einstellungen geladen', 'success'); }}
+                              onClick={() => { applyRunConfig(run.scraper_config as Record<string, unknown>); showToast('Einstellungen geladen', 'success'); }}
                               title="Einstellungen laden"
                               style={{ padding: '0 10px', background: 'none', border: 'none', borderLeft: `1px solid ${T.lineS}`, cursor: 'pointer', fontFamily: T.ffMono, fontSize: 12, color: T.inkF, transition: 'color .15s', flexShrink: 0 }}
                               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = T.gold; }}
@@ -806,7 +790,7 @@ export default function Home() {
               {Object.keys(presets).length === 0 ? (
                 <p style={{ padding: '24px 18px', textAlign: 'center', fontFamily: T.ffMono, fontSize: 12, color: T.inkF }}>
                   Noch keine Suchen gespeichert.<br />
-                  <span style={{ fontSize: 11, opacity: .6 }}>Filter setzen, benennen und "Speichern" klicken.</span>
+                  <span style={{ fontSize: 11, opacity: .6 }}>Filter setzen, benennen und „Speichern“ klicken.</span>
                 </p>
               ) : (
                 Object.entries(presets).map(([name, p]) => {

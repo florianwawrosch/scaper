@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { loadSettings, saveSettings } from '@/lib/settings';
-import { fetchServerStatus } from '@/lib/keyAvailability';
+import { loadSettings, saveSettings, type AppSettings } from '@/lib/settings';
+import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist, addToBlocklist, removeFromBlocklist, type BlockEntry } from '@/lib/blocklist';
 import { getEffectivePresets, savePromptOverride, resetPresetOverrides, hasOverride, type ImportPreset } from '@/lib/aiTemplates';
 
@@ -76,8 +76,6 @@ export default function Settings() {
   const [show,       setShow]       = useState<Record<string, boolean>>({});
   const [backendUrl, setBackendUrl] = useState('');
   const [serverKeys, setServerKeys] = useState<Record<string, boolean>>({});
-  // null = unknown (status request failed) — no warning flashed on a blip
-  const [pwProtected, setPwProtected] = useState<boolean | null>(null);
   const [blocklist,  setBlocklist]  = useState<BlockEntry[]>([]);
   const [blockInput, setBlockInput] = useState('');
   // KI-Vorlagen: effektive Presets + lokale Editier-Zustände (Key: presetId:columnName)
@@ -104,16 +102,19 @@ export default function Settings() {
 
   useEffect(() => {
     const s = loadSettings();
+    // localStorage gibt es erst im Browser: ein lazy useState würde beim
+    // SSR-Prerender leer rendern und beim Hydrate springen — daher Effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setKeys(s.apiKeys as Record<string, string>);
     setTheme(s.theme ?? 'noir');
     // Track what's actually in localStorage (vs. env var fallbacks)
     try {
       const raw = localStorage.getItem('appSettings');
-      if (raw) setLocalKeys((JSON.parse(raw) as any).apiKeys ?? {});
+      if (raw) setLocalKeys((JSON.parse(raw) as { apiKeys?: Record<string, string> }).apiKeys ?? {});
     } catch {}
     try { setBackendUrl(localStorage.getItem('backendUrl') ?? ''); } catch {}
     // Which keys exist server-side (Vercel/Railway env vars) — booleans only
-    fetchServerStatus().then(s => { setServerKeys(s.keys); setPwProtected(s.passwordProtected); });
+    fetchKeyAvailability().then(setServerKeys);
     setBlocklist(loadBlocklist());
     reloadTemplates();
     // Deep link: /settings?tab=blocklist
@@ -134,7 +135,7 @@ export default function Settings() {
 
   const persist = (nextKeys: Record<string, string>, nextTheme: 'noir' | 'classic') => {
     const current = loadSettings();
-    saveSettings({ ...current, apiKeys: nextKeys as any, theme: nextTheme });
+    saveSettings({ ...current, apiKeys: nextKeys as AppSettings['apiKeys'], theme: nextTheme });
   };
 
   const connect = (serviceKey: string) => {
@@ -154,8 +155,8 @@ export default function Settings() {
 
   const applyTheme = (t: 'noir' | 'classic') => {
     setTheme(t);
-    if (t === 'classic') document.documentElement.dataset.theme = 'classic';
-    else delete document.documentElement.dataset.theme;
+    if (t === 'classic') document.documentElement.setAttribute('data-theme', 'classic');
+    else document.documentElement.removeAttribute('data-theme');
     persist(keys, t);
   };
 
@@ -361,20 +362,6 @@ export default function Settings() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-
-              {/* ── Server-Keys ohne APP_PASSWORD = öffentlich nutzbar ── */}
-              {pwProtected === false && Object.values(serverKeys).some(Boolean) && (
-                <div style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid rgba(232,115,107,.45)', background: 'rgba(232,115,107,.08)' }}>
-                  <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: '#e8736b', marginBottom: 4 }}>
-                    ⚠ Kein Passwortschutz — die Server-Keys unten sind öffentlich nutzbar
-                  </p>
-                  <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkD, lineHeight: 1.6 }}>
-                    Ohne <code>APP_PASSWORD</code> ist die App für jeden mit der URL offen, und jeder Aufruf
-                    von Scraper, KI-Analyse und Enrichment läuft über diese Keys. In Vercel →
-                    Settings → Environment Variables <code>APP_PASSWORD</code> setzen und neu deployen.
-                  </p>
-                </div>
-              )}
 
               {/* ── Aktiv: connected integrations, pulled to the top ── */}
               {activeServices.length > 0 && (

@@ -64,7 +64,7 @@ export default function EnrichPage() {
   const persistEmails = async (results: { email: string }[]) => {
     if (!meta) return;
     try {
-      const emailCol = rows.map((r, i) => r.email_enriched ?? '');
+      const emailCol = rows.map(r => r.email_enriched ?? '');
       results.forEach((res, j) => { if (res?.email) emailCol[activeIdx[j]] = res.email; });
       const merged = await saveCsvRunColumns(id, rows, { email_enriched: emailCol });
       setRows(merged);

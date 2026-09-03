@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { loadCsvRun, saveCsvRunColumns } from '@/lib/csvRuns';
 import { addToBlocklist } from '@/lib/blocklist';
@@ -52,7 +52,8 @@ export default function CsvViewer() {
   const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
 
   // AI column configs (owned here; edited via the ⚙ side panel)
-  const [aiConfigs,   setAiConfigs]   = useState<AnalysisConfig[]>([]);
+  // Lazy aus localStorage; SSR rendert ohnehin nur "Lädt…" bis run da ist
+  const [aiConfigs,   setAiConfigs]   = useState<AnalysisConfig[]>(() => (typeof window === 'undefined' ? [] : loadAiConfigs(id)));
   const [editingId,   setEditingId]   = useState<string | null>(null);
   const [colRunning,  setColRunning]  = useState<Record<string, boolean>>({});
   const [colProgress, setColProgress] = useState<Record<string, number>>({});
@@ -60,12 +61,11 @@ export default function CsvViewer() {
   const [scrollSignal, setScrollSignal] = useState(0);
 
   useEffect(() => {
-    setAiConfigs(loadAiConfigs(id));
     fetchKeyAvailability().then(server => {
       const local = loadSettings().apiKeys as Record<string, string>;
       setProviders(['gemini', 'anthropic', 'openai'].filter(p => local[p] || server[p]));
     });
-  }, [id]);
+  }, []);
 
   const persistConfigs = (next: AnalysisConfig[]) => {
     setAiConfigs(next);
@@ -88,6 +88,37 @@ export default function CsvViewer() {
     try { await saveCsvRunColumns(id, run.data, cols); }
     catch { showToast('Ergebnisse konnten nicht gespeichert werden — Browser-Speicher voll? Bitte Seite nicht neu laden.', 'error', 10000); }
   };
+
+  // Alle Spalten, die zu einer KI-Config gehören (Roh-Antwort, Splits, Regeln)
+  const aiOwnedNames = useMemo(() => {
+    const s = new Set<string>();
+    for (const cfg of aiConfigs) {
+      s.add(cfg.name);
+      cfg.outputFields?.forEach(f => s.add(f));
+      cfg.derived?.forEach(d => s.add(d.name));
+    }
+    return s;
+  }, [aiConfigs]);
+
+  // Config-Spalten immer als KI-Spalten zeigen: noch nicht gelaufene als
+  // '·'-Platzhalter, bereits persistierte (nach Reload) mit ihren CSV-Werten —
+  // so behalten sie ⚙/▶ und können erneut laufen (Cache überspringt Unverändertes).
+  // Abgeleitet statt in den State synchronisiert: aiColumns hält nur, was
+  // tatsächlich gelaufen ist; Platzhalter entstehen beim Rendern. Reihenfolge
+  // folgt den Configs (Roh-Antwort, Splits, Regeln), Fremdspalten hinten.
+  const displayAiColumns = useMemo(() => {
+    if (!run) return aiColumns;
+    const byName = new Map(aiColumns.map(c => [c.name, c]));
+    const ordered: typeof aiColumns = [];
+    for (const n of aiOwnedNames) {
+      ordered.push(byName.get(n) ?? {
+        name: n,
+        values: run.fields.includes(n) ? run.data.map(r => r[n] ?? '') : Array(run.data.length).fill(PENDING),
+      });
+    }
+    for (const c of aiColumns) if (!aiOwnedNames.has(c.name)) ordered.push(c);
+    return ordered;
+  }, [run, aiColumns, aiOwnedNames]);
 
   /** "+ KI-Spalte": column appears in the table immediately, no popup */
   const addAiColumn = () => {
@@ -145,7 +176,7 @@ export default function CsvViewer() {
       // unveränderten Eingabewerten, die schon ein brauchbares Ergebnis haben,
       // werden nicht erneut klassifiziert. Fehler-Zeilen laufen automatisch neu.
       const prev = allHashes[cfg.id];
-      const existing = aiColumns.find(c => c.name === cfg.name)?.values
+      const existing = displayAiColumns.find(c => c.name === cfg.name)?.values
         ?? run.data.map(r => r[cfg.name] ?? '');
       const todo: number[] = [];
       for (let i = 0; i < run.data.length; i++) {
@@ -225,10 +256,8 @@ export default function CsvViewer() {
       if (!localStorage.getItem(k)) return;
       localStorage.removeItem(k);
       const cfg = aiConfigs.find(c => c.prompt.trim());
-      if (cfg) {
-        showToast(`Klassifizierung «${cfg.name}» startet…`, 'info');
-        runColumn(cfg);
-      }
+      // Nach dem Commit starten — kein synchrones setState im Effect
+      if (cfg) queueMicrotask(() => { showToast(`Klassifizierung «${cfg.name}» startet…`, 'info'); runColumn(cfg); });
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, aiConfigs, id]);
@@ -236,40 +265,10 @@ export default function CsvViewer() {
   const editingCfg = aiConfigs.find(c => c.id === editingId) ?? null;
 
   /** Config zu einer Spalte finden — auch für gesplittete Output-/Regel-Spalten */
-  const findCfgForColumn = (name: string) =>
+  const findCfgForColumn = useCallback((name: string) =>
     aiConfigs.find(c =>
-      c.name === name || c.outputFields?.includes(name) || c.derived?.some(d => d.name === name));
-
-  // Alle Spalten, die zu einer KI-Config gehören (Roh-Antwort, Splits, Regeln)
-  const aiOwnedNames = useMemo(() => {
-    const s = new Set<string>();
-    for (const cfg of aiConfigs) {
-      s.add(cfg.name);
-      cfg.outputFields?.forEach(f => s.add(f));
-      cfg.derived?.forEach(d => s.add(d.name));
-    }
-    return s;
-  }, [aiConfigs]);
-
-  // Config-Spalten immer als KI-Spalten zeigen: noch nicht gelaufene als
-  // '·'-Platzhalter, bereits persistierte (nach Reload) mit ihren CSV-Werten —
-  // so behalten sie ⚙/▶ und können erneut laufen (Cache überspringt Unverändertes)
-  useEffect(() => {
-    if (!run) return;
-    setAiColumns(prev => {
-      const next = [...prev];
-      for (const n of aiOwnedNames) {
-        if (next.some(c => c.name === n)) continue;
-        next.push({
-          name: n,
-          values: run.fields.includes(n)
-            ? run.data.map(r => r[n] ?? '')
-            : Array(run.data.length).fill(PENDING),
-        });
-      }
-      return next.length === prev.length ? prev : next;
-    });
-  }, [run, aiOwnedNames]);
+      c.name === name || c.outputFields?.includes(name) || c.derived?.some(d => d.name === name)),
+  [aiConfigs]);
 
   // ── Memoisierte DataTable-Props: neue Array-Identitäten pro Render würden
   //    die komplette Memo-Kette der Tabelle (extended → filtered → sorted)
@@ -280,7 +279,7 @@ export default function CsvViewer() {
     [run, aiOwnedNames],
   );
 
-  const labeledAiColumns = useMemo(() => aiColumns.map(c => {
+  const labeledAiColumns = useMemo(() => displayAiColumns.map(c => {
     const parent = findCfgForColumn(c.name);
     if (!parent) return c;
     if (parent.name === c.name) {
@@ -288,8 +287,7 @@ export default function CsvViewer() {
     }
     if (parent.derived?.some(d => d.name === c.name)) return { ...c, label: `Regel aus «${parent.name}»` };
     return { ...c, label: `aus «${parent.name}»` };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [aiColumns, aiConfigs]);
+  }), [displayAiColumns, findCfgForColumn]);
 
   // KI-Statistik wie im statistik-Blatt: Fortschritt + Regel-Verteilung,
   // Regel-Chips filtern die Tabelle per Klick
@@ -297,7 +295,7 @@ export default function CsvViewer() {
     if (!run) return [];
     const chips: StatChip[] = [];
     for (const cfg of aiConfigs) {
-      const col = aiColumns.find(c => c.name === cfg.name);
+      const col = displayAiColumns.find(c => c.name === cfg.name);
       if (!col) continue;
       const done = col.values.reduce((n, v) => n + (isUsableAiValue(v) ? 1 : 0), 0);
       if (done === 0) continue;
@@ -306,7 +304,7 @@ export default function CsvViewer() {
         tone: done === run.data.length ? 'teal' : 'gold',
       });
       for (const d of cfg.derived ?? []) {
-        const dcol = aiColumns.find(c => c.name === d.name);
+        const dcol = displayAiColumns.find(c => c.name === d.name);
         if (!dcol) continue;
         let yes = 0, no = 0;
         for (const v of dcol.values) { if (v === d.then) yes++; else if (v === d.else) no++; }
@@ -317,7 +315,7 @@ export default function CsvViewer() {
       }
     }
     return chips;
-  }, [run, aiConfigs, aiColumns]);
+  }, [run, aiConfigs, displayAiColumns]);
 
   // Quellen-Statistik: Zielgruppen-Quote pro Big Player (wie das statistik-Blatt)
   const sourceStats = useMemo(() => {
@@ -326,8 +324,8 @@ export default function CsvViewer() {
     if (!srcCol) return null;
     const cfg = aiConfigs.find(c => c.derived?.length);
     const rule = cfg?.derived?.[0];
-    const dcol = rule ? aiColumns.find(c => c.name === rule.name) : undefined;
-    const rawCol = cfg ? aiColumns.find(c => c.name === cfg.name) : undefined;
+    const dcol = rule ? displayAiColumns.find(c => c.name === rule.name) : undefined;
+    const rawCol = cfg ? displayAiColumns.find(c => c.name === cfg.name) : undefined;
     if (!rule || !dcol || !rawCol) return null;
     if (!rawCol.values.some(isUsableAiValue)) return null;
 
@@ -345,7 +343,7 @@ export default function CsvViewer() {
       .sort((a, b) => b.quote - a.quote || b.total - a.total);
     if (rows.length < 2) return null;
     return { srcCol, rule, rows };
-  }, [run, aiConfigs, aiColumns]);
+  }, [run, aiConfigs, displayAiColumns]);
 
   useEffect(() => {
     loadCsvRun(id)
@@ -384,8 +382,7 @@ export default function CsvViewer() {
         return { filename: `outreach_${new Date().toISOString().slice(0, 10)}.csv`, columns: out.columns, rows: out.rows };
       },
     }];
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run, aiConfigs]);
+  }, [run, aiConfigs, showToast]);
 
   const fmt = (d: string) =>
     new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -520,6 +517,7 @@ export default function CsvViewer() {
         {/* ⚙ side panel for the selected AI column */}
         {editingCfg && (
           <AiColumnEditor
+            key={editingCfg.id}
             config={editingCfg}
             rowCount={run.data.length}
             providers={providers}

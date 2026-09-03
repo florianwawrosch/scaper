@@ -30,7 +30,40 @@ const FIELDS = [
   'languages', 'eu_total_reach',
 ];
 
-function flatten(ad: any, searchTerm: string): Record<string, string> {
+/** One ad as returned by the Ads Library — only the fields we read, all optional. */
+interface MetaAd {
+  id?: unknown; page_name?: unknown; page_id?: unknown;
+  ad_creative_bodies?: unknown; ad_creative_link_titles?: unknown;
+  ad_creative_link_descriptions?: unknown; ad_creative_link_captions?: unknown;
+  publisher_platforms?: unknown; languages?: unknown;
+  ad_delivery_start_time?: unknown; ad_delivery_stop_time?: unknown;
+  ad_snapshot_url?: unknown; bylines?: unknown; eu_total_reach?: unknown;
+}
+
+/** One page of the Ads Library response. */
+interface MetaPage {
+  data?: MetaAd[];
+  paging?: { next?: string };
+  error?: { code?: number | string; message?: string };
+}
+
+/** Request body from the search form (all optional — defaults below). */
+interface ScrapeConfig {
+  meta_ads_token?: string;
+  keywords?: string | string[];
+  countries?: string[];
+  platforms?: string[];
+  ad_status?: string;
+  media_type?: string;
+  search_type?: string;
+  languages?: string[];
+  ad_delivery_date_min?: string;
+  ad_delivery_date_max?: string;
+  limit?: number | string;
+  bylines?: string | string[];
+}
+
+function flatten(ad: MetaAd, searchTerm: string): Record<string, string> {
   const join = (v: unknown) => Array.isArray(v) ? v.join(' | ') : '';
   const list = (v: unknown) => Array.isArray(v) ? v.join(', ') : '';
   return {
@@ -53,7 +86,7 @@ function flatten(ad: any, searchTerm: string): Record<string, string> {
 }
 
 export async function POST(req: NextRequest) {
-  let cfg: any = {};
+  let cfg: ScrapeConfig = {};
   try { cfg = await req.json(); } catch {}
 
   const token = cfg.meta_ads_token || envKey('meta_ads');
@@ -116,7 +149,7 @@ export async function POST(req: NextRequest) {
         });
         const raw = await res.text();
 
-        let data: any;
+        let data: MetaPage;
         try { data = JSON.parse(raw); } catch {
           throw new Error(`Ungültige API-Antwort: ${raw.slice(0, 200)}`);
         }

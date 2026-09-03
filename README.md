@@ -23,7 +23,8 @@ definiert alle akzeptierten Namen). Aktuell verwendete Namen:
 | Anthropic Claude | `ANTHROPIC_API_KEY` |
 | FindyMail | `FINDYMAIL_API_KEY` |
 | Hunter.io | `HUNTER_IO_API_KEY` |
-| App-Passwortschutz | `APP_PASSWORD` — **Pflicht für jedes öffentliche Deployment**, siehe unten |
+| App-Login | `APP_USER` + `APP_PASSWORD` — **Pflicht**, ohne beide ist die App gesperrt (siehe unten) |
+| Login-Alarm per Mail | `LOGIN_ALERT_TO` + `RESEND_API_KEY` (optional `LOGIN_ALERT_FROM`) — oder `LOGIN_ALERT_WEBHOOK` |
 
 Nach dem Anlegen/Ändern einer Variable: einmal **Redeploy** — Vercel übernimmt
 Variablen erst beim nächsten Deploy. Kontrolle im Browser:
@@ -33,24 +34,44 @@ Keys das blaue Badge „✓ Server-Key aktiv". Keys, die man in den
 App-Einstellungen einträgt, liegen nur im jeweiligen Browser (localStorage)
 und haben Vorrang vor den Server-Keys.
 
-## Passwortschutz — vor dem ersten öffentlichen Deploy setzen
+## Login — die App ist ohne Zugangsdaten gesperrt
 
 Die Server-Keys werden bei **jeder** Anfrage an `/api/scrape`, `/api/ai/analyze`
-und `/api/enrich` eingesetzt — auch ohne Login. Ohne `APP_PASSWORD` ist die App
-also für jeden mit der URL offen, und jeder kann auf Kosten der Meta-, KI- und
-Enrichment-Credits scrapen, klassifizieren und enrichen.
+und `/api/enrich` eingesetzt. Deshalb ist die App **fail-closed**: Solange
+`APP_USER` und `APP_PASSWORD` nicht beide gesetzt sind, ist sie nicht „offen",
+sondern gesperrt — jede Seite landet auf `/login` (das sagt, welche Variable
+fehlt), jeder API-Aufruf bekommt `503`. Es gibt keinen Zustand, in dem die Keys
+ohne Login nutzbar wären.
 
 1. Vercel → Project → **Settings → Environment Variables**
-2. `APP_PASSWORD` anlegen (Production; optional auch Preview), ein echtes
-   Passwort als Wert
-3. **Redeploy** — die Variable greift erst beim nächsten Deploy
+2. `APP_USER` und `APP_PASSWORD` anlegen (Production; optional auch Preview)
+3. **Redeploy** — Variablen greifen erst beim nächsten Deploy
 
-Danach schützt die Middleware alle Seiten **und** alle API-Routen: ohne gültiges
-Login-Cookie landet jeder Aufruf (auch ein direkter `curl` auf `/api/scrape`)
-auf `/login`. Kontrolle: Die App-URL im Browser öffnen muss sofort auf `/login`
-umleiten. Solange kein Passwort gesetzt ist und der Server Keys hat, zeigt die
-App auf der Import-Seite und unter Einstellungen → Integrationen einen roten
-Warnhinweis.
+Danach: Login einmal pro Browser, das Session-Cookie gilt **ein Jahr**
+(Facebook-Style). Das Cookie enthält nicht das Passwort, sondern einen
+HMAC-Token aus User+Passwort — wer eines von beiden in Vercel ändert, loggt
+damit alle Geräte aus. Die Gate-Logik liegt in `frontend/proxy.ts`, die
+Vergleiche sind zeitkonstant (`frontend/lib/auth.ts`).
+
+### Sicherheits-Mail bei jeder Anmeldung
+
+Wie bei Google/Amazon: jede erfolgreiche Anmeldung löst eine Mail aus — Zeit,
+ungefährer Standort, IP, Gerät, plus „Warst du das nicht? → Zugangsdaten in
+Vercel ändern". Weil Sessions ein Jahr halten, ist eine Anmeldung selten und
+der Alarm entsprechend aussagekräftig. Versand (beides optional, beides geht
+parallel):
+
+- **E-Mail über Resend**: `RESEND_API_KEY` (resend.com, kostenloser Tarif
+  reicht) + `LOGIN_ALERT_TO` (Empfänger, kommagetrennt mehrere). Absender
+  optional über `LOGIN_ALERT_FROM`, sonst `Scaper <onboarding@resend.dev>`.
+- **Webhook**: `LOGIN_ALERT_WEBHOOK` — bekommt ein JSON mit `subject`, `text`,
+  `html`, `ip`, `city`, `country`, `device`, `time`. Passt direkt auf einen
+  Zapier-Catch-Hook → Gmail „Send Email" (Subject = `subject`, Body =
+  `html`), oder Make/Slack.
+
+Ist keins von beiden gesetzt, passiert nichts (kein Fehler). Der Versand läuft
+nach der Antwort und kann den Login weder verzögern noch scheitern lassen.
+Logik: `frontend/lib/loginNotify.ts`.
 
 Lokal (`npm run dev`) gilt dasselbe über `frontend/.env.local`.
 
