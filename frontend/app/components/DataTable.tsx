@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { isPendingAiValue, isAiError } from '@/lib/ai';
 import { Glyph } from './Glyph';
 import { FilterDropdown } from './FilterDropdown';
-import { useTableState, PAGE_SIZE as PAGE } from '@/app/hooks/useTableState';
+import { useTableState, PAGE_SIZES } from '@/app/hooks/useTableState';
 import { linkTarget } from '@/lib/tableQuery';
 import { downloadCsv, downloadXlsx } from '@/lib/tableExport';
 import { mono } from '@/app/theme';
@@ -66,7 +66,8 @@ export function DataTable({
 }: DataTableProps) {
   const {
     globalSearch, setGlobalSearch, colFilters, setColFilters, activeFilters,
-    sortCol, sortAsc, sort, page, setPage, totalPages, hiddenCols, setHiddenCols,
+    sortCol, sortAsc, sort, page, setPage, totalPages, pageStart, hiddenCols, setHiddenCols,
+    pageSize, setPageSize, viewMode, setViewMode,
     allColumns, visibleRawColumns, extended, uniqueValues, sorted, paginated,
     chipFilterActive, toggleChipFilter,
   } = useTableState(data, rawColumns, aiColumns);
@@ -124,10 +125,15 @@ export function DataTable({
     borderBottom: '1px solid rgba(255,255,255,.07)', color: '#9aa7bd',
     userSelect: 'none',
   };
+  const expanded = viewMode === 'expanded';
+  // Kompakt: eine Zeile pro Datensatz, lange Texte abgeschnitten (Tooltip zeigt alles).
+  // Erweitert: Zellen brechen um, der ganze Werbetext ist lesbar.
   const tdStyle: React.CSSProperties = {
-    ...mono, fontSize: 11, padding: '5px 8px',
-    borderBottom: '1px solid rgba(255,255,255,.04)', color: '#9aa7bd',
-    maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    ...mono, fontSize: 11, padding: expanded ? '7px 8px' : '5px 8px',
+    borderBottom: '1px solid rgba(255,255,255,.04)', color: '#9aa7bd', verticalAlign: 'top',
+    ...(expanded
+      ? { maxWidth: 440, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }
+      : { maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
   };
 
   const includedCount = data.length - excludedRows.size;
@@ -141,6 +147,9 @@ export function DataTable({
   // URLs and bare domains (e.g. "app.quiz-akademie.de") become clickable links
   const renderCell = (val: string) => {
     const href = linkTarget(val);
+    // Reine ganze Zahlen ab 4 Stellen (z.B. reach, spend) mit Tausenderpunkt — die
+    // Größenordnung ist so auf einen Blick klar; sortiert wird weiter numerisch
+    if (!href && /^\d{4,}$/.test(val.trim())) return Number(val).toLocaleString('de-DE');
     if (!href) return val || '—';
     return (
       <a
@@ -220,6 +229,25 @@ export function DataTable({
           {sorted.length}/{data.length} sichtbar
           {excludedRows.size > 0 && ` · ${includedCount} ausgewählt`}
         </span>
+
+        {/* Zeilen pro Seite */}
+        <select
+          value={pageSize}
+          onChange={e => setPageSize(Number(e.target.value))}
+          title="Zeilen pro Seite"
+          data-testid="page-size"
+          style={{ ...mono, fontSize: 10, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 4, color: '#9aa7bd', padding: '2px 6px', outline: 'none', cursor: 'pointer' }}
+        >
+          {PAGE_SIZES.map(n => <option key={n} value={n}>{n === 0 ? 'Alle Zeilen' : `${n} / Seite`}</option>)}
+        </select>
+
+        {/* Kompakt / Erweitert */}
+        <button
+          onClick={() => setViewMode(expanded ? 'compact' : 'expanded')}
+          title={expanded ? 'Kompakt: eine Zeile pro Datensatz' : 'Erweitert: lange Texte (z.B. Werbetext) komplett anzeigen'}
+          data-testid="view-toggle"
+          style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(255,255,255,.08)', background: expanded ? 'rgba(255,255,255,.08)' : 'transparent', color: '#9aa7bd', whiteSpace: 'nowrap' }}
+        ><Glyph>{expanded ? '☰' : '≡'}</Glyph>{expanded ? 'Erweitert' : 'Kompakt'}</button>
 
         {/* Column visibility menu */}
         <div style={{ position: 'relative' }}>
@@ -392,7 +420,7 @@ export function DataTable({
                       <input type="checkbox" checked={!excluded} onChange={() => toggleExclude(row._idx)} style={{ width: 11, height: 11, cursor: 'pointer' }} />
                     </td>
                   )}
-                  <td style={{ ...tdStyle, color: '#5f6e87', fontSize: 10 }}>{(page - 1) * PAGE + i + 1}</td>
+                  <td style={{ ...tdStyle, color: '#5f6e87', fontSize: 10, whiteSpace: 'nowrap' }}>{pageStart + i + 1}</td>
                   {visibleRawColumns.map(col => (
                     <td key={col} title={String(row[col] ?? '')} style={tdStyle}>
                       {renderCell(String(row[col] ?? ''))}
@@ -408,7 +436,7 @@ export function DataTable({
                           <span style={{ ...mono, fontSize: 11, color: '#5f6e87' }}>—</span>
                         ) : (
                           <span style={{
-                            ...mono, fontSize: 11, borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap',
+                            ...mono, fontSize: 11, borderRadius: 4, padding: '1px 6px', whiteSpace: expanded ? 'pre-wrap' : 'nowrap',
                             color: isError ? '#e8736b' : '#e8b04b',
                             background: isError ? 'rgba(232,115,107,.1)' : 'rgba(232,176,75,.1)',
                           }}>
@@ -435,7 +463,7 @@ export function DataTable({
       {/* Pagination */}
       {totalPages > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 10px', borderTop: '1px solid rgba(255,255,255,.07)', background: 'rgba(255,255,255,.02)' }}>
-          <span style={{ ...mono, fontSize: 10, color: '#5f6e87' }}>{page} / {totalPages}</span>
+          <span style={{ ...mono, fontSize: 10, color: '#5f6e87' }}>Seite {page} / {totalPages} · {pageStart + 1}–{Math.min(pageStart + paginated.length, sorted.length)} von {sorted.length}</span>
           <div style={{ display: 'flex', gap: 4 }}>
             {[['←', -1], ['→', 1]].map(([lbl, dir]) => (
               <button

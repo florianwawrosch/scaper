@@ -8,7 +8,16 @@ export type Row = Record<string, unknown> & { _idx: number };
 
 export interface AiColumnValues { name: string; values: string[] }
 
-export const PAGE_SIZE = 25;
+/** Wählbare Seitengrößen; 0 = alle Zeilen auf einer Seite */
+export const PAGE_SIZES = [25, 50, 100, 250, 0] as const;
+export type ViewMode = 'compact' | 'expanded';
+
+const LS_PAGE_SIZE = 'table_page_size';
+const LS_VIEW      = 'table_view';
+const readLs = <T,>(key: string, parse: (v: string) => T | null, fallback: T): T => {
+  if (typeof window === 'undefined') return fallback;
+  try { const v = localStorage.getItem(key); return v === null ? fallback : (parse(v) ?? fallback); } catch { return fallback; }
+};
 
 /**
  * Suche, Spaltenfilter, Sortierung, Seitenwahl und ausgeblendete Spalten der
@@ -23,6 +32,9 @@ export function useTableState(data: Record<string, unknown>[], rawColumns: strin
   const [sortAsc,      setSortAsc]         = useState(true);
   const [page,         setPage]            = useState(1);
   const [hiddenCols,   setHiddenCols]      = useState<Set<string>>(new Set());
+  // Seitengröße und Ansicht merkt sich der Browser (gelten für alle Datensätze)
+  const [pageSize,     setPageSizeRaw]     = useState<number>(() => readLs(LS_PAGE_SIZE, v => (PAGE_SIZES as readonly number[]).includes(Number(v)) ? Number(v) : null, 25));
+  const [viewMode,     setViewModeRaw]     = useState<ViewMode>(() => readLs(LS_VIEW, v => (v === 'expanded' || v === 'compact' ? v : null), 'compact'));
 
   const allColumns = useMemo(() => [...rawColumns, ...aiColumns.map(c => c.name)], [rawColumns, aiColumns]);
   // Visible raw columns (AI columns are always shown)
@@ -40,8 +52,19 @@ export function useTableState(data: Record<string, unknown>[], rawColumns: strin
   const filtered = useMemo(() => filterRows(extended, allColumns, globalSearch, colFilters), [extended, allColumns, globalSearch, colFilters]);
   const sorted   = useMemo(() => sortRows(filtered, sortCol, sortAsc), [filtered, sortCol, sortAsc]);
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const paginated  = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const effectiveSize = pageSize === 0 ? Math.max(1, sorted.length) : pageSize;
+  const totalPages = Math.max(1, Math.ceil(sorted.length / effectiveSize));
+  const pageStart  = (page - 1) * effectiveSize;
+  const paginated  = sorted.slice(pageStart, pageStart + effectiveSize);
+
+  const setPageSize = (n: number) => {
+    setPageSizeRaw(n); setPage(1);
+    try { localStorage.setItem(LS_PAGE_SIZE, String(n)); } catch {}
+  };
+  const setViewMode = (m: ViewMode) => {
+    setViewModeRaw(m);
+    try { localStorage.setItem(LS_VIEW, m); } catch {}
+  };
 
   // Jede Änderung an Suche/Filter/Sortierung springt auf Seite 1
   const setGlobalSearch = (v: string) => { setGlobalSearchRaw(v); setPage(1); };
@@ -70,7 +93,8 @@ export function useTableState(data: Record<string, unknown>[], rawColumns: strin
 
   return {
     globalSearch, setGlobalSearch, colFilters, setColFilters, activeFilters: countActiveFilters(colFilters),
-    sortCol, sortAsc, sort, page, setPage, totalPages, hiddenCols, setHiddenCols,
+    sortCol, sortAsc, sort, page, setPage, totalPages, pageStart, hiddenCols, setHiddenCols,
+    pageSize, setPageSize, viewMode, setViewMode,
     allColumns, visibleRawColumns, extended, uniqueValues, sorted, paginated,
     chipFilterActive, toggleChipFilter,
   };
