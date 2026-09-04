@@ -64,3 +64,21 @@ export function linkTarget(raw: string): string | null {
   const isDomain = /^(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:\/\S*)?$/i.test(v) && !v.includes('@');
   return isDomain ? `https://${v}` : null;
 }
+
+/**
+ * Seitenzahlen für die Paginierung: immer 1 und die letzte, ein Fenster um die
+ * aktuelle Seite, Lücken als '…'. Bei ≤ 7 Seiten alle.
+ */
+export function pageNumbers(current: number, total: number): (number | '…')[] {
+  if (total <= 7) return Array.from({ length: Math.max(total, 0) }, (_, i) => i + 1);
+  const keep = new Set<number>([1, total, current - 1, current, current + 1]);
+  if (current <= 3) [2, 3, 4, 5].forEach(n => keep.add(n));
+  if (current >= total - 2) [total - 4, total - 3, total - 2, total - 1].forEach(n => keep.add(n));
+  const pages = [...keep].filter(n => n >= 1 && n <= total).sort((a, b) => a - b);
+  const out: (number | '…')[] = [];
+  for (let i = 0; i < pages.length; i++) {
+    if (i > 0 && pages[i] - pages[i - 1] > 1) out.push('…');
+    out.push(pages[i]);
+  }
+  return out;
+}

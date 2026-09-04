@@ -1,14 +1,10 @@
 // Gespeicherte KI-Spalten (Einstellungen → KI-Spalten). Eine KI-Spalte hat:
-// Titel, KI-Modell, Version, Prompt und die Lade-Schalter (bei CSV, bei Meta,
-// direkt ausfüllen). Intern ist das ein ImportPreset mit genau EINER Spalte —
-// eingebaut (Code + Override) oder eigene (localStorage).
-// Die LinkedIn-Klassifizierung ist Uriels Sheet-Vorlage (v5): EIN Prompt, EIN
-// Aufruf pro Zeile, EINE Tabellenspalte. Die sieben pipe-getrennten Werte und
-// die Zielgruppen-Regel bleiben als versteckte Datensatz-Spalten (Export,
-// Filter, Statistik) erhalten.
+// Titel, KI-Modell (Anbieter), KI-Version (Modell), Prompt und die Lade-Schalter
+// (bei CSV, bei Meta, direkt ausfüllen). Intern ist das ein ImportPreset mit
+// genau EINER Spalte — eingebaut (Code + Override) oder eigene (localStorage).
+// Ein Prompt, ein Aufruf pro Zeile, eine Antwort, eine Tabellenspalte.
 
 import type { AnalysisConfig } from '@/lib/ai';
-import type { DerivedRule } from '@/lib/ai';
 import { defaultModel, modelsFor } from '@/lib/ai';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { AI_PROVIDERS } from '@/lib/ai';
@@ -29,14 +25,13 @@ export interface PresetFlags {
   autoRun?: boolean;
 }
 
-/** Die Spalte einer KI-Spalte; KI-Modell optional (sonst erster Provider mit Key) */
-export type PresetColumn = Omit<AnalysisConfig, 'id' | 'model' | 'provider' | 'presetId'> & { provider?: string; model?: string };
+/** Die Spalte einer KI-Spalte — immer mit konkretem Anbieter (provider) und Modell */
+export type PresetColumn = Omit<AnalysisConfig, 'id' | 'presetId'>;
 
 export interface ImportPreset extends PresetFlags {
   id: string;
   name: string;
   description?: string;
-  promptVersion?: string;
   columns: PresetColumn[];
   /** Vom Nutzer gespeicherte KI-Spalte (localStorage) — frei editier-/löschbar */
   userDefined?: boolean;
@@ -74,18 +69,15 @@ Weitere Regeln:
    wird, als die Selbstvermarktungszeile der Person. Nutze sie zuerst.
 7. Bei duenner Datenlage sicherheit niedrig.
 
-Antworte mit GENAU SIEBEN Werten, getrennt durch senkrechte Striche, ohne
-Erklaerung, ohne Zeilenumbruch. Nutze die Werte exakt wie geschrieben.
+Entscheide danach, ob die Person zur Zielgruppe gehoert. Zielgruppe = ja,
+wenn ALLE drei Punkte zutreffen:
+- Sie bietet selbst Coaching, Training, Mentoring, Seminare oder Ausbildung an
+  (erkennbar oder wahrscheinlich).
+- Sie ist KEINE Marketingagentur (fuehrt keine Ads, SEO, Funnels oder Webdesign
+  fuer fremde Firmen aus).
+- Sie ist selbststaendig oder fuehrt ein Unternehmen (nicht angestellt).
 
-1 haupttyp: Coach, Trainer, Berater, Agentur, Dienstleister, Software, Handel, Bildung, Arzt, Finanzen, Immobilien, Konzern, Sonstiges
-2 bietet_coaching: ja, wahrscheinlich, nein
-3 marketing_agentur: ja, wahrscheinlich, nein
-4 themenfeld: Beziehung, Spiritualitaet, Persoenlichkeit, Fitness, Gesundheit, Ernaehrung, Business, Marketing, Vertrieb, Finanzen, Handwerk, Beauty, Bildung, Recht, Immobilien, Sonstiges
-5 anbieterstatus: selbststaendig, angestellt, unternehmen, unklar
-6 rollenbezug: eigenes_angebot, nur_zielgruppe, beides, unklar
-7 sicherheit: hoch, mittel, niedrig
-
-Beispiel: Coach | ja | nein | Beziehung | selbststaendig | eigenes_angebot | hoch
+Antworte mit GENAU EINEM Wort, ohne Erklaerung: ja oder nein.
 
 Daten der Person:`;
 
@@ -94,49 +86,17 @@ const LINKEDIN_INPUT_COLUMNS = [
   'firmenbeschreibung', 'specialities', 'headline', 'skills', 'beschreibung',
 ];
 
-const LINKEDIN_OUTPUT_FIELDS = [
-  'ki_haupttyp', 'ki_bietet_coaching', 'ki_marketing_agentur', 'ki_themenfeld',
-  'ki_anbieterstatus', 'ki_rollenbezug', 'ki_sicherheit',
-];
-
-// Erlaubte Werte je Feld (Sheet-Spalten D–J) — Antworten außerhalb werden
-// als Fehler markiert und beim nächsten Lauf erneut versucht
-const LINKEDIN_OUTPUT_ENUMS: Record<string, string[]> = {
-  ki_haupttyp: ['Coach', 'Trainer', 'Berater', 'Agentur', 'Dienstleister', 'Software', 'Handel', 'Bildung', 'Arzt', 'Finanzen', 'Immobilien', 'Konzern', 'Sonstiges'],
-  ki_bietet_coaching: ['ja', 'wahrscheinlich', 'nein'],
-  ki_marketing_agentur: ['ja', 'wahrscheinlich', 'nein'],
-  ki_themenfeld: ['Beziehung', 'Spiritualitaet', 'Persoenlichkeit', 'Fitness', 'Gesundheit', 'Ernaehrung', 'Business', 'Marketing', 'Vertrieb', 'Finanzen', 'Handwerk', 'Beauty', 'Bildung', 'Recht', 'Immobilien', 'Sonstiges'],
-  ki_anbieterstatus: ['selbststaendig', 'angestellt', 'unternehmen', 'unklar'],
-  ki_rollenbezug: ['eigenes_angebot', 'nur_zielgruppe', 'beides', 'unklar'],
-  ki_sicherheit: ['hoch', 'mittel', 'niedrig'],
-};
-
-/** Zielgruppe = bietet Coaching, ist keine Agentur, ist selbstständig/Unternehmen */
-const LINKEDIN_ZIELGRUPPE_RULE: DerivedRule = {
-  name: 'ki_zielgruppe',
-  allOf: [
-    { field: 'ki_bietet_coaching',   anyOf: ['ja', 'wahrscheinlich'] },
-    { field: 'ki_marketing_agentur', anyOf: ['nein'] },
-    { field: 'ki_anbieterstatus',    anyOf: ['selbststaendig', 'unternehmen'] },
-  ],
-  then: 'ja',
-  else: 'nein',
-};
-
 const PRESET_LINKEDIN: ImportPreset = {
   id: 'linkedin_klassifizierung_v5',
-  name: 'LinkedIn-Klassifizierung (v5)',
-  description: 'Uriels Klassifizierung: 1 KI-Aufruf, 7 Werte (Haupttyp, Coaching, Agentur, Themenfeld, Status, Rollenbezug, Sicherheit) + Zielgruppen-Regel als Detail-Spalten',
-  promptVersion: 'v5',
+  name: 'LinkedIn-Klassifizierung',
+  description: 'Uriels LinkedIn-Prompt: Ist die Person ein selbstständiger Coach/Trainer (keine Agentur)? Antwort ja oder nein.',
   columns: [
     {
-      name: 'ki_klassifizierung',
+      name: 'ki_zielgruppe',
       prompt: LINKEDIN_V5_PROMPT,
       inputColumns: LINKEDIN_INPUT_COLUMNS,
-      outputFields: LINKEDIN_OUTPUT_FIELDS,
-      outputEnums: LINKEDIN_OUTPUT_ENUMS,
-      derived: [LINKEDIN_ZIELGRUPPE_RULE],
-      promptVersion: 'v5',
+      provider: 'anthropic',
+      model: 'claude-sonnet-5',
     },
   ],
 };
@@ -144,11 +104,13 @@ const PRESET_LINKEDIN: ImportPreset = {
 const PRESET_KEEP_DROP: ImportPreset = {
   id: 'keep_drop',
   name: 'Einfache KEEP/DROP-Klassifizierung',
-  description: 'Eine Spalte: Ist die Zeile ein relevanter Lead? KEEP oder DROP.',
+  description: 'Ist die Zeile ein relevanter Lead? Antwort KEEP oder DROP.',
   columns: [
     {
       name: 'ki_bewertung',
       prompt: 'Klassifiziere diese Zeile nach Relevanz als Lead. Antworte mit genau einem Wort: KEEP oder DROP',
+      provider: 'anthropic',
+      model: 'claude-sonnet-5',
     },
   ],
 };
@@ -161,7 +123,6 @@ const OVERRIDES_KEY = 'preset_overrides';
 
 export interface PromptOverride {
   prompt: string;
-  promptVersion?: string;
   /** neuer Spaltentitel */
   name?: string;
   provider?: string;
@@ -204,16 +165,11 @@ function builtinPresets(): ImportPreset[] {
     const columns = p.columns.map(col => {
       const o = po[col.name];
       if (!o) return col;
-      const merged: PresetColumn = { ...col, name: o.name?.trim() || col.name, prompt: o.prompt, promptVersion: o.promptVersion ?? col.promptVersion };
-      if (o.provider) { merged.provider = o.provider; merged.model = o.model; }
+      const merged: PresetColumn = { ...col, name: o.name?.trim() || col.name, prompt: o.prompt };
+      if (o.provider) { merged.provider = o.provider; merged.model = o.model && modelsFor(o.provider).includes(o.model) ? o.model : defaultModel(o.provider); }
       return merged;
     });
-    return {
-      ...p,
-      columns,
-      // Preset-Label folgt der (ersten) Spalten-Version, damit Modal & Chips stimmen
-      promptVersion: columns.find(c => c.promptVersion)?.promptVersion ?? p.promptVersion,
-    };
+    return { ...p, columns };
   });
 }
 
@@ -229,8 +185,9 @@ export function loadUserPresets(): ImportPreset[] {
       .filter((p): p is ImportPreset => !!p && typeof p.id === 'string' && Array.isArray(p.columns))
       .map(p => ({ ...p, userDefined: true }));
   } catch { return []; }
-  // Migration: ältere «Vorlagen» mit mehreren Spalten → eine KI-Spalte je Spalte
+  // Migration 1: ältere «Vorlagen» mit mehreren Spalten → eine KI-Spalte je Spalte
   // (gleiche Schalter), damit jede einzeln ladbar, editierbar, löschbar ist
+  let changed = false;
   if (list.some(p => p.columns.length !== 1)) {
     const flags = loadFlags();
     const next: ImportPreset[] = [];
@@ -238,23 +195,27 @@ export function loadUserPresets(): ImportPreset[] {
       if (p.columns.length === 1) { next.push(p); continue; }
       p.columns.forEach((col, i) => {
         const id = i === 0 ? p.id : `${p.id}_${i + 1}`;
-        next.push({ id, name: col.name, description: p.description, promptVersion: col.promptVersion ?? p.promptVersion, columns: [col], userDefined: true });
+        next.push({ id, name: col.name, description: p.description, columns: [col], userDefined: true });
         if (i > 0 && flags[p.id]) flags[id] = flags[p.id];
       });
     }
-    writeUserPresets(next);
+    list = next.filter(p => p.columns.length > 0);
     try { localStorage.setItem(FLAGS_KEY, JSON.stringify(flags)); } catch {}
-    return next.filter(p => p.columns.length > 0);
+    changed = true;
   }
-  return list.filter(p => p.columns.length > 0);
+  // Migration 2: KI-Spalten ohne konkretes Modell bekommen den ersten Anbieter mit Key
+  for (const p of list) {
+    const col = p.columns[0];
+    if (!col.provider || !modelsFor(col.provider).length) { col.provider = pickPresetProvider(); col.model = defaultModel(col.provider); changed = true; }
+    else if (!col.model || !modelsFor(col.provider).includes(col.model)) { col.model = defaultModel(col.provider); changed = true; }
+  }
+  if (changed) writeUserPresets(list);
+  return list;
 }
 
 function writeUserPresets(list: ImportPreset[]): void {
   // Flags leben separat (preset_flags), damit ein Preset-Objekt schlank bleibt
-  const slim = list.map(p => ({
-    id: p.id, name: p.name, description: p.description, promptVersion: p.promptVersion,
-    columns: p.columns, userDefined: true,
-  }));
+  const slim = list.map(p => ({ id: p.id, name: p.name, description: p.description, columns: p.columns, userDefined: true }));
   try { localStorage.setItem(USER_PRESETS_KEY, JSON.stringify(slim)); } catch {}
 }
 
@@ -283,13 +244,11 @@ export function newPresetId(prefix = 'user'): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-/** Aus bestehenden KI-Spalten-Configs eine Vorlage bauen (KI-Modell wird übernommen, Config-ID nicht) */
+/** Aus bestehenden KI-Spalten-Configs eine KI-Spalte bauen (Anbieter + Modell werden übernommen, Config-ID nicht) */
 export function presetFromConfigs(name: string, configs: AnalysisConfig[], extra?: Partial<ImportPreset>): ImportPreset {
   const columns: PresetColumn[] = configs.map(c => ({
     name: c.name, prompt: c.prompt, provider: c.provider, model: c.model,
     inputColumns: c.inputColumns, outputFields: c.outputFields, outputEnums: c.outputEnums, derived: c.derived,
-    // "v5*" (angepasst) wird als eigene Version mitgenommen, sonst leer
-    promptVersion: c.promptVersion?.replace(/\*$/, '') || undefined,
   }));
   return {
     id: newPresetId(),
@@ -382,17 +341,16 @@ export function availableProviders(serverKeys: Record<string, boolean> = {}): st
 }
 
 /**
- * KI-Spalte in fertige AnalysisConfigs umwandeln. Das in ihr gespeicherte
- * Modell wird genommen, wenn sein Provider einen Key hat (providers), sonst der
- * Fallback-Provider mit Standardmodell. Merkt sich die Herkunft (presetId).
+ * KI-Spalte in fertige AnalysisConfigs umwandeln. Anbieter + Modell der
+ * KI-Spalte werden genommen, wenn der Anbieter einen Key hat (providers), sonst
+ * der Fallback-Anbieter mit seinem ersten Modell. Merkt sich die Herkunft (presetId).
  */
 function presetToConfigs(preset: ImportPreset, provider: string, providers?: string[]): AnalysisConfig[] {
   return preset.columns.map(col => {
-    const { provider: wanted, model: wantedModel, ...rest } = col;
-    const usable = !!wanted && (!providers || providers.includes(wanted));
-    const prov = usable ? wanted! : provider;
-    const model = usable && wantedModel && modelsFor(prov).includes(wantedModel) ? wantedModel : defaultModel(prov);
-    return { id: newPresetId('cfg'), provider: prov, model, presetId: preset.id, ...rest };
+    const usable = !!col.provider && (!providers || providers.includes(col.provider));
+    const prov = usable ? col.provider : provider;
+    const model = usable && modelsFor(prov).includes(col.model) ? col.model : defaultModel(prov);
+    return { ...col, id: newPresetId('cfg'), provider: prov, model, presetId: preset.id };
   });
 }
 

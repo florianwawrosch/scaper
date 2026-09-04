@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { addToBlocklist } from '@/lib/blocklist';
-import { findDerivedRule } from '@/lib/analysisConfigs';
+import { findAudience } from '@/lib/analysisConfigs';
 import { getEffectivePresets } from '@/lib/aiTemplates';
 import { buildOutreachExport } from '@/lib/outreachExport';
 import { providerLabel, isUsableAiValue } from '@/lib/ai';
@@ -12,9 +12,22 @@ import { DataTable, type StatChip, type ExportPreset } from '@/app/components/Da
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
 import { AiColumnMenu } from '@/app/components/AiColumnMenu';
 import { Glyph } from '@/app/components/Glyph';
-import { useAiColumns } from './useAiColumns';
+import { useAiColumns, type AiColumn } from './useAiColumns';
 import { KNOWN_COL, EXPORTED_COL } from '@/lib/leadKeys';
 import { T } from '@/app/theme';
+
+/** Verteilung einer Antwort-Spalte als Filter-Chips — nur bei wenigen verschiedenen Werten (ja/nein, KEEP/DROP) */
+function valueChips(column: string, values: string[]): StatChip[] {
+  const counts = new Map<string, number>();
+  for (const v of values) if (isUsableAiValue(v)) counts.set(v, (counts.get(v) ?? 0) + 1);
+  if (counts.size === 0 || counts.size > 3) return [];
+  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([v, n], i) => ({
+    text: i === 0 ? `${column}: ${n} ${v} (${Math.round((n / total) * 100)}%)` : `${n} ${v}`,
+    tone: 'gold' as const,
+    filter: { column, value: v },
+  }));
+}
 
 export default function CsvViewer() {
   const router = useRouter();
@@ -49,15 +62,14 @@ export default function CsvViewer() {
     if (parent.name === c.name) {
       return { ...c, label: `${providerLabel(parent.provider)} · ${parent.model}${parent.promptVersion ? ` · ${parent.promptVersion}` : ''}` };
     }
-    // Einzelwerte und Regel-Spalten einer Multi-Output-Antwort: eine KI-Spalte
-    // ist EINE Tabellenspalte — die Details bleiben im Datensatz (Export, Filter,
-    // Statistik) und lassen sich per ⚙ einblenden
-    if (parent.derived?.some(d => d.name === c.name)) return { ...c, label: `Regel aus «${parent.name}»`, hidden: !parent.showSplits };
-    return { ...c, label: `aus «${parent.name}»`, hidden: !parent.showSplits };
+    // Ältere Multi-Output-Configs: die Regel-Spalte (ja/nein) bleibt sichtbar,
+    // die Einzelwerte der Antwort nicht (sie stehen im Export weiterhin drin)
+    if (parent.derived?.some(d => d.name === c.name)) return { ...c, label: `Regel aus «${parent.name}»` };
+    return { ...c, label: `aus «${parent.name}»`, hidden: true };
   }), [displayAiColumns, findCfgForColumn]);
 
-  // KI-Statistik wie im statistik-Blatt: Fortschritt + Regel-Verteilung,
-  // Regel-Chips filtern die Tabelle per Klick
+  // KI-Statistik wie im statistik-Blatt: Fortschritt + Verteilung der Antworten,
+  // Chips filtern die Tabelle per Klick
   const statChips = useMemo(() => {
     if (!run) return [];
     const chips: StatChip[] = [];
@@ -70,16 +82,10 @@ export default function CsvViewer() {
         text: `${cfg.name}: ${done}/${run.data.length} klassifiziert`,
         tone: done === run.data.length ? 'teal' : 'gold',
       });
-      for (const d of cfg.derived ?? []) {
-        const dcol = displayAiColumns.find(c => c.name === d.name);
-        if (!dcol) continue;
-        let yes = 0, no = 0;
-        for (const v of dcol.values) { if (v === d.then) yes++; else if (v === d.else) no++; }
-        if (yes + no === 0) continue;
-        const pct = Math.round((yes / (yes + no)) * 100);
-        chips.push({ text: `${d.name}: ${yes} ${d.then} (${pct}%)`, tone: 'gold', filter: { column: d.name, value: d.then } });
-        chips.push({ text: `${no} ${d.else}`, tone: 'gold', filter: { column: d.name, value: d.else } });
-      }
+      // Verteilung als Filter-Chips — für Antwort-Spalten mit wenigen Werten
+      // (ja/nein, KEEP/DROP) und für Regel-Spalten älterer Configs
+      const ruleCols = (cfg.derived ?? []).map(d => displayAiColumns.find(c => c.name === d.name)).filter((c): c is AiColumn => !!c);
+      for (const c of ruleCols.length ? ruleCols : [col]) chips.push(...valueChips(c.name, c.values));
     }
     // Lead-Gedächtnis: neu vs. bekannt aus anderen Datensätzen, bereits exportiert
     if (run.fields.includes(KNOWN_COL)) {
@@ -104,27 +110,24 @@ export default function CsvViewer() {
     if (!run) return null;
     const srcCol = ['quelle_person', 'erster_autor'].find(c => run.fields.includes(c));
     if (!srcCol) return null;
-    const cfg = aiConfigs.find(c => c.derived?.length);
-    const rule = cfg?.derived?.[0];
-    const dcol = rule ? displayAiColumns.find(c => c.name === rule.name) : undefined;
-    const rawCol = cfg ? displayAiColumns.find(c => c.name === cfg.name) : undefined;
-    if (!rule || !dcol || !rawCol) return null;
-    if (!rawCol.values.some(isUsableAiValue)) return null;
+    const audience = findAudience(aiConfigs, run.fields);
+    const dcol = audience ? displayAiColumns.find(c => c.name === audience.column) : undefined;
+    if (!audience || !dcol || !dcol.values.some(isUsableAiValue)) return null;
 
     const bySrc = new Map<string, { total: number; done: number; yes: number }>();
     run.data.forEach((r, i) => {
       const src = String(r[srcCol] ?? '').trim() || '—';
       const s = bySrc.get(src) ?? { total: 0, done: 0, yes: 0 };
       s.total++;
-      if (isUsableAiValue(rawCol.values[i])) s.done++;
-      if (dcol.values[i] === rule.then) s.yes++;
+      if (isUsableAiValue(dcol.values[i])) s.done++;
+      if (dcol.values[i] === audience.value) s.yes++;
       bySrc.set(src, s);
     });
     const rows = [...bySrc.entries()]
       .map(([src, s]) => ({ src, ...s, quote: s.done > 0 ? s.yes / s.done : 0 }))
       .sort((a, b) => b.quote - a.quote || b.total - a.total);
     if (rows.length < 2) return null;
-    return { srcCol, rule, rows };
+    return { srcCol, audience, rows };
   }, [run, aiConfigs, displayAiColumns]);
 
   // „↓ Outreach": nur Zielgruppe + gefundene E-Mail, auf Cold-Email-Spalten
@@ -134,8 +137,7 @@ export default function CsvViewer() {
     if (!run) return [];
     const hasEmail = run.fields.some(f => ['email_enriched', 'email', 'e_mail', 'email_address', 'mail'].includes(f.toLowerCase()));
     if (!hasEmail) return [];
-    const rule = findDerivedRule(aiConfigs, run.fields);
-    const audience = rule ? { column: rule.name, value: rule.then } : null;
+    const audience = findAudience(aiConfigs, run.fields);
     return [{
       label: 'Outreach', icon: '↓',
       title: `Cold-Email-CSV: nur Zeilen mit E-Mail${audience ? ` und ${audience.column} = ${audience.value}` : ''}, Spalten email / first_name / last_name / company / … — direkt in Smartlead & Co. importierbar`,
@@ -227,7 +229,7 @@ export default function CsvViewer() {
             {showSrcStats && (
               <div style={{ marginTop: 8, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden', maxWidth: 640 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 80px 90px', padding: '6px 12px', background: 'rgba(255,255,255,.03)', borderBottom: `1px solid ${T.lineS}` }}>
-                  {[sourceStats.srcCol, 'Zeilen', 'Klassifiziert', sourceStats.rule.then, 'Quote'].map((h, i) => (
+                  {[sourceStats.srcCol, 'Zeilen', 'Klassifiziert', sourceStats.audience.value, 'Quote'].map((h, i) => (
                     <span key={h} style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: T.inkF, textAlign: i > 0 ? 'right' : 'left' }}>{h}</span>
                   ))}
                 </div>

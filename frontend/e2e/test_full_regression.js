@@ -28,7 +28,7 @@ const TEST_CSV = fixture('test_linkedin.csv');
   await page.route('**/api/ai/analyze', async route => {
     const req = route.request();
     const body = JSON.parse(req.postData());
-    const values = body.prompts.map(() => 'Coach | ja | nein | Beziehung | selbststaendig | eigenes_angebot | hoch');
+    const values = body.prompts.map(() => 'ja');
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ values }) });
   });
 
@@ -42,14 +42,12 @@ const TEST_CSV = fixture('test_linkedin.csv');
   console.log('Shows 3/3 classified:', bodyText.includes('3/3'));
 
   const headers = await page.locator('th').allTextContents();
-  const hasZielgruppeCol = headers.some(h => h.includes('ki_zielgruppe'));
-  console.log('ki_zielgruppe hidden by default (one AI column = one table column):', !hasZielgruppeCol);
-  console.log('ki_klassifizierung column exists:', headers.some(h => h.includes('ki_klassifizierung')));
+  console.log('ki_zielgruppe column exists:', headers.some(h => h.includes('ki_zielgruppe')));
+  console.log('exactly one AI column (no sub columns):', headers.filter(h => h.includes('ki_')).length === 1);
 
-  // Check the derived rule computed correctly: Coach+ja+nein+selbststaendig -> zielgruppe=ja
-  // (rule column is hidden by default; the stat chip shows its distribution)
-  const hasJa = /ki_zielgruppe: 3 ja/.test(bodyText);
-  console.log('Derived rule computed "ja" for zielgruppe:', hasJa);
+  // Ja/Nein-Antwort landet direkt in ki_zielgruppe; der Chip zeigt die Verteilung
+  const hasJa = /ki_zielgruppe: 3 ja \(100%\)/.test(bodyText);
+  console.log('ki_zielgruppe answered "ja" for all rows:', hasJa);
 
   console.log('\nConsole/page errors:', consoleErrors.length);
   consoleErrors.forEach(e => console.log(' -', e));

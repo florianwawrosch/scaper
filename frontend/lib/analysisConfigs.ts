@@ -31,3 +31,14 @@ export function findDerivedRule(configs: AnalysisConfig[], fields: string[]): De
   }
   return null;
 }
+
+/**
+ * Zielgruppen-Spalte + Trefferwert: eine Regel-Spalte (ältere Multi-Output-
+ * Configs) oder die Ja/Nein-Spalte «ki_zielgruppe» (LinkedIn-KI-Spalte).
+ */
+export function findAudience(configs: AnalysisConfig[], fields: string[]): { column: string; value: string } | null {
+  const rule = findDerivedRule(configs, fields);
+  if (rule) return { column: rule.name, value: rule.then };
+  if (configs.some(c => c.name === 'ki_zielgruppe') || fields.includes('ki_zielgruppe')) return { column: 'ki_zielgruppe', value: 'ja' };
+  return null;
+}

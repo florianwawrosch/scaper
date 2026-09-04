@@ -5,6 +5,7 @@ import { isPendingAiValue, isAiError } from '@/lib/ai';
 import { Glyph } from './Glyph';
 import { FilterDropdown } from './FilterDropdown';
 import { useTableState, PAGE_SIZES } from '@/app/hooks/useTableState';
+import { pageNumbers } from '@/lib/tableQuery';
 import { linkTarget } from '@/lib/tableQuery';
 import { downloadCsv, downloadXlsx } from '@/lib/tableExport';
 import { mono } from '@/app/theme';
@@ -449,12 +450,35 @@ export function DataTable({
         </table>
       </div>
 
-      {/* Paginierung — immer sichtbar, hier sitzt auch die Zeilen-pro-Seite-Auswahl */}
-      <div data-testid="pagination" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 10px', borderTop: '1px solid rgba(255,255,255,.07)', background: 'rgba(255,255,255,.02)' }}>
-        <span style={{ ...mono, fontSize: 10, color: '#5f6e87' }}>
+      {/* Paginierung — immer sichtbar: Info links, Seitenzahlen in der Mitte, Zeilen pro Seite ganz am Ende */}
+      <div data-testid="pagination" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '5px 10px', borderTop: '1px solid rgba(255,255,255,.07)', background: 'rgba(255,255,255,.02)' }}>
+        <span style={{ ...mono, fontSize: 10, color: '#5f6e87', whiteSpace: 'nowrap' }}>
           {sorted.length === 0 ? 'Keine Zeilen' : `Seite ${page} / ${totalPages} · ${pageStart + 1}–${Math.min(pageStart + paginated.length, sorted.length)} von ${sorted.length}`}
         </span>
-        <label style={{ ...mono, fontSize: 10, color: '#5f6e87', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 3, alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
+          {([['«', 1], ['‹', page - 1]] as const).map(([lbl, target]) => (
+            <button key={lbl} onClick={() => setPage(Math.max(1, target))} disabled={page === 1} title={lbl === '«' ? 'Erste Seite' : 'Vorherige Seite'}
+              style={{ ...mono, fontSize: 11, padding: '2px 7px', border: '1px solid rgba(255,255,255,.1)', borderRadius: 4, background: 'none', color: '#9aa7bd', cursor: page === 1 ? 'default' : 'pointer', opacity: page === 1 ? .35 : 1 }}
+            >{lbl}</button>
+          ))}
+          {pageNumbers(page, totalPages).map((n, i) => n === '…' ? (
+            <span key={`gap${i}`} style={{ ...mono, fontSize: 10, color: '#5f6e87', padding: '0 2px' }}>…</span>
+          ) : (
+            <button
+              key={n}
+              onClick={() => setPage(n)}
+              aria-current={n === page ? 'page' : undefined}
+              data-testid={`page-btn-${n}`}
+              style={{ ...mono, fontSize: 11, minWidth: 26, padding: '2px 6px', borderRadius: 4, cursor: n === page ? 'default' : 'pointer', border: n === page ? '1px solid rgba(232,176,75,.5)' : '1px solid rgba(255,255,255,.08)', background: n === page ? 'rgba(232,176,75,.14)' : 'none', color: n === page ? '#f5cc77' : '#9aa7bd', fontWeight: n === page ? 700 : 400 }}
+            >{n}</button>
+          ))}
+          {([['›', page + 1], ['»', totalPages]] as const).map(([lbl, target]) => (
+            <button key={lbl} onClick={() => setPage(Math.min(totalPages, target))} disabled={page >= totalPages} title={lbl === '»' ? 'Letzte Seite' : 'Nächste Seite'}
+              style={{ ...mono, fontSize: 11, padding: '2px 7px', border: '1px solid rgba(255,255,255,.1)', borderRadius: 4, background: 'none', color: '#9aa7bd', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? .35 : 1 }}
+            >{lbl}</button>
+          ))}
+        </div>
+        <label style={{ ...mono, fontSize: 10, color: '#5f6e87', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', paddingLeft: 8, borderLeft: '1px solid rgba(255,255,255,.08)' }}>
           Zeilen pro Seite
           <select
             value={pageSize}
@@ -465,19 +489,6 @@ export function DataTable({
             {PAGE_SIZES.map(n => <option key={n} value={n}>{n === 0 ? 'Alle' : n}</option>)}
           </select>
         </label>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {[['←', -1], ['→', 1]].map(([lbl, dir]) => {
-            const off = dir === -1 ? page === 1 : page >= totalPages;
-            return (
-              <button
-                key={lbl as string}
-                onClick={() => setPage(p => Math.min(totalPages, Math.max(1, p + (dir as number))))}
-                disabled={off}
-                style={{ ...mono, fontSize: 11, padding: '2px 8px', border: '1px solid rgba(255,255,255,.1)', borderRadius: 4, background: 'none', color: '#9aa7bd', cursor: off ? 'default' : 'pointer', opacity: off ? .35 : 1 }}
-              >{lbl}</button>
-            );
-          })}
-        </div>
       </div>
 
       {/* Filter dropdown portal */}

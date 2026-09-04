@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import {
   getEffectivePresets, resetPresetOverrides, hasOverride, builtinColumnNames, savePromptOverride,
-  saveUserPreset, deleteUserPreset, newPresetId, setPresetFlags, loadUserPresets,
+  saveUserPreset, deleteUserPreset, newPresetId, setPresetFlags, loadUserPresets, pickPresetProvider,
   PRESET_SOURCES, type ImportPreset, type PresetFlags,
 } from '@/lib/aiTemplates';
-import { providerLabel } from '@/lib/ai';
+import { providerLabel, defaultModel } from '@/lib/ai';
+import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { T } from '@/app/theme';
 import { AiColumnDraftEditor, type AiColumnDraft } from './templates/AiColumnDraftEditor';
@@ -17,14 +18,14 @@ interface Props {
 }
 
 const th: React.CSSProperties = { fontFamily: T.mono, fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: T.inkF, textAlign: 'left', padding: '9px 12px', fontWeight: 500, whiteSpace: 'nowrap' };
-const td: React.CSSProperties = { fontFamily: T.mono, fontSize: 11, color: T.inkD, padding: '10px 12px', verticalAlign: 'middle' };
+const td: React.CSSProperties = { fontFamily: T.mono, fontSize: 11, color: T.inkD, padding: '10px 12px', verticalAlign: 'middle', overflow: 'hidden' };
 const check: React.CSSProperties = { accentColor: '#e8b04b', width: 14, height: 14, cursor: 'pointer', display: 'block', margin: '0 auto' };
 const iconBtn = (color: string): React.CSSProperties => ({ fontFamily: T.mono, fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', background: 'transparent', border: `1px solid ${T.lineS}`, color, whiteSpace: 'nowrap' });
 
 /**
  * Einstellungen → KI-Spalten: eine Zeile je gespeicherter KI-Spalte mit
- * Titel, KI-Modell, Version, Prompt und den drei Lade-Schaltern (bei CSV,
- * bei Meta, direkt ausfüllen). Eingebaute Spalten sind editierbar (als
+ * Titel, KI-Modell (Anbieter), KI-Version (Modell), Prompt und den drei
+ * Lade-Schaltern (bei CSV, bei Meta, direkt ausfüllen). Eingebaute Spalten sind editierbar (als
  * Anpassung, ↺ Standard), eigene frei — beliebig viele, jede löschbar.
  */
 export function AiColumnsTab({ onCountChange }: Props) {
@@ -33,6 +34,8 @@ export function AiColumnsTab({ onCountChange }: Props) {
   const [editingId,  setEditingId]  = useState<string | null>(null);
   const [savedId,    setSavedId]    = useState<string | null>(null);
   const [error,      setError]      = useState<string | null>(null);
+  // Server-Keys (Vercel) — damit eine neue KI-Spalte den ersten Anbieter mit Key bekommt
+  const [serverKeys, setServerKeys] = useState<Record<string, boolean>>({});
 
   const reload = () => {
     const eff = getEffectivePresets();
@@ -45,12 +48,16 @@ export function AiColumnsTab({ onCountChange }: Props) {
     // localStorage gibt es erst im Browser (SSR-Prerender wäre leer) — daher Effect
     // eslint-disable-next-line react-hooks/set-state-in-effect
     reload();
+    fetchKeyAvailability().then(setServerKeys);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!editingId) return;
-    document.querySelector<HTMLElement>(`[data-testid="tpl-editor-${editingId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Nur senkrecht nachscrollen — scrollIntoView würde die Tabelle auch waagrecht verschieben
+    const el = document.querySelector<HTMLElement>(`[data-testid="tpl-editor-${editingId}"]`);
+    const r = el?.getBoundingClientRect();
+    if (r && r.bottom > window.innerHeight) window.scrollBy({ top: Math.min(r.bottom - window.innerHeight + 24, r.top - 80), behavior: 'smooth' });
   }, [editingId]);
 
   const flash = (id: string) => {
@@ -64,11 +71,12 @@ export function AiColumnsTab({ onCountChange }: Props) {
     reload();
   };
 
-  /** Neue KI-Spalte: eigene, leere Spalte — «direkt ausfüllen» standardmäßig an */
+  /** Neue KI-Spalte: eigene, leere Spalte mit dem ersten Anbieter mit Key — «direkt ausfüllen» standardmäßig an */
   const createColumn = () => {
     const n = loadUserPresets().length + 1;
     const id = newPresetId();
-    saveUserPreset({ id, name: `ki_spalte_${n}`, columns: [{ name: `ki_spalte_${n}`, prompt: '' }], userDefined: true, autoRun: true });
+    const provider = pickPresetProvider(serverKeys);
+    saveUserPreset({ id, name: `ki_spalte_${n}`, columns: [{ name: `ki_spalte_${n}`, prompt: '', provider, model: defaultModel(provider) }], userDefined: true, autoRun: true });
     reload();
     setError(null);
     setEditingId(id);
@@ -79,7 +87,7 @@ export function AiColumnsTab({ onCountChange }: Props) {
     const id = newPresetId();
     const col = preset.columns[0];
     saveUserPreset({
-      id, name: `${col.name}_kopie`, description: preset.description, promptVersion: col.promptVersion ?? preset.promptVersion,
+      id, name: `${col.name}_kopie`, description: preset.description,
       columns: [{ ...JSON.parse(JSON.stringify(col)), name: `${col.name}_kopie` }], userDefined: true,
       autoAdd: preset.autoAdd, autoRun: preset.autoRun,
     });
@@ -92,18 +100,15 @@ export function AiColumnsTab({ onCountChange }: Props) {
     if (!title) return setError('Titel fehlt');
     if (!d.prompt.trim()) return setError('Prompt fehlt');
     if (presets.some(p => p.id !== preset.id && p.columns[0]?.name === title)) return setError(`Titel «${title}» ist schon vergeben`);
-    const version = d.promptVersion.trim() || undefined;
     if (preset.userDefined) {
       const col = preset.columns[0];
       saveUserPreset({
-        id: preset.id, name: title, description: preset.description, promptVersion: version, userDefined: true,
-        columns: [{ ...col, name: title, prompt: d.prompt, promptVersion: version, provider: d.provider, model: d.model }],
+        id: preset.id, name: title, description: preset.description, userDefined: true,
+        columns: [{ ...col, name: title, prompt: d.prompt, provider: d.provider, model: d.model }],
       });
     } else {
       const original = builtinColumnNames(preset.id)[0] ?? preset.columns[0].name;
-      savePromptOverride(preset.id, original, {
-        prompt: d.prompt, promptVersion: version, name: title !== original ? title : undefined, provider: d.provider, model: d.model,
-      });
+      savePromptOverride(preset.id, original, { prompt: d.prompt, name: title !== original ? title : undefined, provider: d.provider, model: d.model });
     }
     setError(null);
     setEditingId(null);
@@ -129,7 +134,7 @@ export function AiColumnsTab({ onCountChange }: Props) {
             KI-<em style={{ color: T.gold }}>Spalten</em>
           </h1>
           <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
-            Jede gespeicherte KI-Spalte ist <strong style={{ color: T.inkD }}>eine</strong> Spalte in der Tabelle: Titel, KI-Modell, Version, Prompt.
+            Jede gespeicherte KI-Spalte ist <strong style={{ color: T.inkD }}>eine</strong> Spalte in der Tabelle: Titel, KI-Modell, KI-Version, Prompt.
             <strong style={{ color: T.inkD }}> bei CSV / bei Meta</strong> hängt sie beim Import automatisch an,
             <strong style={{ color: T.inkD }}> ▶ direkt</strong> füllt sie sofort aus, sobald sie angehängt wird (kostet Credits).
             In jedem Datensatz per «+ KI-Spalte» ladbar — jede nur einmal.
@@ -139,12 +144,15 @@ export function AiColumnsTab({ onCountChange }: Props) {
       </div>
 
       <div style={{ border: `1px solid ${T.line}`, borderRadius: 10, overflow: 'auto' }}>
-        <table data-testid="ai-columns-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
+        <table data-testid="ai-columns-table" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 900 }}>
+          <colgroup>
+            {['21%', '9%', '13%', 'auto', '7%', '7%', '7%', '15%'].map((w, i) => <col key={i} style={{ width: w }} />)}
+          </colgroup>
           <thead>
             <tr style={{ background: T.panel, borderBottom: `1px solid ${T.line}` }}>
               <th style={th}>Titel</th>
               <th style={th}>KI-Modell</th>
-              <th style={th}>Version</th>
+              <th style={th}>KI-Version</th>
               <th style={{ ...th, width: '34%' }}>Prompt</th>
               {PRESET_SOURCES.map(src => <th key={src.key} style={{ ...th, textAlign: 'center' }} title={`Beim ${src.label} automatisch anhängen`}>bei {src.key === 'csv' ? 'CSV' : 'Meta'}</th>)}
               <th style={{ ...th, textAlign: 'center' }} title="Sofort per KI ausfüllen, sobald die Spalte angehängt wird">▶ direkt</th>
@@ -156,28 +164,23 @@ export function AiColumnsTab({ onCountChange }: Props) {
               const col = preset.columns[0];
               const editing = editingId === preset.id;
               const isOverridden = overridden.has(preset.id);
-              const details = (col.outputFields?.length ?? 0) + (col.derived?.length ?? 0);
-              const version = col.promptVersion ?? preset.promptVersion;
               return [
                 <tr key={preset.id} data-testid={`tpl-${preset.id}`} style={{ background: editing ? 'rgba(232,176,75,.05)' : i % 2 ? 'transparent' : 'rgba(255,255,255,.015)', borderBottom: editing ? 'none' : `1px solid ${T.lineS}` }}>
-                  <td style={{ ...td, color: T.teal, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    <div>{col.name}</div>
+                  <td style={{ ...td, color: T.teal, fontWeight: 600 }}>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={col.name}>{col.name}</div>
                     <div style={{ marginTop: 4, fontWeight: 400 }}>
                       {preset.userDefined ? badge('eigene', T.teal, T.tealD, T.tealB) : badge('eingebaut', T.inkF, T.panel, T.lineS)}
                       {isOverridden && badge('angepasst', T.gold, T.goldD, 'rgba(232,176,75,.3)')}
-                      {details > 0 && badge(`${details} Detail-Spalten`, T.inkF, T.panel, T.lineS)}
                       {savedId === preset.id && <span data-testid={`tpl-saved-${preset.id}`} style={{ fontFamily: T.mono, fontSize: 9, color: T.teal }}>✓ Gespeichert</span>}
                     </div>
                     {!preset.userDefined && preset.description && (
-                      <div style={{ marginTop: 4, fontFamily: T.body, fontSize: 10, fontWeight: 400, color: T.inkF, whiteSpace: 'normal', maxWidth: 260, lineHeight: 1.4 }}>{preset.name} — {preset.description}</div>
+                      <div title={preset.description} style={{ marginTop: 4, fontFamily: T.body, fontSize: 10, fontWeight: 400, color: T.inkF, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>{preset.name}</div>
                     )}
                   </td>
-                  <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 10 }}>
-                    {col.provider ? <>{providerLabel(col.provider)}<span style={{ color: T.inkF }}> · {col.model}</span></> : <span style={{ color: T.inkF }}>Standard</span>}
-                  </td>
-                  <td style={{ ...td, fontSize: 10, color: version ? T.ink : T.inkF }}>{version ?? '—'}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap', color: T.ink, textOverflow: 'ellipsis' }}>{providerLabel(col.provider)}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 10, textOverflow: 'ellipsis' }} title={col.model}>{col.model}</td>
                   <td style={{ ...td, fontSize: 10, color: col.prompt.trim() ? T.inkD : '#e8736b' }} title={col.prompt}>
-                    <div style={{ maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {col.prompt.trim() ? col.prompt.replace(/\s+/g, ' ') : '⚠ kein Prompt — bearbeiten'}
                     </div>
                   </td>
@@ -194,14 +197,14 @@ export function AiColumnsTab({ onCountChange }: Props) {
                   <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                       <button type="button" onClick={() => { setError(null); setEditingId(editing ? null : preset.id); }} data-testid={`tpl-edit-${preset.id}`}
-                        title="Titel, Modell, Version, Prompt bearbeiten" style={iconBtn(editing ? T.gold : T.inkD)}>
+                        title="Titel, KI-Modell, KI-Version, Prompt bearbeiten" style={iconBtn(editing ? T.gold : T.inkD)}>
                         {editing ? '▴ Schließen' : '✎ Bearbeiten'}
                       </button>
                       {!preset.userDefined && (
                         <button type="button" onClick={() => duplicate(preset)} data-testid={`tpl-copy-${preset.id}`} title="Als eigene KI-Spalte kopieren" style={iconBtn(T.inkD)}>⧉</button>
                       )}
                       {preset.userDefined && (
-                        <ConfirmDelete label="🗑" title="Diese KI-Spalte löschen" question="Löschen?" testId={`tpl-delete-${preset.id}`}
+                        <ConfirmDelete label="Löschen" title="Diese KI-Spalte löschen" question="Löschen?" testId={`tpl-delete-${preset.id}`}
                           onConfirm={() => { deleteUserPreset(preset.id); if (editingId === preset.id) setEditingId(null); reload(); }}
                           style={{ display: 'inline-flex', alignItems: 'center' }} />
                       )}

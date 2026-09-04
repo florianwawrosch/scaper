@@ -30,3 +30,11 @@ ok(linkTarget('www.example.com/path?x=1') === 'https://www.example.com/path?x=1'
 ok(linkTarget('3.14') === null && linkTarget('16.3.3') === null && linkTarget('192.168.1.1') === null, 'Zahlen/Versionen/IPs sind keine Links');
 ok(linkTarget('max@firma.de') === null, 'E-Mail ist kein Link');
 ok(linkTarget('  example.com  ') === 'https://example.com', 'Whitespace wird getrimmt');
+
+// --- pageNumbers: Seitenzahlen mit Lücken ---
+const { pageNumbers } = lib('tableQuery');
+ok(pageNumbers(1, 3).join() === '1,2,3' && pageNumbers(1, 0).length === 0, 'pageNumbers: wenige Seiten → alle');
+ok(pageNumbers(1, 20).join() === '1,2,3,4,5,…,20', `pageNumbers: Anfang (${pageNumbers(1, 20).join()})`);
+ok(pageNumbers(10, 20).join() === '1,…,9,10,11,…,20', `pageNumbers: Mitte (${pageNumbers(10, 20).join()})`);
+ok(pageNumbers(20, 20).join() === '1,…,16,17,18,19,20', `pageNumbers: Ende (${pageNumbers(20, 20).join()})`);
+ok(pageNumbers(5, 8).join() === '1,…,4,5,6,…,8', `pageNumbers: 8 Seiten (${pageNumbers(5, 8).join()})`);

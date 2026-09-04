@@ -77,7 +77,8 @@ export default function Settings() {
       </div>
 
       {/* ── Content ── */}
-      <div style={{ flex: 1, padding: '32px 40px', maxWidth: 680 }}>
+      {/* Tabellen-Tabs (KI-Spalten, Blockliste) brauchen die volle Breite */}
+      <div style={{ flex: 1, padding: '32px 40px', maxWidth: nav === 'templates' || nav === 'blocklist' ? 1240 : 680 }}>
         {nav === 'integrations' && <IntegrationsTab onCountChange={setKeyCount} />}
         {nav === 'templates'    && <AiColumnsTab onCountChange={setTplCount} />}
         {nav === 'blocklist'    && <BlocklistTab onCountChange={setBlockCount} />}

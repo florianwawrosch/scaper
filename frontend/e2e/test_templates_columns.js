@@ -16,8 +16,9 @@ const { chromium } = playwright();
   const presets = () => page.evaluate(() => JSON.parse(localStorage.getItem('user_presets') || '[]'));
   const flags = () => page.evaluate(() => JSON.parse(localStorage.getItem('preset_flags') || '{}'));
   ok((await page.locator('[data-testid="ai-columns-table"] tbody tr').count()) === 2, 'Tabelle: eine Zeile je eingebauter KI-Spalte');
-  ok(!(await page.textContent('body')).includes('Spalten auf einmal'), 'kein «8 Spalten auf einmal» mehr');
-  ok((await page.locator('[data-testid="tpl-linkedin_klassifizierung_v5"]').innerText()).includes('8 Detail-Spalten'), 'LinkedIn: 1 Spalte + 8 versteckte Detail-Spalten');
+  ok(!/Spalten auf einmal|Detail-Spalten|Standard/.test(await page.textContent('body')), 'kein «Spalten auf einmal», keine Detail-Spalten, kein «Standard»-Modell');
+  ok((await page.locator('[data-testid="tpl-linkedin_klassifizierung_v5"]').innerText()).includes('ki_zielgruppe'), 'LinkedIn-KI-Spalte heißt ki_zielgruppe (eine Ja/Nein-Spalte)');
+  ok(!/\d+ (Detail-)?Spalten/.test(await page.locator('[data-testid="tpl-linkedin_klassifizierung_v5"]').innerText()), 'LinkedIn: keine Spalten-Zahl in der Zeile — eine KI-Spalte');
 
   // 3× neue KI-Spalte (oben + unten) — jede eine eigene Zeile, «direkt» standardmäßig an
   await page.click('[data-testid="tpl-new"]');
@@ -33,16 +34,17 @@ const { chromium } = playwright();
   await page.click(`[data-testid="tpl-edit-${id}"]`);
   await page.waitForSelector(`[data-testid="tpl-editor-${id}"]`);
   await page.fill(`[data-testid="tpl-title-${id}"]`, 'ki_nische');
-  await page.selectOption(`[data-testid="tpl-model-${id}"]`, 'anthropic|claude-sonnet-5');
-  await page.fill(`[data-testid="tpl-version-${id}"]`, 'v1');
+  await page.selectOption(`[data-testid="tpl-provider-${id}"]`, 'anthropic');
+  await page.selectOption(`[data-testid="tpl-model-${id}"]`, 'claude-sonnet-5');
   await page.fill(`[data-testid="tpl-prompt-${id}"]`, 'Welche Nische? Ein Wort.');
   await page.click(`[data-testid="tpl-save-${id}"]`);
   await page.waitForSelector(`[data-testid="tpl-saved-${id}"]`);
   p = await presets();
   const c = p.find(x => x.id === id);
-  ok(c.name === 'ki_nische' && c.columns[0].name === 'ki_nische' && c.columns[0].provider === 'anthropic' && c.columns[0].model === 'claude-sonnet-5' && c.columns[0].promptVersion === 'v1' && c.columns[0].prompt === 'Welche Nische? Ein Wort.', 'KI-Spalte gespeichert: Titel, Modell, Version, Prompt');
+  ok(c.name === 'ki_nische' && c.columns[0].name === 'ki_nische' && c.columns[0].provider === 'anthropic' && c.columns[0].model === 'claude-sonnet-5' && c.columns[0].prompt === 'Welche Nische? Ein Wort.', 'KI-Spalte gespeichert: Titel, KI-Modell, KI-Version, Prompt');
   const row = await page.locator(`[data-testid="tpl-${id}"]`).innerText();
-  ok(row.includes('ki_nische') && row.includes('Claude') && row.includes('claude-sonnet-5') && row.includes('v1') && row.includes('Welche Nische?'), 'Zeile zeigt alle Attribute');
+  ok(row.includes('ki_nische') && row.includes('Claude') && row.includes('claude-sonnet-5') && row.includes('Welche Nische?'), 'Zeile zeigt alle Attribute');
+  ok(!/Standard|Version\s*—/.test(row), 'kein «Standard»-Modell, keine leere Version');
 
   // Doppelter Titel wird abgelehnt
   const id2 = p[1].id;
@@ -64,14 +66,14 @@ const { chromium } = playwright();
   // Eingebaute anpassen: Titel + Modell, nach Reload sichtbar, ↺ Standard
   await page.click('[data-testid="tpl-edit-keep_drop"]');
   await page.fill('[data-testid="tpl-title-keep_drop"]', 'ki_lead');
-  await page.selectOption('[data-testid="tpl-model-keep_drop"]', 'gemini|gemini-2.0-flash');
+  await page.selectOption('[data-testid="tpl-provider-keep_drop"]', 'gemini');
   await page.click('[data-testid="tpl-save-keep_drop"]');
   await page.waitForSelector('[data-testid="tpl-saved-keep_drop"]');
   await page.reload({ waitUntil: 'networkidle' });
   await page.click('text=KI-Spalten');
   await page.waitForSelector('[data-testid="tpl-keep_drop"]');
   const kd = await page.locator('[data-testid="tpl-keep_drop"]').innerText();
-  ok(kd.includes('ki_lead') && kd.includes('Gemini') && kd.includes('angepasst'), 'eingebaute KI-Spalte: Titel + Modell angepasst, nach Reload da');
+  ok(kd.includes('ki_lead') && kd.includes('Gemini') && kd.includes('gemini-2.0-flash') && kd.includes('angepasst'), 'eingebaute KI-Spalte: Titel + KI-Modell angepasst, nach Reload da');
   const ov = await page.evaluate(() => JSON.parse(localStorage.getItem('preset_overrides') || '{}'));
   ok(ov.keep_drop?.ki_bewertung?.name === 'ki_lead' && ov.keep_drop?.ki_bewertung?.provider === 'gemini', 'Override unter dem Original-Titel abgelegt');
   await page.click('[data-testid="tpl-edit-keep_drop"]');

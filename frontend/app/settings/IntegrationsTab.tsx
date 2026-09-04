@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { loadSettings, saveSettings, type AppSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
+import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { T } from '@/app/theme';
 
 interface Service { key: string; label: string; hint: string; desc: string }
@@ -141,10 +142,7 @@ export function IntegrationsTab({ onCountChange }: Props) {
                     style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6, lineHeight: 1 }}>
                     {show[svc.key] ? '◉' : '○'}
                   </button>
-                  <button type="button" onClick={() => disconnect(svc.key)} title="Key entfernen"
-                    style={{ fontSize: 14, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, opacity: .5 }}>
-                    ×
-                  </button>
+                  <ConfirmDelete title="Key entfernen" question="Key entfernen?" onConfirm={() => disconnect(svc.key)} style={{ display: 'inline-flex', alignItems: 'center' }} />
                 </>
               )}
             </div>

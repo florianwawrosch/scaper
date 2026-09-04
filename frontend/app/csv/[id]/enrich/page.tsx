@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { loadCsvRun, saveCsvRunColumns, type CsvRunMeta } from '@/lib/csvRuns';
-import { loadAiConfigs, findDerivedRule } from '@/lib/analysisConfigs';
+import { loadAiConfigs, findAudience } from '@/lib/analysisConfigs';
 import { EnrichmentPanel, type EnrichFields, type EnrichResult } from '@/app/components/EnrichmentPanel';
 import { useToast } from '@/app/components/Toast';
 import { Glyph } from '@/app/components/Glyph';
@@ -28,11 +28,9 @@ export default function EnrichPage() {
     loadCsvRun(id)
       .then(({ meta: m, rows: r }) => {
         setMeta(m); setRows(r);
-        // Regel-Spalte aus den gespeicherten KI-Configs ermitteln;
-        // Fallback: eine vorhandene ki_zielgruppe-Spalte mit ja/nein
-        const rule = findDerivedRule(loadAiConfigs(id), m.fields);
-        if (rule) setAudience({ column: rule.name, value: rule.then });
-        else if (m.fields.includes('ki_zielgruppe')) setAudience({ column: 'ki_zielgruppe', value: 'ja' });
+        // Zielgruppen-Spalte (ki_zielgruppe ja/nein oder Regel-Spalte älterer Configs)
+        const audience = findAudience(loadAiConfigs(id), m.fields);
+        if (audience) setAudience(audience);
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Fehler beim Laden.'));
   }, [id]);

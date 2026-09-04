@@ -44,9 +44,7 @@ export function AiColumnMenu({ loadPresets, configs, fields = [], onLoad, onCrea
 
   const subline = (p: ImportPreset) => {
     const col = p.columns[0];
-    const parts: string[] = [];
-    parts.push(col?.provider ? `${providerLabel(col.provider)} · ${col.model ?? ''}`.trim() : 'Standard-Modell');
-    if (p.promptVersion ?? col?.promptVersion) parts.push(p.promptVersion ?? col.promptVersion!);
+    const parts: string[] = [`${providerLabel(col.provider)} · ${col.model}`];
     const srcs = Object.entries(p.autoAdd ?? {}).filter(([, v]) => v).map(([k]) => (k === 'csv' ? 'CSV' : 'Meta'));
     if (srcs.length) parts.push(`⚡ ${srcs.join('+')}`);
     if (p.autoRun) parts.push('▶ füllt sofort aus');
@@ -123,7 +121,7 @@ export function AiColumnMenu({ loadPresets, configs, fields = [], onLoad, onCrea
             );
           })}
           <p style={{ ...mono, fontSize: 9, color: '#5f6e87', padding: '4px 4px 0', lineHeight: 1.5 }}>
-            Bearbeiten, Modell, Schalter, Löschen: Einstellungen → KI-Spalten
+            Bearbeiten, KI-Modell, Schalter, Löschen: Einstellungen → KI-Spalten
           </p>
         </div>
       )}

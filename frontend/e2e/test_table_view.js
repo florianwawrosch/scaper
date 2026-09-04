@@ -19,6 +19,17 @@ const { chromium } = playwright();
   const rows = () => page.locator('tbody tr').count();
   ok(await rows() === 25, `Standard 25 Zeilen (${await rows()})`);
   ok(await page.locator('[data-testid="page-size"]').inputValue() === '25', 'Auswahl steht auf 25');
+  // Seitenzahlen anklickbar, Auswahl «Zeilen pro Seite» ganz am Ende der Paginierung
+  const pag = page.locator('[data-testid="pagination"]');
+  ok((await pag.locator('[data-testid^="page-btn-"]').count()) === 3, '3 Seitenzahlen in der Paginierung');
+  await pag.locator('[data-testid="page-btn-3"]').click();
+  await page.waitForSelector('text=Seite 3 / 3');
+  ok(await rows() === 10 && (await pag.locator('[data-testid="page-btn-3"]').getAttribute('aria-current')) === 'page', 'Klick auf «3» → Seite 3 (10 Zeilen), markiert');
+  await pag.locator('button:has-text("«")').click();
+  await page.waitForSelector('text=Seite 1 / 3');
+  const lastChild = await pag.evaluate(el => el.lastElementChild.querySelector('[data-testid="page-size"]') !== null);
+  ok(lastChild, '«Zeilen pro Seite» ist das letzte Element der Paginierung');
+  ok((await page.locator('thead').first().evaluate(th => th.getBoundingClientRect().top)) < (await pag.evaluate(el => el.getBoundingClientRect().top)), 'Paginierung sitzt unter der Tabelle');
   await page.selectOption('[data-testid="page-size"]', '100');
   await page.waitForFunction(() => document.querySelectorAll('tbody tr').length === 60);
   ok((await page.locator('text=Seite 1 / 3').count()) === 0, '100/Seite: alle 60 Zeilen, keine Seitennavigation');

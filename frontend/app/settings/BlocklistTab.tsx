@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { loadBlocklist, addBlockInput, removeFromBlocklist, fanpageUrl, adsLibraryUrl, parseBlockInput, type BlockEntry } from '@/lib/blocklist';
+import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { T } from '@/app/theme';
 
 interface Props {
@@ -84,7 +85,6 @@ export function BlocklistTab({ onCountChange }: Props) {
             <thead>
               <tr style={{ background: T.panel, borderBottom: `1px solid ${T.line}` }}>
                 <th style={th}>Seite</th>
-                <th style={th}>Page-ID</th>
                 <th style={th}>Fanpage</th>
                 <th style={th}>Ads Library</th>
                 <th style={th}>Geblockt seit</th>
@@ -96,23 +96,15 @@ export function BlocklistTab({ onCountChange }: Props) {
                 const fp = fanpageUrl(e);
                 return (
                   <tr key={`${e.pageName}:${e.pageId ?? ''}`} data-testid="block-row" style={{ background: i % 2 ? 'transparent' : 'rgba(255,255,255,.015)', borderBottom: i < blocklist.length - 1 ? `1px solid ${T.lineS}` : 'none' }}>
-                    <td style={{ ...td, color: T.ink, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <td style={{ ...td, color: T.ink, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis' }} title={e.pageId ? `Page-ID ${e.pageId}` : 'Nur Namensabgleich — ohne ID greift die Sperre nur bei exakt gleichem Namen'}>
                       <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#e8736b', marginRight: 8, verticalAlign: 'middle' }} />
-                      {e.pageName}
+                      {e.pageName}{!e.pageId && <span style={{ fontSize: 9, color: T.inkF, marginLeft: 8 }}>nur Name</span>}
                     </td>
-                    <td style={{ ...td, fontSize: 10, color: T.inkF }}>{e.pageId ?? <span title="Nur Namensabgleich — ohne ID greift die Sperre nur bei exakt gleichem Namen">— (nur Name)</span>}</td>
                     <td style={td}>{fp ? <a href={fp} target="_blank" rel="noopener noreferrer" style={link}>↗ Fanpage</a> : <span style={{ color: T.inkF }}>—</span>}</td>
                     <td style={td}>{e.pageId ? <a href={adsLibraryUrl(e.pageId)} target="_blank" rel="noopener noreferrer" style={link}>↗ Anzeigen</a> : <span style={{ color: T.inkF }}>—</span>}</td>
                     <td style={{ ...td, fontSize: 10, color: T.inkF }}>{e.addedAt ? new Date(e.addedAt).toLocaleDateString('de-DE') : '—'}</td>
                     <td style={{ ...td, textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        onClick={() => setBlocklist(removeFromBlocklist(e.pageName))}
-                        title="Von Blockliste entfernen"
-                        style={{ fontFamily: T.mono, fontSize: 15, color: T.inkD, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}
-                        onMouseEnter={ev => ((ev.currentTarget as HTMLElement).style.color = '#e8736b')}
-                        onMouseLeave={ev => ((ev.currentTarget as HTMLElement).style.color = T.inkD)}
-                      >×</button>
+                      <ConfirmDelete title="Von Blockliste entfernen" question="Entfernen?" onConfirm={() => setBlocklist(removeFromBlocklist(e.pageName))} style={{ display: 'inline-flex', alignItems: 'center' }} />
                     </td>
                   </tr>
                 );

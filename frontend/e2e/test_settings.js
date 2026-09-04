@@ -21,7 +21,7 @@ const { chromium } = playwright();
     await tplTab.click();
     await page.waitForTimeout(500);
     const tplBody = await page.locator('body').textContent();
-    console.log('Shows LinkedIn column + name:', tplBody.includes('ki_klassifizierung') && tplBody.includes('LinkedIn-Klassifizierung'));
+    console.log('Shows LinkedIn column + name:', tplBody.includes('ki_zielgruppe') && tplBody.includes('LinkedIn-Klassifizierung'));
     await page.screenshot({ path: shot('settings_templates.png'), fullPage: true });
   } else {
     console.log('KI-Spalten tab button not found/visible');

@@ -6,7 +6,8 @@ const { loadAiConfigs, saveAiConfigs } = lib('analysisConfigs');
 
 // --- built-ins present, no flags ---
 let eff = T.getEffectivePresets();
-ok(eff.length === 2 && eff.every(p => !p.userDefined && !p.autoAdd && p.columns.length === 1), 'getEffectivePresets: 2 eingebaute, je 1 Spalte, keine Flags');
+ok(eff.length === 2 && eff.every(p => !p.userDefined && !p.autoAdd && p.columns.length === 1 && p.columns[0].provider && p.columns[0].model), 'getEffectivePresets: 2 eingebaute, je 1 Spalte mit Anbieter + Modell, keine Flags');
+ok(eff[0].columns[0].name === 'ki_zielgruppe' && !eff[0].columns[0].outputFields && !eff[0].columns[0].derived, 'LinkedIn: eine Ja/Nein-Spalte, keine Sub-Spalten');
 ok(T.presetsForSource('csv').length === 0 && T.presetsForSource('meta').length === 0, 'presetsForSource leer ohne Flags');
 
 // --- flags: autoRun ist unabhängig von autoAdd ---
@@ -21,10 +22,9 @@ T.setPresetFlags('keep_drop', { autoAdd: {}, autoRun: false });
 ok(!JSON.parse(localStorage.getItem('preset_flags')).keep_drop, 'alles aus → Eintrag entfernt');
 
 // --- presetFromConfigs behält das KI-Modell, nicht die Config-ID ---
-const cfgA = { id: 'cfg_a', provider: 'openai', model: 'gpt-4o', name: 'ki_a', prompt: 'Frage A', promptVersion: 'v2*' };
+const cfgA = { id: 'cfg_a', provider: 'openai', model: 'gpt-4o', name: 'ki_a', prompt: 'Frage A' };
 const up = T.presetFromConfigs('ki_a', [cfgA], { autoAdd: { meta: true }, autoRun: true });
 ok(up.userDefined && up.name === 'ki_a' && up.columns.length === 1 && up.columns[0].provider === 'openai' && up.columns[0].model === 'gpt-4o' && !('id' in up.columns[0]), 'presetFromConfigs: Modell übernommen, id entfernt');
-ok(up.columns[0].promptVersion === 'v2', 'presetFromConfigs: v2* → v2');
 T.saveUserPreset(up);
 eff = T.getEffectivePresets();
 const mine = eff.find(p => p.id === up.id);
@@ -35,12 +35,13 @@ ok(T.getEffectivePresets().find(p => p.id === up.id).name === 'Umbenannt' && T.g
 
 // --- Migration: alte Vorlage mit 2 Spalten → 2 KI-Spalten mit denselben Flags ---
 localStorage.setItem('user_presets', JSON.stringify([
-  { id: 'old_multi', name: 'Drei', columns: [{ name: 'ki_x', prompt: 'X' }, { name: 'ki_y', prompt: 'Y', promptVersion: 'v9' }] },
+  { id: 'old_multi', name: 'Drei', columns: [{ name: 'ki_x', prompt: 'X' }, { name: 'ki_y', prompt: 'Y', provider: 'gemini', model: 'gemini-1.5-pro' }] },
 ]));
 localStorage.setItem('preset_flags', JSON.stringify({ old_multi: { autoAdd: { csv: true }, autoRun: true } }));
 let migrated = T.loadUserPresets();
 ok(migrated.length === 2 && migrated[0].id === 'old_multi' && migrated[1].id === 'old_multi_2', `Migration: 2 KI-Spalten (${migrated.map(p => p.id).join(', ')})`);
-ok(migrated[0].name === 'ki_x' && migrated[1].name === 'ki_y' && migrated[1].promptVersion === 'v9' && migrated.every(p => p.columns.length === 1), 'Migration: Titel = Spaltenname, Version übernommen');
+ok(migrated[0].name === 'ki_x' && migrated[1].name === 'ki_y' && migrated.every(p => p.columns.length === 1), 'Migration: Titel = Spaltenname');
+ok(typeof migrated[0].columns[0].provider === 'string' && migrated[0].columns[0].model && migrated[1].columns[0].provider === 'gemini' && migrated[1].columns[0].model === 'gemini-1.5-pro', 'Migration: fehlendes Modell ergänzt, vorhandenes bleibt');
 ok(T.getPresetFlags('old_multi_2').autoAdd.csv === true && T.getPresetFlags('old_multi_2').autoRun === true, 'Migration: Flags auf die abgespaltene KI-Spalte kopiert');
 ok(JSON.parse(localStorage.getItem('user_presets')).length === 2, 'Migration einmalig zurückgeschrieben');
 
@@ -76,9 +77,11 @@ localStorage.setItem('autorun_analysis_bad', '{oops');
 ok(T.readAutorunIds('bad') === null, 'readAutorunIds: kaputtes JSON → null');
 
 // --- Override einer eingebauten KI-Spalte: Titel + Modell ---
-T.savePromptOverride('keep_drop', 'ki_bewertung', { prompt: 'Neu?', promptVersion: 'v2', name: 'ki_lead', provider: 'gemini', model: 'gemini-2.0-flash' });
+T.savePromptOverride('keep_drop', 'ki_bewertung', { prompt: 'Neu?', name: 'ki_lead', provider: 'gemini', model: 'gemini-2.0-flash' });
 kd = T.getEffectivePresets().find(p => p.id === 'keep_drop');
-ok(kd.columns[0].name === 'ki_lead' && kd.columns[0].provider === 'gemini' && kd.columns[0].model === 'gemini-2.0-flash' && kd.promptVersion === 'v2' && T.hasOverride('keep_drop'), 'Override: Titel, Modell, Version, Prompt');
+ok(kd.columns[0].name === 'ki_lead' && kd.columns[0].provider === 'gemini' && kd.columns[0].model === 'gemini-2.0-flash' && kd.columns[0].prompt === 'Neu?' && T.hasOverride('keep_drop'), 'Override: Titel, KI-Modell, KI-Version, Prompt');
+T.savePromptOverride('keep_drop', 'ki_bewertung', { prompt: 'Neu?', provider: 'openai', model: 'gibt-es-nicht' });
+ok(T.getEffectivePresets().find(p => p.id === 'keep_drop').columns[0].model === 'gpt-4o', 'Override mit unbekanntem Modell → erstes Modell des Anbieters');
 ok(T.builtinColumnNames('keep_drop')[0] === 'ki_bewertung', 'builtinColumnNames liefert den Original-Titel');
 T.resetPresetOverrides('keep_drop');
 ok(T.getEffectivePresets().find(p => p.id === 'keep_drop').columns[0].name === 'ki_bewertung', '↺ Standard');

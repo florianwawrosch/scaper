@@ -135,12 +135,6 @@ export interface AnalysisConfig {
   derived?: DerivedRule[];
   /** Template version the prompt came from (e.g. "v5") — shown in the column label */
   promptVersion?: string;
-  /**
-   * Multi-Output: die Einzelspalten (outputFields) auch in der Tabelle zeigen.
-   * Standard aus — sie bleiben im Datensatz (Export, Regeln, Statistik), aber
-   * die Tabelle zeigt nur Antwort- und Regel-Spalten.
-   */
-  showSplits?: boolean;
   /** Gespeicherte KI-Spalte (Einstellungen), aus der diese Config geladen wurde — verhindert doppeltes Laden */
   presetId?: string;
 }

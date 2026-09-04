@@ -31,6 +31,7 @@ const { chromium } = playwright();
   const badge = await page.locator('button:has-text("Blockliste") span').last().innerText();
   ok(badge.trim() === '1', `Badge Blockliste = 1 (${badge.trim()})`);
   await page.locator('button[title="Von Blockliste entfernen"]').click();
+  await page.locator('button:has-text("Ja")').click();
   await page.waitForTimeout(150);
   ok((await page.textContent('body')).includes('Noch keine Seiten geblockt'), 'Eintrag entfernt');
 

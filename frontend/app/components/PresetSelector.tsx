@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { ImportPreset } from '@/lib/aiTemplates';
+import { providerLabel } from '@/lib/ai';
 import { T } from '@/app/theme';
 
 interface Props {
@@ -51,7 +52,6 @@ export function PresetSelector({ presets, onSelect, onClose, filename }: Props) 
         {/* Presets list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
           {presets.map(preset => {
-            const details = preset.columns.reduce((n, c) => n + (c.outputFields?.length ?? 0) + (c.derived?.length ?? 0), 0);
             return (
             <button
               key={preset.id}
@@ -88,7 +88,7 @@ export function PresetSelector({ presets, onSelect, onClose, filename }: Props) 
                 </div>
               )}
               <div style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, opacity: 0.7 }}>
-                1 Spalte · 1 KI-Aufruf pro Zeile{details > 0 ? ` · ${details} Detail-Spalten (versteckt)` : ''}{preset.promptVersion ? ` · Prompt ${preset.promptVersion}` : ''}
+                1 Spalte · 1 KI-Aufruf pro Zeile · {providerLabel(preset.columns[0]?.provider ?? '')} {preset.columns[0]?.model ?? ''}
               </div>
 
               {/* Expandable column details */}
