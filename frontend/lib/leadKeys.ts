@@ -38,45 +38,68 @@ export function leadKeys(row: Record<string, unknown>): string[] {
   return keys;
 }
 
-export interface KnownEntry { datasetId: string; filename: string; exportedAt: string }
+export interface KnownEntry { datasetId: string; filename: string; exportedAt: string; email: string; phone: string }
+
+export const EMAIL_COL = 'email_enriched';
+export const PHONE_COL = 'phone_enriched';
+
+export interface MatchResult {
+  knownFrom: string[];
+  exportedAt: string[];
+  /** email_enriched / phone_enriched je Zeile — eigener Wert oder aus dem Index übernommen */
+  email: string[];
+  phone: string[];
+  known: number;
+  exported: number;
+  /** Anzahl übernommener E-Mails/Telefonnummern (waren hier leer, anderswo bekannt) */
+  emailsCopied: number;
+  phonesCopied: number;
+}
 
 /**
  * Zeilen gegen einen Index bekannter Leads abgleichen. Liefert je Zeile die
- * Herkunft (Dateiname des ältesten Treffers, '' = neu) und ein übernommenes
- * Export-Datum, falls derselbe Lead anderswo schon exportiert wurde.
+ * Herkunft (Dateiname des ältesten Treffers, '' = neu), ein übernommenes
+ * Export-Datum sowie E-Mail/Telefon, falls derselbe Lead anderswo schon
+ * enricht wurde — spart erneute Anbieter-Credits.
  */
-export function matchKnown(
-  rows: Record<string, unknown>[],
-  index: Map<string, KnownEntry>,
-): { knownFrom: string[]; exportedAt: string[]; known: number; exported: number } {
-  const knownFrom: string[] = [];
-  const exportedAt: string[] = [];
-  let known = 0, exported = 0;
+export function matchKnown(rows: Record<string, unknown>[], index: Map<string, KnownEntry>): MatchResult {
+  const knownFrom: string[] = [], exportedAt: string[] = [], email: string[] = [], phone: string[] = [];
+  let known = 0, exported = 0, emailsCopied = 0, phonesCopied = 0;
   for (const row of rows) {
     let from = '';
     let exp = s(row[EXPORTED_COL]);
+    let em = s(row[EMAIL_COL]);
+    let ph = s(row[PHONE_COL]);
+    const hadEmail = !!em, hadPhone = !!ph;
     for (const k of leadKeys(row)) {
       const hit = index.get(k);
       if (!hit) continue;
       if (!from) from = hit.filename;
       if (!exp && hit.exportedAt) exp = hit.exportedAt;
+      if (!em && hit.email) em = hit.email;
+      if (!ph && hit.phone) ph = hit.phone;
     }
     if (from) known++;
     if (exp) exported++;
-    knownFrom.push(from);
-    exportedAt.push(exp);
+    if (!hadEmail && em) emailsCopied++;
+    if (!hadPhone && ph) phonesCopied++;
+    knownFrom.push(from); exportedAt.push(exp); email.push(em); phone.push(ph);
   }
-  return { knownFrom, exportedAt, known, exported };
+  return { knownFrom, exportedAt, email, phone, known, exported, emailsCopied, phonesCopied };
 }
 
 /** Index aus fremden Datensätzen aufbauen (älteste zuerst → deren Name gewinnt) */
-export function addToIndex(index: Map<string, KnownEntry>, rows: Record<string, unknown>[], entry: Omit<KnownEntry, 'exportedAt'>): void {
+export function addToIndex(index: Map<string, KnownEntry>, rows: Record<string, unknown>[], entry: Pick<KnownEntry, 'datasetId' | 'filename'>): void {
   for (const row of rows) {
     const exportedAt = s(row[EXPORTED_COL]);
+    const email = s(row[EMAIL_COL]);
+    const phone = s(row[PHONE_COL]);
     for (const k of leadKeys(row)) {
       const cur = index.get(k);
-      if (!cur) index.set(k, { ...entry, exportedAt });
-      else if (!cur.exportedAt && exportedAt) cur.exportedAt = exportedAt;
+      if (!cur) { index.set(k, { ...entry, exportedAt, email, phone }); continue; }
+      if (!cur.exportedAt && exportedAt) cur.exportedAt = exportedAt;
+      if (!cur.email && email) cur.email = email;
+      if (!cur.phone && phone) cur.phone = phone;
     }
   }
 }

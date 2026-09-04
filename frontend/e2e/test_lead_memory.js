@@ -17,9 +17,9 @@ const fs = require('fs');
     localStorage.clear();
     localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: '', hunter_io: '', findymail: '' }, theme: 'noir' }));
     const meta = (filename, createdAt, fields, data) => JSON.stringify({ fields, filename, createdAt, rowCount: data.length, data });
-    localStorage.setItem(`csv_run_${A}`, meta('Meta: alt', '2026-08-01T10:00:00Z', ['page_id', 'page_name', 'email', 'exportiert_am'], [
-      { page_id: '1', page_name: 'Coach Anna', email: 'a@x.de', exportiert_am: '2026-08-02' },
-      { page_id: '2', page_name: 'Bob Berater', email: 'b@x.de', exportiert_am: '' },
+    localStorage.setItem(`csv_run_${A}`, meta('Meta: alt', '2026-08-01T10:00:00Z', ['page_id', 'page_name', 'email', 'exportiert_am', 'email_enriched'], [
+      { page_id: '1', page_name: 'Coach Anna', email: 'a@x.de', exportiert_am: '2026-08-02', email_enriched: '' },
+      { page_id: '2', page_name: 'Bob Berater', email: 'b@x.de', exportiert_am: '', email_enriched: 'bob@enriched.de' },
     ]));
     localStorage.setItem(`csv_run_${B}`, meta('Meta: neu', '2026-09-01T10:00:00Z', ['page_id', 'page_name', 'email'], [
       { page_id: '1', page_name: 'Coach Anna', email: 'a@x.de' },
@@ -34,7 +34,8 @@ const fs = require('fs');
   const body = await page.textContent('body');
   ok(body.includes('bekannt aus «Meta: alt»: 2') && body.includes('bereits exportiert: 1'), 'Chips: 2 bekannt aus «Meta: alt», 1 bereits exportiert');
   const metaB = await page.evaluate((B) => JSON.parse(localStorage.getItem(`csv_run_${B}`)).fields, B);
-  ok(metaB.includes('bekannt_aus') && metaB.includes('exportiert_am'), 'Spalten bekannt_aus/exportiert_am persistiert');
+  ok(metaB.includes('bekannt_aus') && metaB.includes('exportiert_am') && metaB.includes('email_enriched'), 'Spalten bekannt_aus/exportiert_am/email_enriched persistiert');
+  ok((await page.textContent('body')).includes('bob@enriched.de'), 'E-Mail aus früherem Enrichment übernommen (kein neuer Credit)');
   // Chip «neu» filtert auf Cleo
   await page.click('button:has-text("neu: 1")');
   ok((await page.textContent('body')).includes('1/3 sichtbar'), 'Chip «neu» filtert auf die neue Zeile');
@@ -44,7 +45,7 @@ const fs = require('fs');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("Outreach")')]);
   const csv = fs.readFileSync(await dl.path(), 'utf8');
   const lines = csv.trim().split('\n');
-  ok(lines.length === 3 && !csv.includes('a@x.de') && csv.includes('b@x.de') && csv.includes('c@x.de'), `Outreach: 2 Zeilen ohne die bereits exportierte (${lines.length - 1} Zeilen)`);
+  ok(lines.length === 3 && !csv.includes('a@x.de') && csv.includes('bob@enriched.de') && csv.includes('c@x.de'), `Outreach: 2 Zeilen ohne die bereits exportierte (${lines.length - 1} Zeilen)`);
   await page.waitForSelector('button:has-text("bereits exportiert: 3")', { timeout: 8000 });
   ok(true, 'nach Export: 3 als exportiert markiert');
   const rowsB = await page.evaluate(async (B) => {

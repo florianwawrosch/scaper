@@ -9,7 +9,7 @@ import { applyPresets, presetFromConfigs, saveUserPreset, readAutorunIds, AUTORU
 import { runAiColumn, defaultModel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, isAiError, normalizeMultiOutput, PENDING, type AnalysisConfig } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
 import { buildKnownIndex } from '@/lib/leadIndex';
-import { matchKnown, KNOWN_COL, EXPORTED_COL } from '@/lib/leadKeys';
+import { matchKnown, KNOWN_COL, EXPORTED_COL, EMAIL_COL, PHONE_COL } from '@/lib/leadKeys';
 
 export interface CsvRun {
   data: Record<string, string>[];
@@ -375,15 +375,20 @@ export function useAiColumns(id: string) {
         return;
       }
       const m = matchKnown(cur.data, index);
-      const unchanged = cur.fields.includes(KNOWN_COL)
+      const cols: Record<string, string[]> = { [KNOWN_COL]: m.knownFrom, [EXPORTED_COL]: m.exportedAt };
+      // Anderswo schon enrichte Kontakte übernehmen — nur, wenn es etwas zu übernehmen gibt
+      if (m.emailsCopied > 0) cols[EMAIL_COL] = m.email;
+      if (m.phonesCopied > 0) cols[PHONE_COL] = m.phone;
+      const unchanged = cur.fields.includes(KNOWN_COL) && m.emailsCopied === 0 && m.phonesCopied === 0
         && cur.data.every((r, i) => String(r[KNOWN_COL] ?? '') === m.knownFrom[i] && String(r[EXPORTED_COL] ?? '') === m.exportedAt[i]);
-      if (!unchanged) await persistColumnsToCsv({ [KNOWN_COL]: m.knownFrom, [EXPORTED_COL]: m.exportedAt });
+      if (!unchanged) await persistColumnsToCsv(cols);
       if (!opts.silent || m.known > 0) {
+        const copied = [m.emailsCopied > 0 && `${m.emailsCopied} E-Mails`, m.phonesCopied > 0 && `${m.phonesCopied} Telefonnummern`].filter(Boolean).join(' und ');
         showToast(
           datasets === 0
             ? 'Abgleich: keine anderen Datensätze vorhanden — alles neu'
-            : `Abgleich mit ${datasets} Datensätzen: ${m.known} bereits bekannt, ${m.exported} bereits exportiert, ${cur.data.length - m.known} neu`,
-          m.known > 0 ? 'warning' : 'info', 6000,
+            : `Abgleich mit ${datasets} Datensätzen: ${m.known} bereits bekannt, ${m.exported} bereits exportiert, ${cur.data.length - m.known} neu${copied ? ` · ${copied} aus früheren Enrichments übernommen` : ''}`,
+          m.known > 0 ? 'warning' : 'info', 7000,
         );
       }
     } catch (e) {

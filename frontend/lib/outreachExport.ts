@@ -65,7 +65,10 @@ export function splitName(full: string): { first: string; last: string } {
 export function buildOutreachExport(rows: Row[], fields: string[], opts: OutreachOptions = {}): OutreachResult {
   const requireEmail = opts.requireEmail ?? true;
   const skipExported = opts.skipExported ?? true;
-  const emailCol   = findColumn(fields, EMAIL_COLUMNS);
+  // Alle vorhandenen E-Mail-Spalten in Prioritätsreihenfolge: pro Zeile zählt die erste gefüllte
+  // (email_enriched kann leer sein, während «email» aus dem Scrape gefüllt ist)
+  const emailCols  = EMAIL_COLUMNS.map(c => findColumn(fields, [c])).filter((c): c is string => !!c);
+  const emailCol   = emailCols[0] ?? null;
   const nameCol    = findColumn(fields, NAME_COLUMNS);
   const firstCol   = findColumn(fields, FIRST_COLUMNS);
   const lastCol    = findColumn(fields, LAST_COLUMNS);
@@ -87,7 +90,7 @@ export function buildOutreachExport(rows: Row[], fields: string[], opts: Outreac
   for (const r of rows) {
     if (opts.audience && str(r[opts.audience.column]) !== opts.audience.value) { dropped.notAudience++; continue; }
     if (skipExported && str(r.exportiert_am)) { dropped.exported++; continue; }
-    const email = emailCol ? str(r[emailCol]) : '';
+    const email = emailCols.map(c => str(r[c])).find(Boolean) ?? '';
     if (requireEmail && !email) { dropped.noEmail++; continue; }
 
     let first = firstCol ? str(r[firstCol]) : '';
