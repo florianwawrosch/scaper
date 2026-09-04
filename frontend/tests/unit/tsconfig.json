@@ -20,7 +20,8 @@
     "../../lib/auth.ts",
     "../../lib/loginNotify.ts",
     "../../lib/enrichMapping.ts",
-    "../../lib/tableQuery.ts"
+    "../../lib/tableQuery.ts",
+    "../../lib/enrichPlan.ts"
   ],
   "include": []
 }

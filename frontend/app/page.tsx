@@ -156,7 +156,8 @@ export default function Home() {
   const loadPreset = (name: string) => {
     const p = presets[name];
     if (!p) return;
-    applyConfig({ ...DEFAULT_FORM_SEARCH, ...p });
+    // Altes Format speichert «countries» statt «country» — das darf der Standard nicht überschreiben
+    applyConfig({ ...DEFAULT_FORM_SEARCH, ...p, country: p.country ?? p.countries?.[0] ?? DEFAULT_FORM.country });
     setShowPresets(false);
   };
 

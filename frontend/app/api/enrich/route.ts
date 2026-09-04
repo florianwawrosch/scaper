@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { envKey } from '@/lib/serverKeys';
 import { fetchRetry } from '@/lib/serverRetry';
+import { planRow, type EnrichField } from '@/lib/enrichPlan';
 
 /**
  * E-Mail enrichment (Hunter.io + FindyMail) — port of the enrich endpoint
@@ -72,8 +73,6 @@ async function enrichFindymailPhone(linkedinUrl: string, key: string): Promise<s
   return data.contact?.phone ?? data.contact?.phones?.[0] ?? data.phone ?? data.phones?.[0] ?? null;
 }
 
-export type EnrichField = 'email' | 'phone';
-
 export async function POST(req: NextRequest) {
   let body: Partial<Record<'provider' | 'rows' | 'nameColumn' | 'companyColumn' | 'linkedinColumn' | 'fields' | 'apiKey', unknown>> = {};
   try { body = await req.json(); } catch {}
@@ -125,37 +124,38 @@ export async function POST(req: NextRequest) {
       while (next < batch.length) {
         const i = next++;
         const row = batch[i];
-        const name     = String(row[nameCol] ?? '').trim();
-        const company  = String(row[companyCol] ?? '').trim();
-        const linkedin = String(row[linkedinCol] ?? '').trim();
-        let email: string | null = null;
-        let phone: string | null = null;
-        let attempted = false;
+        // Schon gefüllte Felder werden nicht erneut gesucht (kostet sonst erneut Credits)
+        const plan = planRow(row, { nameColumn: nameCol, companyColumn: companyCol, linkedinColumn: linkedinCol }, fields);
+        let email: string | null = plan.existingEmail || null;
+        let phone: string | null = plan.existingPhone || null;
 
-        if (wantEmail && name && company) {
-          attempted = true;
+        if (plan.doEmail) {
           try {
             email = provider === 'hunter_io'
-              ? await enrichHunter(name, company, key)
-              : await enrichFindymail(name, company, key);
+              ? await enrichHunter(plan.name, plan.company, key)
+              : await enrichFindymail(plan.name, plan.company, key);
+            if (email) nEmails++;
           } catch (e) {
             if (!firstError) firstError = e instanceof Error ? e.message : String(e);
           }
         }
-        if (wantPhone && linkedin) {
-          attempted = true;
-          try { phone = await enrichFindymailPhone(linkedin, key); }
-          catch (e) { if (!firstError) firstError = e instanceof Error ? e.message : String(e); }
+        if (plan.doPhone) {
+          try {
+            phone = await enrichFindymailPhone(plan.linkedin, key);
+            if (phone) nPhones++;
+          } catch (e) { if (!firstError) firstError = e instanceof Error ? e.message : String(e); }
         }
-        if (!attempted) skippedEmpty++;
-        if (email) nEmails++;
-        if (phone) nPhones++;
+        if (!plan.doEmail && !plan.doPhone) skippedEmpty++;
         results[i] = { email: email ?? '', phone: phone ?? '', enriched: !!email || !!phone };
       }
     }),
   );
 
-  const nOk = results.filter(r => r.enriched).length;
+  // «enriched» = Zeilen mit mindestens einem NEUEN Treffer in diesem Lauf
+  const nOk = results.filter((r, i) => {
+    const plan = planRow(batch[i], { nameColumn: nameCol, companyColumn: companyCol, linkedinColumn: linkedinCol }, fields);
+    return (plan.doEmail && r.email && r.email !== plan.existingEmail) || (plan.doPhone && r.phone && r.phone !== plan.existingPhone);
+  }).length;
   if (nOk === 0 && firstError) {
     return NextResponse.json({ detail: `${provider} API-Fehler: ${firstError}` }, { status: 502 });
   }
