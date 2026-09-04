@@ -8,6 +8,8 @@ import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { applyPresets, presetFromConfigs, saveUserPreset, readAutorunIds, AUTORUN_KEY, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
 import { runAiColumn, defaultModel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, isAiError, normalizeMultiOutput, PENDING, type AnalysisConfig } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
+import { buildKnownIndex } from '@/lib/leadIndex';
+import { matchKnown, KNOWN_COL, EXPORTED_COL } from '@/lib/leadKeys';
 
 export interface CsvRun {
   data: Record<string, string>[];
@@ -354,7 +356,61 @@ export function useAiColumns(id: string) {
 
   const editingCfg = aiConfigs.find(c => c.id === editingId) ?? null;
 
+  const [matching, setMatching] = useState(false);
+  const matchedRef = useRef(false);
+
+  /**
+   * Lead-Gedächtnis: Zeilen gegen alle anderen Datensätze abgleichen und
+   * «bekannt_aus» / «exportiert_am» in den Datensatz schreiben.
+   */
+  const runMatch = async (opts: { silent?: boolean } = {}) => {
+    const cur = runRef.current;
+    if (!cur || matching) return;
+    setMatching(true);
+    try {
+      const { index, datasets } = await buildKnownIndex(id);
+      // Ohne Vergleichsdatensatz keine leeren Spalten anlegen
+      if (datasets === 0 && !cur.fields.includes(KNOWN_COL)) {
+        if (!opts.silent) showToast('Abgleich: keine anderen Datensätze vorhanden — alles neu', 'info');
+        return;
+      }
+      const m = matchKnown(cur.data, index);
+      const unchanged = cur.fields.includes(KNOWN_COL)
+        && cur.data.every((r, i) => String(r[KNOWN_COL] ?? '') === m.knownFrom[i] && String(r[EXPORTED_COL] ?? '') === m.exportedAt[i]);
+      if (!unchanged) await persistColumnsToCsv({ [KNOWN_COL]: m.knownFrom, [EXPORTED_COL]: m.exportedAt });
+      if (!opts.silent || m.known > 0) {
+        showToast(
+          datasets === 0
+            ? 'Abgleich: keine anderen Datensätze vorhanden — alles neu'
+            : `Abgleich mit ${datasets} Datensätzen: ${m.known} bereits bekannt, ${m.exported} bereits exportiert, ${cur.data.length - m.known} neu`,
+          m.known > 0 ? 'warning' : 'info', 6000,
+        );
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Abgleich fehlgeschlagen', 'error');
+    } finally { setMatching(false); }
+  };
+
+  // Einmal automatisch, sobald ein Datensatz ohne Abgleich-Spalte geladen wurde
+  useEffect(() => {
+    if (!run || matchedRef.current || run.fields.includes(KNOWN_COL)) return;
+    matchedRef.current = true;
+    queueMicrotask(() => { runMatch({ silent: true }); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run]);
+
+  /** Zeilen als exportiert markieren (Outreach-Export) */
+  const markExported = (idx: number[]) => {
+    const cur = runRef.current;
+    if (!cur || idx.length === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const col = cur.data.map(r => String(r[EXPORTED_COL] ?? ''));
+    for (const i of idx) col[i] = today;
+    persistColumnsToCsv({ [EXPORTED_COL]: col });
+  };
+
   return {
+    matching, runMatch, markExported,
     run, error, providers,
     aiConfigs, aiOwnedNames, displayAiColumns,
     colRunning, colProgress, scrollSignal,

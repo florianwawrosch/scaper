@@ -13,6 +13,7 @@ import { AiColumnEditor } from '@/app/components/AiColumnEditor';
 import { PresetMenu } from '@/app/components/PresetMenu';
 import { Glyph } from '@/app/components/Glyph';
 import { useAiColumns } from './useAiColumns';
+import { KNOWN_COL, EXPORTED_COL } from '@/lib/leadKeys';
 import { T } from '@/app/theme';
 
 export default function CsvViewer() {
@@ -30,6 +31,7 @@ export default function CsvViewer() {
     setEditingId, editingCfg,
     findCfgForColumn, addAiColumn, updateConfig, deleteConfig,
     runColumn, runColumnByName, loadPreset, saveTemplate,
+    matching, runMatch, markExported,
   } = useAiColumns(id);
 
   // ── Memoisierte DataTable-Props: neue Array-Identitäten pro Render würden
@@ -76,6 +78,21 @@ export default function CsvViewer() {
         chips.push({ text: `${no} ${d.else}`, tone: 'gold', filter: { column: d.name, value: d.else } });
       }
     }
+    // Lead-Gedächtnis: neu vs. bekannt aus anderen Datensätzen, bereits exportiert
+    if (run.fields.includes(KNOWN_COL)) {
+      const bySource = new Map<string, number>();
+      let fresh = 0;
+      for (const r of run.data) {
+        const src = String(r[KNOWN_COL] ?? '');
+        if (src) bySource.set(src, (bySource.get(src) ?? 0) + 1); else fresh++;
+      }
+      chips.push({ text: `neu: ${fresh}`, tone: 'teal', filter: { column: KNOWN_COL, value: '' } });
+      for (const [src, n] of [...bySource.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)) {
+        chips.push({ text: `bekannt aus «${src}»: ${n}`, tone: 'gold', filter: { column: KNOWN_COL, value: src } });
+      }
+      const exported = run.data.filter(r => String(r[EXPORTED_COL] ?? '')).length;
+      if (exported > 0) chips.push({ text: `bereits exportiert: ${exported}`, tone: 'gold' });
+    }
     return chips;
   }, [run, aiConfigs, displayAiColumns]);
 
@@ -120,17 +137,19 @@ export default function CsvViewer() {
       label: 'Outreach', icon: '↓',
       title: `Cold-Email-CSV: nur Zeilen mit E-Mail${audience ? ` und ${audience.column} = ${audience.value}` : ''}, Spalten email / first_name / last_name / company / … — direkt in Smartlead & Co. importierbar`,
       transform: (rows) => {
-        const out = buildOutreachExport(rows, run.fields, { audience });
-        const { noEmail, notAudience } = out.dropped;
+        const out = buildOutreachExport(rows, run.fields, { audience, skipExported: true });
+        const { noEmail, notAudience, exported } = out.dropped;
         if (out.rows.length === 0) {
-          showToast(`Nichts zu exportieren — ${notAudience} nicht Zielgruppe, ${noEmail} ohne E-Mail. Erst Enrichment laufen lassen?`, 'warning', 6000);
+          showToast(`Nichts zu exportieren — ${notAudience} nicht Zielgruppe, ${noEmail} ohne E-Mail, ${exported} bereits exportiert. Erst Enrichment laufen lassen?`, 'warning', 6000);
           return null;
         }
-        const skipped = [notAudience > 0 && `${notAudience} nicht Zielgruppe`, noEmail > 0 && `${noEmail} ohne E-Mail`].filter(Boolean).join(', ');
-        showToast(`${out.rows.length} Leads exportiert${skipped ? ` — übersprungen: ${skipped}` : ''}`, 'success', 5000);
-        return { filename: `outreach_${new Date().toISOString().slice(0, 10)}.csv`, columns: out.columns, rows: out.rows };
+        const skipped = [notAudience > 0 && `${notAudience} nicht Zielgruppe`, noEmail > 0 && `${noEmail} ohne E-Mail`, exported > 0 && `${exported} bereits exportiert`].filter(Boolean).join(', ');
+        showToast(`${out.rows.length} Leads exportiert${skipped ? ` — übersprungen: ${skipped}` : ''} · als «exportiert_am» markiert`, 'success', 6000);
+        return { filename: `outreach_${new Date().toISOString().slice(0, 10)}.csv`, columns: out.columns, rows: out.rows, exportedIdx: out.exportedIdx };
       },
+      afterExport: markExported,
     }];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, aiConfigs, showToast]);
 
   const fmt = (d: string) =>
@@ -235,7 +254,14 @@ export default function CsvViewer() {
           excludedRows={excludedRows}
           onExcludeChange={setExcludedRows}
           exportPresets={exportPresets}
-          toolbarExtra={
+          toolbarExtra={<>
+            <button
+              onClick={() => runMatch()}
+              disabled={matching}
+              data-testid="match-btn"
+              title="Mit allen anderen Datensätzen abgleichen: bekannte Seiten/Personen und bereits exportierte Leads markieren"
+              style={{ fontFamily: T.ffMono, fontSize: 10, padding: '2px 10px', borderRadius: 4, cursor: matching ? 'default' : 'pointer', border: `1px solid ${T.lineS}`, background: 'transparent', color: T.inkD, whiteSpace: 'nowrap', opacity: matching ? .5 : 1 }}
+            ><Glyph>{matching ? '↻' : '⟲'}</Glyph>Abgleich</button>
             <PresetMenu
               loadPresets={getEffectivePresets}
               onLoad={loadPreset}
@@ -243,7 +269,7 @@ export default function CsvViewer() {
               currentColumnCount={aiConfigs.filter(c => c.prompt.trim()).length}
               fields={run.fields}
             />
-          }
+          </>}
           onBlockPages={run.fields.includes('page_name') ? (rows) => {
             const names = new Set<string>();
             for (const row of rows) {

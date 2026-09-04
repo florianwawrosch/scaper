@@ -106,6 +106,8 @@ frontend/                    Next.js-App (deployt auf Vercel)
   lib/outreachExport.ts      Outreach-CSV-Mapping (pur, getestet)
   lib/savedSearches.ts       Gespeicherte Suchen der Scrape-Maske
   lib/backup.ts              Backup/Restore/Wipe aller lokalen Daten
+  lib/leadKeys.ts            Lead-Identität (Schlüssel) + Abgleich (pur, getestet)
+  lib/leadIndex.ts           Index bekannter Leads aus allen anderen Datensätzen
 
 main.py + core/              Altes FastAPI-Backend (Railway) — vom Frontend
                              nicht mehr angebunden; die App läuft komplett
@@ -192,6 +194,23 @@ Vorlage **LinkedIn-Klassifizierung (v5)** an:
 
 Der eingebaute v5-Prompt, die Eingabespalten, die erlaubten Werte und die
 Zielgruppen-Regel stehen in `frontend/lib/aiTemplates.ts`.
+
+## Lead-Gedächtnis: Duplikate und bereits Angeschriebene
+
+Beim wiederholten Scrapen tauchen dieselben Seiten und Personen wieder auf.
+Der Viewer gleicht jeden neuen Datensatz einmal automatisch (und per
+«⟲ Abgleich» jederzeit) mit allen anderen Datensätzen dieses Browsers ab —
+über Meta-Seiten-ID, LinkedIn-URL, E-Mail, notfalls Seitenname
+(`frontend/lib/leadKeys.ts`). Ergebnis sind zwei Spalten im Datensatz:
+
+- `bekannt_aus` — Name des ältesten Datensatzes, der den Lead schon enthält
+  (leer = neu). Chips «neu: N» und «bekannt aus «…»: N» filtern die Tabelle.
+- `exportiert_am` — Datum des Outreach-Exports. Wird beim Abgleich aus anderen
+  Datensätzen übernommen, damit ein Lead nicht in zwei Kampagnen landet.
+
+Der **↓ Outreach**-Export lässt Zeilen mit `exportiert_am` weg (der Toast
+nennt die Zahl) und markiert die exportierten Zeilen mit dem heutigen Datum.
+Ohne zweiten Datensatz werden keine Spalten angelegt.
 
 ## Daten: Backup, Wiederherstellung, Löschen
 

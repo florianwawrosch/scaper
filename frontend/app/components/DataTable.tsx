@@ -29,7 +29,9 @@ export interface ExportPreset {
   /** Unicode-Icon vor dem Label, z.B. '↓' */
   icon?: string;
   title?: string;
-  transform: (rows: Record<string, unknown>[]) => { filename: string; columns: string[]; rows: Record<string, string>[] } | null;
+  transform: (rows: Record<string, unknown>[]) => { filename: string; columns: string[]; rows: Record<string, string>[]; exportedIdx?: number[] } | null;
+  /** Nach dem Download: Original-Indizes der exportierten Zeilen (z.B. zum Markieren) */
+  afterExport?: (exportedIdx: number[]) => void;
 }
 
 interface DataTableProps {
@@ -108,7 +110,9 @@ export function DataTable({
 
   const exportPreset = (p: ExportPreset) => {
     const out = p.transform(exportRows());
-    if (out) downloadCsv(out.filename, out.columns, out.rows);
+    if (!out) return;
+    downloadCsv(out.filename, out.columns, out.rows);
+    if (out.exportedIdx?.length) p.afterExport?.(out.exportedIdx);
   };
 
   const exportXlsx = () =>

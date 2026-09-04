@@ -11,14 +11,18 @@ export interface OutreachOptions {
   audience?: { column: string; value: string } | null;
   /** Nur Zeilen mit E-Mail exportieren (Standard: ja — ohne E-Mail keine Kampagne) */
   requireEmail?: boolean;
+  /** Zeilen mit «exportiert_am» auslassen (Standard: ja) — kein Lead zweimal in der Kampagne */
+  skipExported?: boolean;
 }
 
 export interface OutreachResult {
   columns: string[];
   rows: Record<string, string>[];
   /** Warum Zeilen rausgefallen sind — für den Toast */
-  dropped: { noEmail: number; notAudience: number };
+  dropped: { noEmail: number; notAudience: number; exported: number };
   emailColumn: string | null;
+  /** _idx der Quellzeilen, die exportiert wurden (falls die Zeilen _idx tragen) */
+  exportedIdx: number[];
 }
 
 const EMAIL_COLUMNS   = ['email_enriched', 'email', 'e_mail', 'email_address', 'mail'];
@@ -60,6 +64,7 @@ export function splitName(full: string): { first: string; last: string } {
 
 export function buildOutreachExport(rows: Row[], fields: string[], opts: OutreachOptions = {}): OutreachResult {
   const requireEmail = opts.requireEmail ?? true;
+  const skipExported = opts.skipExported ?? true;
   const emailCol   = findColumn(fields, EMAIL_COLUMNS);
   const nameCol    = findColumn(fields, NAME_COLUMNS);
   const firstCol   = findColumn(fields, FIRST_COLUMNS);
@@ -75,11 +80,13 @@ export function buildOutreachExport(rows: Row[], fields: string[], opts: Outreac
   const seenTargets = new Set<string>();
   const contextCols = context.filter(([, dst]) => !seenTargets.has(dst) && seenTargets.add(dst));
 
-  const dropped = { noEmail: 0, notAudience: 0 };
+  const dropped = { noEmail: 0, notAudience: 0, exported: 0 };
   const out: Record<string, string>[] = [];
+  const exportedIdx: number[] = [];
 
   for (const r of rows) {
     if (opts.audience && str(r[opts.audience.column]) !== opts.audience.value) { dropped.notAudience++; continue; }
+    if (skipExported && str(r.exportiert_am)) { dropped.exported++; continue; }
     const email = emailCol ? str(r[emailCol]) : '';
     if (requireEmail && !email) { dropped.noEmail++; continue; }
 
@@ -99,8 +106,9 @@ export function buildOutreachExport(rows: Row[], fields: string[], opts: Outreac
     if (phoneCol) row.phone = str(r[phoneCol]);
     for (const [src, dst] of contextCols) row[dst] = str(r[src]);
     out.push(row);
+    if (typeof r._idx === 'number') exportedIdx.push(r._idx);
   }
 
   const columns = ['email', 'first_name', 'last_name', 'company', 'website', 'linkedin_profile', ...(phoneCol ? ['phone'] : []), ...contextCols.map(([, dst]) => dst)];
-  return { columns, rows: out, dropped, emailColumn: emailCol };
+  return { columns, rows: out, dropped, emailColumn: emailCol, exportedIdx };
 }
