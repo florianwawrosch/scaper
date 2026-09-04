@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import type { ImportPreset, PresetFlags } from '@/lib/aiTemplates';
+import { presetColumnCount, presetMissingInputs, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
 import { Glyph } from './Glyph';
 import { TemplateSaveForm } from './TemplateSaveForm';
 import { mono } from '@/app/theme';
@@ -15,12 +15,9 @@ interface Props {
   onSaveCurrent?: (name: string, flags: PresetFlags) => void;
   /** Anzahl speicherbarer KI-Spalten (für den Hinweis im Formular) */
   currentColumnCount?: number;
+  /** Spalten des Datensatzes — Vorlagen mit fehlenden Eingabespalten werden ausgegraut */
+  fields?: string[];
   disabled?: boolean;
-}
-
-/** Zählt Spalten inkl. Splits und Regel-Spalten */
-function columnCount(p: ImportPreset): number {
-  return p.columns.reduce((n, c) => n + (c.outputFields?.length ?? 1) + (c.derived?.length ?? 0), 0);
 }
 
 /**
@@ -28,10 +25,12 @@ function columnCount(p: ImportPreset): number {
  * (mit oder ohne sofortiges Ausfüllen) und die aktuellen Spalten als
  * Vorlage sichern — ohne den Umweg über die Einstellungen.
  */
-export function PresetMenu({ loadPresets, onLoad, onSaveCurrent, currentColumnCount = 0, disabled }: Props) {
+export function PresetMenu({ loadPresets, onLoad, onSaveCurrent, currentColumnCount = 0, fields = [], disabled }: Props) {
   const [open, setOpen]       = useState(false);
   const [saving, setSaving]   = useState(false);
   const [presets, setPresets] = useState<ImportPreset[]>([]);
+  // Mehrspalten-Vorlagen fragen nach: erster Klick zeigt «N Spalten anlegen?», zweiter lädt
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,6 +44,15 @@ export function PresetMenu({ loadPresets, onLoad, onSaveCurrent, currentColumnCo
     if (!open) setPresets(loadPresets()); // frisch lesen: Einstellungen könnten sich geändert haben
     setOpen(o => !o);
     setSaving(false);
+    setConfirmId(null);
+  };
+
+  const load = (p: ImportPreset, autoRun: boolean) => {
+    const n = presetColumnCount(p);
+    if (n > 1 && confirmId !== p.id) { setConfirmId(p.id); return; }
+    onLoad(p, autoRun);
+    setOpen(false);
+    setConfirmId(null);
   };
 
   const flagLabel = (p: ImportPreset) => {
@@ -77,27 +85,42 @@ export function PresetMenu({ loadPresets, onLoad, onSaveCurrent, currentColumnCo
             <p style={{ ...mono, fontSize: 10, color: '#5f6e87', padding: '4px 4px 8px' }}>Keine Vorlagen vorhanden.</p>
           )}
           {presets.map(p => {
-            const n = columnCount(p);
+            const n = presetColumnCount(p);
             const flag = flagLabel(p);
+            const missing = presetMissingInputs(p, fields);
+            const blocked = missing.length > 0;
+            const asking = confirmId === p.id;
             return (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 6px', borderRadius: 6, border: '1px solid rgba(255,255,255,.06)', background: 'rgba(255,255,255,.02)' }}>
+              <div key={p.id} data-testid={`preset-row-${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 6px', borderRadius: 6, border: `1px solid ${asking ? 'rgba(232,176,75,.4)' : 'rgba(255,255,255,.06)'}`, background: asking ? 'rgba(232,176,75,.06)' : 'rgba(255,255,255,.02)', opacity: blocked ? .5 : 1 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ ...mono, fontSize: 11, color: '#f5cc77', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.name}{p.userDefined && <span style={{ color: '#5f6e87' }}> · eigene</span>}
                   </div>
-                  <div style={{ ...mono, fontSize: 9, color: '#5f6e87' }}>
-                    {n} {n === 1 ? 'Spalte' : 'Spalten'}{p.promptVersion ? ` · ${p.promptVersion}` : ''}{flag ? ` · ${flag}` : ''}
+                  <div style={{ ...mono, fontSize: 9, color: n > 1 ? '#e8b04b' : '#5f6e87' }}>
+                    {n === 1 ? '1 Spalte' : `${n} Spalten auf einmal`}{p.promptVersion ? ` · ${p.promptVersion}` : ''}{flag ? ` · ${flag}` : ''}
                   </div>
+                  {blocked && (
+                    <div style={{ ...mono, fontSize: 9, color: '#e8736b', whiteSpace: 'normal' }}>
+                      braucht Spalten: {missing.join(', ')} — nicht in diesem Datensatz
+                    </div>
+                  )}
+                  {asking && !blocked && (
+                    <div style={{ ...mono, fontSize: 9, color: '#e8b04b', whiteSpace: 'normal' }}>
+                      Legt {n} Spalten an — wirklich?
+                    </div>
+                  )}
                 </div>
                 <button
-                  onClick={() => { onLoad(p, false); setOpen(false); }}
-                  title="Spalten anhängen (noch nicht ausfüllen)"
-                  style={{ ...mono, fontSize: 10, padding: '3px 9px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(232,176,75,.35)', background: 'transparent', color: '#e8b04b', whiteSpace: 'nowrap' }}
-                >Laden</button>
+                  onClick={() => load(p, false)}
+                  disabled={blocked}
+                  title={blocked ? 'Eingabespalten fehlen in diesem Datensatz' : 'Spalten anhängen (noch nicht ausfüllen)'}
+                  style={{ ...mono, fontSize: 10, padding: '3px 9px', borderRadius: 5, cursor: blocked ? 'default' : 'pointer', border: '1px solid rgba(232,176,75,.35)', background: asking ? 'rgba(232,176,75,.15)' : 'transparent', color: '#e8b04b', whiteSpace: 'nowrap' }}
+                >{asking ? `Ja, ${n} Spalten` : 'Laden'}</button>
                 <button
-                  onClick={() => { onLoad(p, true); setOpen(false); }}
-                  title="Spalten anhängen und sofort per KI ausfüllen (kostet API-Credits)"
-                  style={{ ...mono, fontSize: 10, padding: '3px 8px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(79,209,197,.35)', background: 'rgba(79,209,197,.07)', color: '#4fd1c5', whiteSpace: 'nowrap' }}
+                  onClick={() => load(p, true)}
+                  disabled={blocked}
+                  title={blocked ? 'Eingabespalten fehlen in diesem Datensatz' : 'Spalten anhängen und sofort per KI ausfüllen (kostet API-Credits)'}
+                  style={{ ...mono, fontSize: 10, padding: '3px 8px', borderRadius: 5, cursor: blocked ? 'default' : 'pointer', border: '1px solid rgba(79,209,197,.35)', background: 'rgba(79,209,197,.07)', color: '#4fd1c5', whiteSpace: 'nowrap' }}
                 >▶</button>
               </div>
             );

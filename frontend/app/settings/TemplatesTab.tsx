@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  getEffectivePresets, resetPresetOverrides, hasOverride,
+  getEffectivePresets, resetPresetOverrides, hasOverride, presetColumnCount,
   saveUserPreset, deleteUserPreset, newPresetId, setPresetFlags, loadUserPresets,
   PRESET_SOURCES, type ImportPreset, type PresetFlags,
 } from '@/lib/aiTemplates';
@@ -166,6 +166,9 @@ export function TemplatesTab({ onCountChange }: Props) {
                 ) : (
                   <p style={{ fontFamily: T.mono, fontSize: 13, fontWeight: 600, color: T.ink, flex: 1 }}>{preset.name}</p>
                 )}
+                {(() => { const n = presetColumnCount(draft ?? preset); return n === 1
+                  ? badge('1 Spalte', T.inkF, T.panel, T.lineS)
+                  : badge(`${n} Spalten auf einmal`, T.gold, T.goldD, 'rgba(232,176,75,.3)'); })()}
                 {preset.userDefined
                   ? badge('eigene', T.teal, T.tealD, T.tealB)
                   : badge('eingebaut', T.inkF, T.panel, T.lineS)}

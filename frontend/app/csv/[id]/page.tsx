@@ -241,6 +241,7 @@ export default function CsvViewer() {
               onLoad={loadPreset}
               onSaveCurrent={(name, flags) => saveTemplate(name, flags, aiConfigs)}
               currentColumnCount={aiConfigs.filter(c => c.prompt.trim()).length}
+              fields={run.fields}
             />
           }
           onBlockPages={run.fields.includes('page_name') ? (rows) => {

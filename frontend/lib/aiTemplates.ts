@@ -301,6 +301,23 @@ export function presetsForSource(source: PresetSource): ImportPreset[] {
   return getEffectivePresets().filter(p => p.autoAdd?.[source]);
 }
 
+/** Wie viele Tabellenspalten eine Vorlage anlegt (Roh-Antwort, Splits, Regeln) */
+export function presetColumnCount(p: ImportPreset): number {
+  return p.columns.reduce((n, c) => n + (c.outputFields?.length ?? 1) + (c.derived?.length ?? 0), 0);
+}
+
+/**
+ * Eingabespalten, die die Vorlage voraussetzt, aber im Datensatz fehlen.
+ * Leer = anwendbar. Vorlagen ohne inputColumns nutzen alle Spalten und
+ * passen immer.
+ */
+export function presetMissingInputs(p: ImportPreset, fields: string[]): string[] {
+  const have = new Set(fields.map(f => f.toLowerCase()));
+  const missing = new Set<string>();
+  for (const col of p.columns) for (const c of col.inputColumns ?? []) if (!have.has(c.toLowerCase())) missing.add(c);
+  return [...missing];
+}
+
 /** LinkedIn-Import automatisch erkennen: min. 2 typische Spalten vorhanden */
 export function detectPreset(fields: string[]): ImportPreset | null {
   const set = new Set(fields.map(f => f.trim().toLowerCase()));
