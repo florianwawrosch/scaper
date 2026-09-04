@@ -9,9 +9,10 @@ import { IntegrationsTab, SERVICE_KEYS } from './IntegrationsTab';
 import { TemplatesTab } from './TemplatesTab';
 import { BlocklistTab } from './BlocklistTab';
 import { DesignTab } from './DesignTab';
+import { DataTab } from './DataTab';
 import { T } from '@/app/theme';
 
-const NAV_KEYS = ['integrations', 'templates', 'blocklist', 'design'] as const;
+const NAV_KEYS = ['integrations', 'templates', 'blocklist', 'data', 'design'] as const;
 type NavKey = typeof NAV_KEYS[number];
 
 /**
@@ -43,6 +44,7 @@ export default function Settings() {
     { key: 'integrations', label: 'Integrationen', badge: keyCount || undefined },
     { key: 'templates',    label: 'KI-Vorlagen',   badge: tplCount || undefined },
     { key: 'blocklist',    label: 'Blockliste',    badge: blockCount || undefined },
+    { key: 'data',         label: 'Daten' },
     { key: 'design',       label: 'Design' },
   ];
 
@@ -79,6 +81,7 @@ export default function Settings() {
         {nav === 'integrations' && <IntegrationsTab onCountChange={setKeyCount} />}
         {nav === 'templates'    && <TemplatesTab onCountChange={setTplCount} />}
         {nav === 'blocklist'    && <BlocklistTab onCountChange={setBlockCount} />}
+        {nav === 'data'         && <DataTab />}
         {nav === 'design'       && <DesignTab />}
       </div>
     </div>

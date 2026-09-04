@@ -1,18 +1,9 @@
+import { downloadBlob } from './download';
+
 /**
  * Browser-Downloads für Tabellen-Exporte. Die xlsx-Bibliothek wird erst beim
  * Klick nachgeladen — sie ist groß und die meisten Seitenaufrufe exportieren nie.
  */
-
-function triggerDownload(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 /** CSV mit BOM (Excel erkennt UTF-8), alle Werte gequotet */
 export function downloadCsv(filename: string, cols: string[], rows: Record<string, unknown>[]): void {
@@ -20,7 +11,7 @@ export function downloadCsv(filename: string, cols: string[], rows: Record<strin
   const header = cols.map(esc).join(',');
   const lines = rows.map(row => cols.map(c => esc(String(row[c] ?? ''))).join(','));
   const csv = '\ufeff' + [header, ...lines].join('\n');
-  triggerDownload(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), filename);
+  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), filename);
 }
 
 /** Excel-Arbeitsmappe mit einem Blatt «Daten», Spaltenbreite 22 */

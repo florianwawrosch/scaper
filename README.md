@@ -90,7 +90,7 @@ frontend/                    Next.js-App (deployt auf Vercel)
   app/components/            DataTable, FilterDropdown, EnrichmentPanel (+ enrichment/),
                              PresetMenu, TemplateSaveForm, AiColumnEditor, …
   app/settings/              page.tsx (Sidebar) + IntegrationsTab, TemplatesTab
-                             (+ templates/), BlocklistTab, DesignTab
+                             (+ templates/), BlocklistTab, DataTab, DesignTab
   app/theme.ts               Design-Tokens (CSS-Variablen) + Monospace-Style
   lib/serverKeys.ts          Env-Variablen-Namen ↔ Provider-Zuordnung
   lib/blocklist.ts           Blockliste (immer ausgeschlossene Seiten)
@@ -105,6 +105,7 @@ frontend/                    Next.js-App (deployt auf Vercel)
   lib/enrichMapping.ts       Spalten-Vorschläge fürs Enrichment (pur, getestet)
   lib/outreachExport.ts      Outreach-CSV-Mapping (pur, getestet)
   lib/savedSearches.ts       Gespeicherte Suchen der Scrape-Maske
+  lib/backup.ts              Backup/Restore/Wipe aller lokalen Daten
 
 main.py + core/              Altes FastAPI-Backend (Railway) — vom Frontend
                              nicht mehr angebunden; die App läuft komplett
@@ -191,6 +192,17 @@ Vorlage **LinkedIn-Klassifizierung (v5)** an:
 
 Der eingebaute v5-Prompt, die Eingabespalten, die erlaubten Werte und die
 Zielgruppen-Regel stehen in `frontend/lib/aiTemplates.ts`.
+
+## Daten: Backup, Wiederherstellung, Löschen
+
+Alles liegt im Browser des jeweiligen Geräts (localStorage + IndexedDB). Unter
+Einstellungen → **Daten** gibt es den Bestand (Datensätze, Zeilen, Vorlagen,
+Suchen, Speicherbelegung), **Backup herunterladen** (eine JSON-Datei mit allen
+Datensätzen inkl. CSV-Text, KI-Spalten-Konfigurationen und -Caches, Vorlagen,
+gespeicherten Suchen, Blockliste; API-Keys nur mit Häkchen, da Klartext),
+**Backup wiederherstellen** (Vorschau, dann zusammenführen oder vorhandene
+Datensätze überschreiben) und **Alle lokalen Daten löschen** — z.B. bevor ein
+Gerät weitergegeben wird. Logik in `frontend/lib/backup.ts`.
 
 ## KI-Spalten-Vorlagen & Instant Load
 
