@@ -51,7 +51,7 @@ interface Props {
   onCountChange?: (n: number) => void;
 }
 
-/** Einstellungen → Integrationen: API-Keys im Browser, Server-Keys (Vercel) als Badge, Export/Import */
+/** Einstellungen → Integrationen: API-Keys im Browser, Server-Keys (Vercel) als Badge. Keys verlassen den Browser nie (kein Export/Import). */
 export function IntegrationsTab({ onCountChange }: Props) {
   const [keys,       setKeys]       = useState<Record<string, string>>({});
   const [localKeys,  setLocalKeys]  = useState<Record<string, string>>({});
@@ -96,28 +96,6 @@ export function IntegrationsTab({ onCountChange }: Props) {
 
   const disconnect = (k: string) => persist({ ...keys, [k]: '' });
 
-  const exportKeys = () => {
-    const blob = new Blob([JSON.stringify(keys, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'lp-api-keys.json'; a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const importKeys = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const parsed = JSON.parse(ev.target?.result as string);
-        if (typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
-        persist({ ...keys, ...parsed });
-      } catch { /* invalid file — silently ignore */ }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
 
   // One service row — used both in the "Aktiv" section and the catalog below.
   const renderServiceCard = (svc: Service, opts?: { showGroup?: boolean }) => {
@@ -236,16 +214,6 @@ export function IntegrationsTab({ onCountChange }: Props) {
           <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
             Keys aus deinem Browser oder aus den Vercel-Umgebungsvariablen (blaues Badge = auf dem Server hinterlegt).
           </p>
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: 4 }}>
-          <button type="button" onClick={exportKeys}
-            style={{ fontFamily: T.mono, fontSize: 10, padding: '4px 10px', borderRadius: 5, background: 'transparent', border: `1px solid rgba(255,255,255,.1)`, color: T.inkD, cursor: 'pointer' }}>
-            ↓ Export
-          </button>
-          <label style={{ fontFamily: T.mono, fontSize: 10, padding: '4px 10px', borderRadius: 5, background: 'transparent', border: `1px solid rgba(255,255,255,.1)`, color: T.inkD, cursor: 'pointer' }}>
-            ↑ Import
-            <input type="file" accept=".json" onChange={importKeys} style={{ display: 'none' }} />
-          </label>
         </div>
       </div>
 

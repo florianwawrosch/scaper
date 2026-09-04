@@ -24,7 +24,7 @@ const { chromium } = playwright();
     localStorage.setItem(`csv_run_${id}`, JSON.stringify(meta));
     const configs = [{
       id: 'cfg_d1', provider: 'anthropic', model: 'claude-sonnet-5', name: 'ki_klassifizierung',
-      prompt: 'Classify', inputColumns: ['name', 'company'],
+      prompt: 'Classify', inputColumns: ['name', 'company'], showSplits: true,
       outputFields: ['ki_bietet_coaching', 'ki_marketing_agentur', 'ki_anbieterstatus'],
       outputEnums: {
         ki_bietet_coaching: ['ja', 'nein'],

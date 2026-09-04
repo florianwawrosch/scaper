@@ -42,17 +42,16 @@ export function PresetSelector({ presets, onSelect, onClose, filename }: Props) 
         onClick={e => e.stopPropagation()}
       >
         <h2 style={{ fontFamily: T.ffDisp, fontSize: 18, fontWeight: 700, color: T.ink, marginBottom: 8 }}>
-          KI-Spalten laden
+          KI-Spalte laden
         </h2>
         <p style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, marginBottom: 20 }}>
-          Wähle eine Vorlage für <strong>{filename}</strong> oder importiere ohne Vorlage.
+          Passende gespeicherte KI-Spalte für <strong>{filename}</strong> anhängen — oder ohne importieren.
         </p>
 
         {/* Presets list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
           {presets.map(preset => {
-            const colCount  = preset.columns.reduce((n, c) => n + (c.outputFields?.length ?? 1) + (c.derived?.length ?? 0), 0);
-            const callCount = preset.columns.length;
+            const details = preset.columns.reduce((n, c) => n + (c.outputFields?.length ?? 0) + (c.derived?.length ?? 0), 0);
             return (
             <button
               key={preset.id}
@@ -89,7 +88,7 @@ export function PresetSelector({ presets, onSelect, onClose, filename }: Props) 
                 </div>
               )}
               <div style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, opacity: 0.7 }}>
-                {colCount === 1 ? '1 Spalte' : `${colCount} Spalten auf einmal`} · {callCount} KI-{callCount === 1 ? 'Aufruf' : 'Aufrufe'} pro Zeile{preset.promptVersion ? ` · Prompt ${preset.promptVersion}` : ''}
+                1 Spalte · 1 KI-Aufruf pro Zeile{details > 0 ? ` · ${details} Detail-Spalten (versteckt)` : ''}{preset.promptVersion ? ` · Prompt ${preset.promptVersion}` : ''}
               </div>
 
               {/* Expandable column details */}
@@ -151,12 +150,12 @@ export function PresetSelector({ presets, onSelect, onClose, filename }: Props) 
               fontWeight: 600,
             }}
           >
-            {selectedId ? 'Nur laden' : 'Ohne Vorlage'}
+            {selectedId ? 'Nur laden' : 'Ohne KI-Spalte'}
           </button>
           {selectedId && (
             <button
               onClick={() => onSelect(selectedId, true)}
-              title="Vorlage laden und die Klassifizierung sofort starten (kostet API-Credits)"
+              title="KI-Spalte laden und sofort ausfüllen (kostet API-Credits)"
               style={{
                 fontFamily: T.ffMono,
                 fontSize: 11,

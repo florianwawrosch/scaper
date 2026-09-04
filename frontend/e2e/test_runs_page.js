@@ -10,9 +10,10 @@ const { chromium } = playwright();
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
   await page.evaluate(() => {
     localStorage.clear();
-    const meta = (filename, extra = {}) => JSON.stringify({ fields: ['a'], filename, createdAt: new Date().toISOString(), rowCount: 3, data: [{ a: '1' }, { a: '2' }, { a: '3' }], ...extra });
-    localStorage.setItem('csv_run_csv_1', meta('Meta: yoga, coach', { scrapeConfig: { country: 'DE', platforms: ['FACEBOOK'], adStatus: 'ACTIVE', limit: 100 } }));
-    localStorage.setItem('csv_run_csv_2', meta('leads.csv'));
+    // Unterschiedliche Zeitstempel: der Scrape ist neuer und steht damit deterministisch oben (wird unten gelöscht)
+    const meta = (filename, createdAt, extra = {}) => JSON.stringify({ fields: ['a'], filename, createdAt, rowCount: 3, data: [{ a: '1' }, { a: '2' }, { a: '3' }], ...extra });
+    localStorage.setItem('csv_run_csv_1', meta('Meta: yoga, coach', new Date().toISOString(), { scrapeConfig: { country: 'DE', platforms: ['FACEBOOK'], adStatus: 'ACTIVE', limit: 100 } }));
+    localStorage.setItem('csv_run_csv_2', meta('leads.csv', new Date(Date.now() - 60000).toISOString()));
   });
   await page.goto(`${BASE_URL}/runs`, { waitUntil: 'networkidle' });
   const body = await page.textContent('body');

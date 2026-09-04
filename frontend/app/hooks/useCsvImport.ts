@@ -9,7 +9,7 @@ import { getEffectivePresets, detectPreset, type ImportPreset, type PresetSource
 export interface PresetPrompt { id: string; filename: string; presets: ImportPreset[] }
 
 interface Options {
-  /** Instant-Load-Vorlagen anhängen; liefert die IDs der geladenen Vorlagen */
+  /** Instant-Load-KI-Spalten anhängen; liefert die IDs der geladenen KI-Spalten */
   autoApplyPresets: (runId: string, source: PresetSource) => Set<string>;
   /** Fehlertext für die Seite ('' = zurücksetzen) */
   onError: (msg: string) => void;
@@ -17,8 +17,8 @@ interface Options {
 
 /**
  * CSV/Excel-Import der Startseite: Datei-Input und Drag-and-drop aufs ganze
- * Fenster, Parsen, Ablage als CSV-Run, Instant-Load-Vorlagen, optional der
- * LinkedIn-Vorlagen-Dialog — dann Navigation in den Viewer.
+ * Fenster, Parsen, Ablage als CSV-Run, Instant-Load-KI-Spalten, optional der
+ * LinkedIn-Dialog (passende KI-Spalte anbieten) — dann Navigation in den Viewer.
  */
 export function useCsvImport({ autoApplyPresets, onError }: Options) {
   const router = useRouter();
@@ -40,7 +40,7 @@ export function useCsvImport({ autoApplyPresets, onError }: Options) {
       setUploading(false);
       const auto = autoApplyPresets(id, 'csv');
       // LinkedIn-Daten erkannt? → Preset-Auswahl anbieten statt direkt zu
-      // navigieren — außer die Vorlage wurde ohnehin schon automatisch geladen.
+      // navigieren — außer die KI-Spalte wurde ohnehin schon automatisch geladen.
       // Die Liste (erkanntes Preset zuerst) wird EINMAL hier berechnet.
       const detected = detectPreset(fields);
       if (detected && !auto.has(detected.id)) {

@@ -7,7 +7,7 @@ const CSV=fixture('test_linkedin.csv');
 await p.goto(BASE_URL,{waitUntil:'networkidle'});
 await p.evaluate(()=>localStorage.setItem('appSettings',JSON.stringify({apiKeys:{meta_ads:'',openai:'',gemini:'',anthropic:'',hunter_io:'fake',findymail:''},theme:'noir'})));
 await p.locator('input[type="file"]').setInputFiles(CSV);await p.waitForTimeout(1200);
-await p.locator('button:has-text("Ohne Vorlage")').click();await p.waitForTimeout(1200);
+await p.locator('button:has-text("Ohne KI-Spalte")').click();await p.waitForTimeout(1200);
 await p.locator('button:has-text("Enrichment starten")').click();await p.waitForTimeout(1200);
 const sel=p.locator('select').first();
 console.log('default:',await sel.inputValue());

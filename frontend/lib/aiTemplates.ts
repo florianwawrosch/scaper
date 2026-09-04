@@ -1,32 +1,36 @@
-// Standard-KI-Spalten-Vorlagen, die beim CSV/LinkedIn-Import geladen werden.
-// Die LinkedIn-Klassifizierung ist Uriels Sheet-Vorlage (ki_linkedin_klassifizierung, v5):
-// EIN Prompt liefert sieben pipe-getrennte Werte, die in einzelne Spalten
-// gesplittet werden; die Zielgruppen-Entscheidung ist eine deterministische
-// Regel über die Ausgaben — keine eigene KI-Frage.
+// Gespeicherte KI-Spalten (Einstellungen → KI-Spalten). Eine KI-Spalte hat:
+// Titel, KI-Modell, Version, Prompt und die Lade-Schalter (bei CSV, bei Meta,
+// direkt ausfüllen). Intern ist das ein ImportPreset mit genau EINER Spalte —
+// eingebaut (Code + Override) oder eigene (localStorage).
+// Die LinkedIn-Klassifizierung ist Uriels Sheet-Vorlage (v5): EIN Prompt, EIN
+// Aufruf pro Zeile, EINE Tabellenspalte. Die sieben pipe-getrennten Werte und
+// die Zielgruppen-Regel bleiben als versteckte Datensatz-Spalten (Export,
+// Filter, Statistik) erhalten.
 
 import type { AnalysisConfig } from '@/lib/ai';
 import type { DerivedRule } from '@/lib/ai';
-import { defaultModel } from '@/lib/ai';
+import { defaultModel, modelsFor } from '@/lib/ai';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { AI_PROVIDERS } from '@/lib/ai';
 import { loadSettings } from '@/lib/settings';
 
-/** Import-Quelle, für die eine Vorlage automatisch geladen werden kann */
+/** Import-Quelle, bei der eine KI-Spalte automatisch geladen werden kann */
 export type PresetSource = 'csv' | 'meta';
 export const PRESET_SOURCES: { key: PresetSource; label: string }[] = [
   { key: 'csv',  label: 'CSV/Excel-Upload' },
   { key: 'meta', label: 'Meta-Scrape' },
 ];
 
-/** Instant-Load-Schalter einer Vorlage (Einstellungen → KI-Vorlagen) */
+/** Lade-Schalter einer KI-Spalte (Einstellungen → KI-Spalten) */
 export interface PresetFlags {
-  /** Spalten bei diesen Quellen automatisch anhängen, ohne Dialog */
+  /** Bei diesen Quellen automatisch anhängen, ohne Dialog */
   autoAdd?: Partial<Record<PresetSource, boolean>>;
-  /** Nach dem automatischen Anhängen sofort ausfüllen lassen (kostet Credits) */
+  /** Sofort ausfüllen, sobald die Spalte angehängt wird — Import oder Menü (kostet Credits) */
   autoRun?: boolean;
 }
 
-export type PresetColumn = Omit<AnalysisConfig, 'id' | 'model' | 'provider'>;
+/** Die Spalte einer KI-Spalte; KI-Modell optional (sonst erster Provider mit Key) */
+export type PresetColumn = Omit<AnalysisConfig, 'id' | 'model' | 'provider' | 'presetId'> & { provider?: string; model?: string };
 
 export interface ImportPreset extends PresetFlags {
   id: string;
@@ -34,7 +38,7 @@ export interface ImportPreset extends PresetFlags {
   description?: string;
   promptVersion?: string;
   columns: PresetColumn[];
-  /** Vom Nutzer gespeicherte Vorlage (localStorage) — frei editier-/löschbar */
+  /** Vom Nutzer gespeicherte KI-Spalte (localStorage) — frei editier-/löschbar */
   userDefined?: boolean;
 }
 
@@ -122,7 +126,7 @@ const LINKEDIN_ZIELGRUPPE_RULE: DerivedRule = {
 const PRESET_LINKEDIN: ImportPreset = {
   id: 'linkedin_klassifizierung_v5',
   name: 'LinkedIn-Klassifizierung (v5)',
-  description: 'Uriels Vorlage: 1 KI-Aufruf → 7 Spalten (Haupttyp, Coaching, Agentur, Themenfeld, Status, Rollenbezug, Sicherheit) + Zielgruppen-Regel',
+  description: 'Uriels Klassifizierung: 1 KI-Aufruf, 7 Werte (Haupttyp, Coaching, Agentur, Themenfeld, Status, Rollenbezug, Sicherheit) + Zielgruppen-Regel als Detail-Spalten',
   promptVersion: 'v5',
   columns: [
     {
@@ -151,11 +155,18 @@ const PRESET_KEEP_DROP: ImportPreset = {
 
 const ALL_PRESETS: ImportPreset[] = [PRESET_LINKEDIN, PRESET_KEEP_DROP];
 
-// ── Overrides: Prompt/Version einer Vorlage zentral in den Einstellungen
+// ── Overrides: Titel/Modell/Prompt/Version einer eingebauten KI-Spalte in den Einstellungen
 //    anpassen (z.B. wenn Uriel v6 baut), ohne Code zu ändern ──
 const OVERRIDES_KEY = 'preset_overrides';
 
-export interface PromptOverride { prompt: string; promptVersion?: string }
+export interface PromptOverride {
+  prompt: string;
+  promptVersion?: string;
+  /** neuer Spaltentitel */
+  name?: string;
+  provider?: string;
+  model?: string;
+}
 type OverrideStore = Record<string, Record<string, PromptOverride>>; // presetId → columnName → override
 
 function loadOverrides(): OverrideStore {
@@ -178,15 +189,24 @@ export function hasOverride(presetId: string): boolean {
   return !!loadOverrides()[presetId];
 }
 
-/** Eingebaute Vorlagen mit gespeicherten Prompt-Anpassungen zusammengeführt */
+/** Original-Spaltennamen einer eingebauten KI-Spalte (Override-Schlüssel), in Spaltenreihenfolge */
+export function builtinColumnNames(presetId: string): string[] {
+  return ALL_PRESETS.find(p => p.id === presetId)?.columns.map(c => c.name) ?? [];
+}
+
+/** Eingebaute KI-Spalten mit gespeicherten Anpassungen zusammengeführt */
 function builtinPresets(): ImportPreset[] {
   const overrides = loadOverrides();
   return ALL_PRESETS.map(p => {
     const po = overrides[p.id];
     if (!po) return p;
+    // Override-Schlüssel ist der ORIGINAL-Spaltenname; der Titel selbst darf umbenannt sein
     const columns = p.columns.map(col => {
       const o = po[col.name];
-      return o ? { ...col, prompt: o.prompt, promptVersion: o.promptVersion ?? col.promptVersion } : col;
+      if (!o) return col;
+      const merged: PresetColumn = { ...col, name: o.name?.trim() || col.name, prompt: o.prompt, promptVersion: o.promptVersion ?? col.promptVersion };
+      if (o.provider) { merged.provider = o.provider; merged.model = o.model; }
+      return merged;
     });
     return {
       ...p,
@@ -197,17 +217,36 @@ function builtinPresets(): ImportPreset[] {
   });
 }
 
-// ── Eigene Vorlagen: aus dem ⚙-Panel / der Tabelle gespeicherte KI-Spalten ──
+// ── Eigene KI-Spalten: im ⚙-Panel oder in den Einstellungen gespeichert ──
 const USER_PRESETS_KEY = 'user_presets';
 
 export function loadUserPresets(): ImportPreset[] {
+  let list: ImportPreset[];
   try {
     const raw = JSON.parse(localStorage.getItem(USER_PRESETS_KEY) ?? '[]');
     if (!Array.isArray(raw)) return [];
-    return raw
+    list = raw
       .filter((p): p is ImportPreset => !!p && typeof p.id === 'string' && Array.isArray(p.columns))
       .map(p => ({ ...p, userDefined: true }));
   } catch { return []; }
+  // Migration: ältere «Vorlagen» mit mehreren Spalten → eine KI-Spalte je Spalte
+  // (gleiche Schalter), damit jede einzeln ladbar, editierbar, löschbar ist
+  if (list.some(p => p.columns.length !== 1)) {
+    const flags = loadFlags();
+    const next: ImportPreset[] = [];
+    for (const p of list) {
+      if (p.columns.length === 1) { next.push(p); continue; }
+      p.columns.forEach((col, i) => {
+        const id = i === 0 ? p.id : `${p.id}_${i + 1}`;
+        next.push({ id, name: col.name, description: p.description, promptVersion: col.promptVersion ?? p.promptVersion, columns: [col], userDefined: true });
+        if (i > 0 && flags[p.id]) flags[id] = flags[p.id];
+      });
+    }
+    writeUserPresets(next);
+    try { localStorage.setItem(FLAGS_KEY, JSON.stringify(flags)); } catch {}
+    return next.filter(p => p.columns.length > 0);
+  }
+  return list.filter(p => p.columns.length > 0);
 }
 
 function writeUserPresets(list: ImportPreset[]): void {
@@ -219,7 +258,7 @@ function writeUserPresets(list: ImportPreset[]): void {
   try { localStorage.setItem(USER_PRESETS_KEY, JSON.stringify(slim)); } catch {}
 }
 
-/** Vorlage anlegen oder (gleiche id) überschreiben */
+/** KI-Spalte anlegen oder (gleiche id) überschreiben */
 export function saveUserPreset(preset: ImportPreset): ImportPreset {
   const list = loadUserPresets();
   const next: ImportPreset = { ...preset, userDefined: true };
@@ -244,10 +283,10 @@ export function newPresetId(prefix = 'user'): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-/** Aus bestehenden KI-Spalten-Configs eine Vorlage bauen (Provider/Modell/ID werden NICHT übernommen) */
+/** Aus bestehenden KI-Spalten-Configs eine Vorlage bauen (KI-Modell wird übernommen, Config-ID nicht) */
 export function presetFromConfigs(name: string, configs: AnalysisConfig[], extra?: Partial<ImportPreset>): ImportPreset {
   const columns: PresetColumn[] = configs.map(c => ({
-    name: c.name, prompt: c.prompt,
+    name: c.name, prompt: c.prompt, provider: c.provider, model: c.model,
     inputColumns: c.inputColumns, outputFields: c.outputFields, outputEnums: c.outputEnums, derived: c.derived,
     // "v5*" (angepasst) wird als eigene Version mitgenommen, sonst leer
     promptVersion: c.promptVersion?.replace(/\*$/, '') || undefined,
@@ -276,13 +315,17 @@ export function getPresetFlags(id: string): PresetFlags {
   return loadFlags()[id] ?? {};
 }
 
+/**
+ * Lade-Schalter einer KI-Spalte speichern. «direkt ausfüllen» (autoRun) gilt
+ * überall, wo die Spalte angehängt wird — Instant Load beim Import UND «Laden»
+ * aus dem Tabellen-Menü — und ist deshalb unabhängig von autoAdd.
+ */
 export function setPresetFlags(id: string, flags: PresetFlags): void {
   const all = loadFlags();
   const autoAdd = Object.fromEntries(Object.entries(flags.autoAdd ?? {}).filter(([, v]) => v));
   const merged: PresetFlags = {};
   if (Object.keys(autoAdd).length) merged.autoAdd = autoAdd;
-  // "Direkt ausfüllen" ohne Instant-Load ergibt keinen Sinn — dann verwerfen
-  if (flags.autoRun && merged.autoAdd) merged.autoRun = true;
+  if (flags.autoRun) merged.autoRun = true;
   if (Object.keys(merged).length) all[id] = merged; else delete all[id];
   try { localStorage.setItem(FLAGS_KEY, JSON.stringify(all)); } catch {}
 }
@@ -299,11 +342,6 @@ export function getEffectivePresets(): ImportPreset[] {
 /** Vorlagen, die bei dieser Quelle automatisch geladen werden sollen */
 export function presetsForSource(source: PresetSource): ImportPreset[] {
   return getEffectivePresets().filter(p => p.autoAdd?.[source]);
-}
-
-/** Wie viele Tabellenspalten eine Vorlage anlegt (Roh-Antwort, Splits, Regeln) */
-export function presetColumnCount(p: ImportPreset): number {
-  return p.columns.reduce((n, c) => n + (c.outputFields?.length ?? 1) + (c.derived?.length ?? 0), 0);
 }
 
 /**
@@ -337,14 +375,32 @@ export function pickPresetProvider(serverKeys: Record<string, boolean> = {}): st
   return ['anthropic', ...ids].find(p => local[p] || serverKeys[p]) ?? ids[0];
 }
 
-/** Preset in fertige AnalysisConfigs umwandeln (Provider/Modell = erster verfügbarer) */
-export function presetToConfigs(preset: ImportPreset, provider: string): AnalysisConfig[] {
-  return preset.columns.map(col => ({
-    id: newPresetId('cfg'),
-    provider,
-    model: defaultModel(provider),
-    ...col,
-  }));
+/** Provider mit Key (Browser oder Server) — für die Modellwahl gespeicherter KI-Spalten */
+export function availableProviders(serverKeys: Record<string, boolean> = {}): string[] {
+  const local = loadSettings().apiKeys as Record<string, string>;
+  return AI_PROVIDERS.map(p => p.id).filter(p => local[p] || serverKeys[p]);
+}
+
+/**
+ * KI-Spalte in fertige AnalysisConfigs umwandeln. Das in ihr gespeicherte
+ * Modell wird genommen, wenn sein Provider einen Key hat (providers), sonst der
+ * Fallback-Provider mit Standardmodell. Merkt sich die Herkunft (presetId).
+ */
+function presetToConfigs(preset: ImportPreset, provider: string, providers?: string[]): AnalysisConfig[] {
+  return preset.columns.map(col => {
+    const { provider: wanted, model: wantedModel, ...rest } = col;
+    const usable = !!wanted && (!providers || providers.includes(wanted));
+    const prov = usable ? wanted! : provider;
+    const model = usable && wantedModel && modelsFor(prov).includes(wantedModel) ? wantedModel : defaultModel(prov);
+    return { id: newPresetId('cfg'), provider: prov, model, presetId: preset.id, ...rest };
+  });
+}
+
+/** Ist diese KI-Spalte im Datensatz schon geladen? (Herkunft oder belegter Spaltenname) */
+export function isPresetLoaded(preset: ImportPreset, configs: AnalysisConfig[]): boolean {
+  if (configs.some(c => c.presetId === preset.id)) return true;
+  const taken = new Set(configs.flatMap(ownedNames));
+  return preset.columns.every(c => taken.has(c.name));
 }
 
 /** Alle Spaltennamen, die eine Config belegt (Roh-Antwort, Splits, Regeln) */
@@ -385,28 +441,32 @@ export interface ApplyResult {
 }
 
 /**
- * Vorlagen in einen Datensatz laden: Spalten werden an die bestehenden
- * KI-Configs ANGEHÄNGT (gleichnamige übersprungen), gespeichert und — bei
- * autoRun bzw. forceAutoRun — zum sofortigen Ausfüllen vorgemerkt.
- * Ein Code-Pfad für Import-Dialog, Instant-Load und «Vorlage laden» im Viewer.
+ * KI-Spalten in einen Datensatz laden: Configs werden an die bestehenden
+ * ANGEHÄNGT (schon geladene übersprungen), gespeichert und — bei autoRun
+ * («direkt ausfüllen») bzw. forceAutoRun — zum sofortigen Ausfüllen vorgemerkt.
+ * Ein Code-Pfad für Import-Dialog, Instant-Load und das «+ KI-Spalte»-Menü.
  */
 export function applyPresets(
   runId: string,
   presets: ImportPreset[],
   provider: string,
-  opts: { forceAutoRun?: boolean } = {},
+  opts: { /** true/false überschreibt den Schalter der KI-Spalte, undefined = Schalter gilt */ forceAutoRun?: boolean; providers?: string[] } = {},
 ): ApplyResult {
   const configs = loadAiConfigs(runId);
   const taken = new Set(configs.flatMap(ownedNames));
+  const loadedIds = new Set(configs.map(c => c.presetId).filter(Boolean));
   const added: AnalysisConfig[] = [];
   const skipped: ImportPreset[] = [];
   const autoRun: AnalysisConfig[] = [];
   for (const preset of presets) {
-    const fresh = presetToConfigs(preset, provider).filter(c => !ownedNames(c).some(n => taken.has(n)));
+    // Dieselbe KI-Spalte nie zweimal: weder per Herkunft noch per belegtem Spaltennamen
+    if (loadedIds.has(preset.id)) { skipped.push(preset); continue; }
+    const fresh = presetToConfigs(preset, provider, opts.providers).filter(c => !ownedNames(c).some(n => taken.has(n)));
     if (fresh.length === 0) { skipped.push(preset); continue; }
     fresh.forEach(c => ownedNames(c).forEach(n => taken.add(n)));
+    loadedIds.add(preset.id);
     added.push(...fresh);
-    if (opts.forceAutoRun || preset.autoRun) autoRun.push(...fresh.filter(c => c.prompt.trim()));
+    if (opts.forceAutoRun ?? preset.autoRun) autoRun.push(...fresh.filter(c => c.prompt.trim()));
   }
   if (added.length) saveAiConfigs(runId, [...configs, ...added]);
   appendAutorunIds(runId, autoRun.map(c => c.id));

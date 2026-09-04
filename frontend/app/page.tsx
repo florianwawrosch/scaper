@@ -6,7 +6,7 @@ import { deleteCsvText } from '@/lib/csvStorage';
 import { loadSavedSearches, saveSavedSearch, deleteSavedSearch, type SavedSearch } from '@/lib/savedSearches';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist } from '@/lib/blocklist';
-import { presetsForSource, applyPresets, pickPresetProvider, type PresetSource } from '@/lib/aiTemplates';
+import { presetsForSource, applyPresets, pickPresetProvider, availableProviders, type PresetSource } from '@/lib/aiTemplates';
 import { useCsvImport } from '@/app/hooks/useCsvImport';
 import { useScrapeForm, DEFAULT_FORM } from '@/app/hooks/useScrapeForm';
 import { useToast } from '@/app/components/Toast';
@@ -115,20 +115,20 @@ export default function Home() {
   };
 
   /**
-   * Instant-Load-Vorlagen (Einstellungen → KI-Vorlagen) für eine Import-Quelle
+   * Instant-Load-KI-Spalten (Einstellungen → KI-Spalten) für eine Import-Quelle
    * direkt anhängen — ohne Dialog; «direkt ausfüllen» startet der Viewer beim
-   * Laden. Liefert die IDs der geladenen Vorlagen.
+   * Laden. Liefert die IDs der geladenen KI-Spalten.
    */
   const autoApplyPresets = useCallback((runId: string, source: PresetSource): Set<string> => {
     const presets = presetsForSource(source);
     if (presets.length === 0) return new Set();
-    const { added, autoRun } = applyPresets(runId, presets, pickPresetProvider(backendKeys));
+    const { added, autoRun } = applyPresets(runId, presets, pickPresetProvider(backendKeys), { providers: availableProviders(backendKeys) });
     if (added.length > 0) {
       const names = presets.map(p => `«${p.name}»`).join(', ');
       showToast(
         autoRun.length > 0
-          ? `${presets.length === 1 ? 'Vorlage' : 'Vorlagen'} ${names} geladen — KI füllt die Spalten direkt aus`
-          : `${presets.length === 1 ? 'Vorlage' : 'Vorlagen'} ${names} automatisch geladen — Spalten mit ▶ ausfüllen`,
+          ? `${presets.length === 1 ? 'KI-Spalte' : 'KI-Spalten'} ${names} geladen — KI füllt direkt aus`
+          : `${presets.length === 1 ? 'KI-Spalte' : 'KI-Spalten'} ${names} automatisch geladen — mit ▶ ausfüllen`,
         'success', 5000,
       );
     }
@@ -453,11 +453,11 @@ export default function Home() {
             if (presetId) {
               const preset = aiPresetPrompt.presets.find(p => p.id === presetId);
               if (preset) {
-                // Spalten anhängen (Instant-Load-Vorlagen sind evtl. schon drin);
+                // Spalte anhängen (Instant-Load-KI-Spalten sind evtl. schon drin);
                 // bei autoRun merkt applyPresets die Configs für den Viewer vor
-                const { added, autoRun: toRun } = applyPresets(id, [preset], pickPresetProvider(backendKeys), { forceAutoRun: !!autoRun });
+                const { added, autoRun: toRun } = applyPresets(id, [preset], pickPresetProvider(backendKeys), { forceAutoRun: autoRun || undefined, providers: availableProviders(backendKeys) });
                 if (added.length > 0 && toRun.length === 0) {
-                  showToast(`Vorlage «${preset.name}» geladen — Spalten mit ▶ analysieren`, 'success');
+                  showToast(`KI-Spalte «${preset.name}» geladen — mit ▶ ausfüllen`, 'success');
                 }
               }
             }

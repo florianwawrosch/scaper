@@ -10,7 +10,7 @@ import { providerLabel, isUsableAiValue } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
 import { DataTable, type StatChip, type ExportPreset } from '@/app/components/DataTable';
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
-import { PresetMenu } from '@/app/components/PresetMenu';
+import { AiColumnMenu } from '@/app/components/AiColumnMenu';
 import { Glyph } from '@/app/components/Glyph';
 import { useAiColumns } from './useAiColumns';
 import { KNOWN_COL, EXPORTED_COL } from '@/lib/leadKeys';
@@ -49,8 +49,11 @@ export default function CsvViewer() {
     if (parent.name === c.name) {
       return { ...c, label: `${providerLabel(parent.provider)} · ${parent.model}${parent.promptVersion ? ` · ${parent.promptVersion}` : ''}` };
     }
-    if (parent.derived?.some(d => d.name === c.name)) return { ...c, label: `Regel aus «${parent.name}»` };
-    return { ...c, label: `aus «${parent.name}»` };
+    // Einzelwerte und Regel-Spalten einer Multi-Output-Antwort: eine KI-Spalte
+    // ist EINE Tabellenspalte — die Details bleiben im Datensatz (Export, Filter,
+    // Statistik) und lassen sich per ⚙ einblenden
+    if (parent.derived?.some(d => d.name === c.name)) return { ...c, label: `Regel aus «${parent.name}»`, hidden: !parent.showSplits };
+    return { ...c, label: `aus «${parent.name}»`, hidden: !parent.showSplits };
   }), [displayAiColumns, findCfgForColumn]);
 
   // KI-Statistik wie im statistik-Blatt: Fortschritt + Regel-Verteilung,
@@ -262,12 +265,12 @@ export default function CsvViewer() {
               title="Mit allen anderen Datensätzen abgleichen: bekannte Seiten/Personen und bereits exportierte Leads markieren"
               style={{ fontFamily: T.ffMono, fontSize: 10, padding: '2px 10px', borderRadius: 4, cursor: matching ? 'default' : 'pointer', border: `1px solid ${T.lineS}`, background: 'transparent', color: T.inkD, whiteSpace: 'nowrap', opacity: matching ? .5 : 1 }}
             ><Glyph>{matching ? '↻' : '⟲'}</Glyph>Abgleich</button>
-            <PresetMenu
+            <AiColumnMenu
               loadPresets={getEffectivePresets}
-              onLoad={loadPreset}
-              onSaveCurrent={(name, flags) => saveTemplate(name, flags, aiConfigs)}
-              currentColumnCount={aiConfigs.filter(c => c.prompt.trim()).length}
+              configs={aiConfigs}
               fields={run.fields}
+              onLoad={loadPreset}
+              onCreate={addAiColumn}
             />
           </>}
           onBlockPages={run.fields.includes('page_name') ? (rows) => {
@@ -285,7 +288,6 @@ export default function CsvViewer() {
               );
             }
           } : undefined}
-          onAddAiColumn={addAiColumn}
           onConfigureAiColumn={(name) => {
             const cfg = findCfgForColumn(name);
             if (cfg) setEditingId(cfg.id);
@@ -311,7 +313,7 @@ export default function CsvViewer() {
             onRun={() => runColumn(aiConfigs.find(c => c.id === editingCfg.id) ?? editingCfg)}
             onDelete={() => deleteConfig(editingCfg.id)}
             onClose={() => setEditingId(null)}
-            onSaveAsTemplate={(name, flags) => saveTemplate(name, flags, [aiConfigs.find(c => c.id === editingCfg.id) ?? editingCfg])}
+            onSaveAsTemplate={flags => saveTemplate(aiConfigs.find(c => c.id === editingCfg.id) ?? editingCfg, flags)}
           />
         )}
 

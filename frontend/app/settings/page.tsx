@@ -6,7 +6,7 @@ import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist } from '@/lib/blocklist';
 import { getEffectivePresets } from '@/lib/aiTemplates';
 import { IntegrationsTab, SERVICE_KEYS } from './IntegrationsTab';
-import { TemplatesTab } from './TemplatesTab';
+import { AiColumnsTab } from './AiColumnsTab';
 import { BlocklistTab } from './BlocklistTab';
 import { DesignTab } from './DesignTab';
 import { DataTab } from './DataTab';
@@ -42,7 +42,7 @@ export default function Settings() {
 
   const NAV: { key: NavKey; label: string; badge?: number }[] = [
     { key: 'integrations', label: 'Integrationen', badge: keyCount || undefined },
-    { key: 'templates',    label: 'KI-Vorlagen',   badge: tplCount || undefined },
+    { key: 'templates',    label: 'KI-Spalten',    badge: tplCount || undefined },
     { key: 'blocklist',    label: 'Blockliste',    badge: blockCount || undefined },
     { key: 'data',         label: 'Daten' },
     { key: 'design',       label: 'Design' },
@@ -79,7 +79,7 @@ export default function Settings() {
       {/* ── Content ── */}
       <div style={{ flex: 1, padding: '32px 40px', maxWidth: 680 }}>
         {nav === 'integrations' && <IntegrationsTab onCountChange={setKeyCount} />}
-        {nav === 'templates'    && <TemplatesTab onCountChange={setTplCount} />}
+        {nav === 'templates'    && <AiColumnsTab onCountChange={setTplCount} />}
         {nav === 'blocklist'    && <BlocklistTab onCountChange={setBlockCount} />}
         {nav === 'data'         && <DataTab />}
         {nav === 'design'       && <DesignTab />}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { loadBlocklist, addToBlocklist, removeFromBlocklist, type BlockEntry } from '@/lib/blocklist';
+import { loadBlocklist, addBlockInput, removeFromBlocklist, fanpageUrl, adsLibraryUrl, parseBlockInput, type BlockEntry } from '@/lib/blocklist';
 import { T } from '@/app/theme';
 
 interface Props {
@@ -9,10 +9,14 @@ interface Props {
   onCountChange?: (n: number) => void;
 }
 
+const th: React.CSSProperties = { fontFamily: T.mono, fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: T.inkF, textAlign: 'left', padding: '8px 12px', fontWeight: 500, whiteSpace: 'nowrap' };
+const td: React.CSSProperties = { fontFamily: T.mono, fontSize: 11, color: T.inkD, padding: '9px 12px', verticalAlign: 'middle', whiteSpace: 'nowrap' };
+const link: React.CSSProperties = { fontFamily: T.mono, fontSize: 10, color: T.teal, textDecoration: 'none', border: `1px solid ${T.tealB}`, background: T.tealD, borderRadius: 4, padding: '2px 8px', whiteSpace: 'nowrap' };
+
 /** Einstellungen → Blockliste: Seiten, die aus allen Scrape-Ergebnissen fliegen */
 export function BlocklistTab({ onCountChange }: Props) {
-  const [blocklist,  setBlocklist]  = useState<BlockEntry[]>([]);
-  const [blockInput, setBlockInput] = useState('');
+  const [blocklist, setBlocklist] = useState<BlockEntry[]>([]);
+  const [input,     setInput]     = useState('');
 
   useEffect(() => {
     // localStorage gibt es erst im Browser — daher Effect statt lazy useState
@@ -21,77 +25,100 @@ export function BlocklistTab({ onCountChange }: Props) {
   }, []);
   useEffect(() => { onCountChange?.(blocklist.length); }, [blocklist.length, onCountChange]);
 
+  const parsed = parseBlockInput(input);
+  const add = () => {
+    const next = addBlockInput(input);
+    if (next) { setBlocklist(next); setInput(''); }
+  };
+
   return (
     <>
-      <div style={{ marginBottom: 28 }}>
+      <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontFamily: T.disp, fontSize: 22, fontWeight: 700, color: T.ink }}>
           Block<em style={{ color: T.gold }}>liste</em>
         </h1>
         <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkD, marginTop: 4, lineHeight: 1.6 }}>
-          Seiten, die grundsätzlich aus Scrape-Ergebnissen ausgeschlossen werden.
-          Hinzufügen auch direkt aus der Ergebnistabelle: Zeilen abwählen und oben
-          «Seiten blocken» klicken.
+          Seiten, die aus allen Scrape-Ergebnissen fliegen. Zuverlässig blockt die <strong style={{ color: T.ink }}>Page-ID</strong> —
+          Fanpage-Link, Ads-Library-Link oder ID eintragen. Ein Seitenname allein greift nur bei exakt gleicher Schreibweise.
+          Am einfachsten direkt aus der Ergebnistabelle: Zeilen abwählen und «Seiten blocken» klicken (nimmt die ID mit).
         </p>
       </div>
 
       {/* Add entry */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
         <input
-          type="text" value={blockInput}
-          onChange={e => setBlockInput(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && blockInput.trim()) {
-              setBlocklist(addToBlocklist(blockInput));
-              setBlockInput('');
-            }
-          }}
-          placeholder="Seitenname, z.B. «Fitness Coach Max»"
+          type="text" value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') add(); }}
+          placeholder="Fanpage-Link, Ads-Library-Link, Page-ID oder Seitenname"
+          data-testid="block-input"
           style={{ flex: 1, background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 6, padding: '9px 12px', fontFamily: T.mono, fontSize: 12, color: T.ink, outline: 'none' }}
         />
         <button
           type="button"
-          onClick={() => { if (blockInput.trim()) { setBlocklist(addToBlocklist(blockInput)); setBlockInput(''); } }}
-          disabled={!blockInput.trim()}
+          onClick={add}
+          disabled={!parsed}
+          data-testid="block-add"
           style={{
-            fontFamily: T.mono, fontSize: 12, fontWeight: 600, padding: '9px 18px', borderRadius: 6, cursor: blockInput.trim() ? 'pointer' : 'default',
-            border: 'none',
-            background: blockInput.trim() ? T.gold : T.panel2,
-            color: blockInput.trim() ? '#07070a' : T.inkF,
+            fontFamily: T.mono, fontSize: 12, fontWeight: 600, padding: '9px 18px', borderRadius: 6, cursor: parsed ? 'pointer' : 'default',
+            border: 'none', background: parsed ? T.gold : T.panel2, color: parsed ? '#07070a' : T.inkF,
           }}
         >+ Blocken</button>
       </div>
+      <p data-testid="block-preview" style={{ fontFamily: T.mono, fontSize: 10, color: parsed?.pageId ? T.teal : T.inkF, minHeight: 14, marginBottom: 18 }}>
+        {input.trim() === '' ? 'Beispiele: facebook.com/123456789 · facebook.com/ads/library/?…view_all_page_id=123456789 · 123456789'
+          : !parsed ? 'Aus diesem Link lässt sich keine Seite erkennen.'
+          : parsed.pageId ? `Blockt Page-ID ${parsed.pageId} — trifft sicher, auch wenn die Seite umbenannt wird.`
+          : `Blockt nur den Seitennamen «${parsed.pageName}» (exakte Schreibweise). Besser: Link oder ID.`}
+      </p>
 
-      {/* List */}
+      {/* Tabelle */}
       {blocklist.length === 0 ? (
         <div style={{ padding: '36px 24px', textAlign: 'center', border: `1px dashed ${T.line}`, borderRadius: 10, background: T.panel }}>
           <p style={{ fontFamily: T.mono, fontSize: 12, color: T.inkD }}>Noch keine Seiten geblockt.</p>
-          <p style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, marginTop: 6 }}>Oben einen Seitennamen eintragen oder aus der Ergebnistabelle blocken.</p>
+          <p style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, marginTop: 6 }}>Oben einen Link eintragen oder aus der Ergebnistabelle blocken.</p>
         </div>
       ) : (
-        <div style={{ border: `1px solid ${T.line}`, borderRadius: 10, overflow: 'hidden' }}>
-          <div style={{ padding: '8px 14px', background: T.panel, borderBottom: `1px solid ${T.line}`, display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: T.inkF }}>Geblockte Seiten</span>
-            <span style={{ fontFamily: T.mono, fontSize: 10, color: T.gold }}>{blocklist.length}</span>
-          </div>
-          {blocklist.map((e, i) => (
-            <div key={e.pageName} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', background: i % 2 ? 'transparent' : 'rgba(255,255,255,.015)', borderBottom: i < blocklist.length - 1 ? `1px solid ${T.lineS}` : 'none' }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#e8736b', flexShrink: 0 }} />
-              <span style={{ fontFamily: T.mono, fontSize: 12, color: T.ink, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {e.pageName}
-              </span>
-              {e.pageId && (
-                <span style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF }}>ID {e.pageId}</span>
-              )}
-              <button
-                type="button"
-                onClick={() => setBlocklist(removeFromBlocklist(e.pageName))}
-                title="Von Blockliste entfernen"
-                style={{ fontFamily: T.mono, fontSize: 15, color: T.inkD, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}
-                onMouseEnter={ev => ((ev.currentTarget as HTMLElement).style.color = '#e8736b')}
-                onMouseLeave={ev => ((ev.currentTarget as HTMLElement).style.color = T.inkD)}
-              >×</button>
-            </div>
-          ))}
+        <div style={{ border: `1px solid ${T.line}`, borderRadius: 10, overflow: 'auto' }}>
+          <table data-testid="block-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: T.panel, borderBottom: `1px solid ${T.line}` }}>
+                <th style={th}>Seite</th>
+                <th style={th}>Page-ID</th>
+                <th style={th}>Fanpage</th>
+                <th style={th}>Ads Library</th>
+                <th style={th}>Geblockt seit</th>
+                <th style={{ ...th, textAlign: 'right' }}>{blocklist.length}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {blocklist.map((e, i) => {
+                const fp = fanpageUrl(e);
+                return (
+                  <tr key={`${e.pageName}:${e.pageId ?? ''}`} data-testid="block-row" style={{ background: i % 2 ? 'transparent' : 'rgba(255,255,255,.015)', borderBottom: i < blocklist.length - 1 ? `1px solid ${T.lineS}` : 'none' }}>
+                    <td style={{ ...td, color: T.ink, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#e8736b', marginRight: 8, verticalAlign: 'middle' }} />
+                      {e.pageName}
+                    </td>
+                    <td style={{ ...td, fontSize: 10, color: T.inkF }}>{e.pageId ?? <span title="Nur Namensabgleich — ohne ID greift die Sperre nur bei exakt gleichem Namen">— (nur Name)</span>}</td>
+                    <td style={td}>{fp ? <a href={fp} target="_blank" rel="noopener noreferrer" style={link}>↗ Fanpage</a> : <span style={{ color: T.inkF }}>—</span>}</td>
+                    <td style={td}>{e.pageId ? <a href={adsLibraryUrl(e.pageId)} target="_blank" rel="noopener noreferrer" style={link}>↗ Anzeigen</a> : <span style={{ color: T.inkF }}>—</span>}</td>
+                    <td style={{ ...td, fontSize: 10, color: T.inkF }}>{e.addedAt ? new Date(e.addedAt).toLocaleDateString('de-DE') : '—'}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>
+                      <button
+                        type="button"
+                        onClick={() => setBlocklist(removeFromBlocklist(e.pageName))}
+                        title="Von Blockliste entfernen"
+                        style={{ fontFamily: T.mono, fontSize: 15, color: T.inkD, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}
+                        onMouseEnter={ev => ((ev.currentTarget as HTMLElement).style.color = '#e8736b')}
+                        onMouseLeave={ev => ((ev.currentTarget as HTMLElement).style.color = T.inkD)}
+                      >×</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </>

@@ -13,18 +13,18 @@ const { chromium } = playwright();
   await page.waitForTimeout(1000);
 
   const bodyText = await page.locator('body').textContent();
-  console.log('Has KI-Vorlagen tab:', bodyText.includes('KI-Vorlagen'));
+  console.log('Has KI-Spalten tab:', bodyText.includes('KI-Spalten'));
 
-  const tplTab = page.locator('button:has-text("KI-Vorlagen")');
+  const tplTab = page.locator('button:has-text("KI-Spalten")');
   const tabVisible = await tplTab.isVisible().catch(() => false);
   if (tabVisible) {
     await tplTab.click();
     await page.waitForTimeout(500);
     const tplBody = await page.locator('body').textContent();
-    console.log('Shows LinkedIn preset name:', tplBody.includes('LinkedIn-Klassifizierung'));
+    console.log('Shows LinkedIn column + name:', tplBody.includes('ki_klassifizierung') && tplBody.includes('LinkedIn-Klassifizierung'));
     await page.screenshot({ path: shot('settings_templates.png'), fullPage: true });
   } else {
-    console.log('KI-Vorlagen tab button not found/visible');
+    console.log('KI-Spalten tab button not found/visible');
   }
 
   console.log('Console errors:', consoleErrors.length);

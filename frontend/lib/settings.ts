@@ -109,7 +109,3 @@ export function getApiKey(provider: string): string {
   return key || '';
 }
 
-export function getAiConfig() {
-  const settings = loadSettings();
-  return settings.aiConfig;
-}

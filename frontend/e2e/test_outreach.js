@@ -11,7 +11,7 @@ const CSV = fixture('test_linkedin.csv');
 
   // 1) plain LinkedIn CSV, no email column → no Outreach button
   await page.locator('input[type="file"]').setInputFiles(CSV); await page.waitForTimeout(1200);
-  await page.locator('button:has-text("Ohne Vorlage")').click(); await page.waitForTimeout(1500);
+  await page.locator('button:has-text("Ohne KI-Spalte")').click(); await page.waitForTimeout(1500);
   ok((await page.locator('button:has-text("Outreach")').count()) === 0, 'no email column → no "↓ Outreach" button');
 
   // 2) seeded dataset with classification + email_enriched → button + correct download

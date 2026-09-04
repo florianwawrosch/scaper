@@ -19,8 +19,8 @@ interface Props {
   onRun: () => void;
   onDelete: () => void;
   onClose: () => void;
-  /** «☆ Als Vorlage speichern»: diese Spalte als wiederverwendbare Vorlage sichern */
-  onSaveAsTemplate?: (name: string, flags: PresetFlags) => void;
+  /** «☆ In Einstellungen speichern»: diese KI-Spalte als gespeicherte KI-Spalte sichern */
+  onSaveAsTemplate?: (flags: PresetFlags) => void;
 }
 
 /** Fixed side panel that edits ONE AI column (name, model, prompt). */
@@ -84,6 +84,23 @@ export function AiColumnEditor({ config, rowCount, providers, running, progress,
         style={{ ...mono, fontSize: 11, color: '#9aa7bd', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 6, padding: '6px 8px', width: '100%', outline: 'none', resize: 'vertical', lineHeight: 1.55, boxSizing: 'border-box' }}
       />
 
+      {/* Multi-Output: Einzelwerte + Regel-Spalten ein-/ausblenden (eine KI-Spalte = eine Tabellenspalte) */}
+      {!!config.outputFields?.length && (() => {
+        const details = [...config.outputFields, ...(config.derived?.map(d => d.name) ?? [])];
+        return (
+          <label
+            title="Der Prompt fragt mehrere Werte in EINER Antwort ab (ein Aufruf pro Zeile). Sie stehen als Detail-Spalten im Datensatz (Export, Filter, Statistik) — hier nur die Anzeige in der Tabelle."
+            style={{ ...mono, fontSize: 10, color: config.showSplits ? '#f5cc77' : '#9aa7bd', display: 'flex', alignItems: 'flex-start', gap: 7, cursor: 'pointer', padding: '7px 9px', borderRadius: 6, border: '1px solid rgba(255,255,255,.07)', background: 'rgba(255,255,255,.02)' }}
+          >
+            <input type="checkbox" checked={!!config.showSplits} onChange={e => onChange({ showSplits: e.target.checked })} data-testid="editor-show-splits" style={{ accentColor: '#e8b04b', width: 12, height: 12, marginTop: 1 }} />
+            <span>
+              {details.length} Detail-Spalten in der Tabelle zeigen
+              <span style={{ display: 'block', color: '#5f6e87', fontSize: 9, marginTop: 2 }}>{details.join(', ')}</span>
+            </span>
+          </label>
+        );
+      })()}
+
       {/* Actions */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button
@@ -114,23 +131,22 @@ export function AiColumnEditor({ config, rowCount, providers, running, progress,
         >🗑</button>
       </div>
 
-      {/* Als Vorlage sichern — damit die Spalte beim nächsten Import per Klick (oder automatisch) da ist */}
+      {/* In den Einstellungen sichern — damit die Spalte beim nächsten Import per Klick (oder automatisch) da ist */}
       {onSaveAsTemplate && (
         savingTpl ? (
           <TemplateSaveForm
-            defaultName={draftName}
-            hint="1 Spalte"
-            onSave={(name, flags) => { onChange({ name: draftName }); onSaveAsTemplate(name, flags); setSavingTpl(false); }}
+            title={draftName}
+            onSave={flags => { onChange({ name: draftName }); onSaveAsTemplate(flags); setSavingTpl(false); }}
             onCancel={() => setSavingTpl(false)}
           />
         ) : (
           <button
             onClick={() => setSavingTpl(true)}
             disabled={!config.prompt.trim()}
-            title={config.prompt.trim() ? 'Diese Spalte als Vorlage speichern (Einstellungen → KI-Vorlagen)' : 'Erst einen Prompt eingeben'}
+            title={config.prompt.trim() ? 'Diese KI-Spalte in den Einstellungen speichern — dann per «+ KI-Spalte» in jedem Datensatz ladbar' : 'Erst einen Prompt eingeben'}
             data-testid="editor-save-template"
             style={{ ...mono, fontSize: 10, padding: '5px 10px', borderRadius: 6, cursor: config.prompt.trim() ? 'pointer' : 'default', border: '1px dashed rgba(232,176,75,.3)', background: 'transparent', color: '#e8b04b', opacity: config.prompt.trim() ? .9 : .4, textAlign: 'left' }}
-          >☆ Als Vorlage speichern</button>
+          >☆ In Einstellungen speichern</button>
         )
       )}
     </div>

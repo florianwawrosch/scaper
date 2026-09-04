@@ -11,8 +11,8 @@ const TEST_CSV = fixture('test_linkfix.csv');
   await fileInput.setInputFiles(TEST_CSV);
   await page.waitForTimeout(1500);
 
-  // Non-LinkedIn CSV shouldn't trigger preset modal; if it does, dismiss with "Ohne Vorlage"
-  const noPreset = page.locator('button:has-text("Ohne Vorlage")');
+  // Non-LinkedIn CSV shouldn't trigger preset modal; if it does, dismiss with "Ohne KI-Spalte"
+  const noPreset = page.locator('button:has-text("Ohne KI-Spalte")');
   if (await noPreset.isVisible({ timeout: 2000 }).catch(() => false)) await noPreset.click();
   await page.waitForTimeout(1500);
 

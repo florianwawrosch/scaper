@@ -22,7 +22,7 @@ export const DEFAULT_FORM: ScrapeFormValues = {
 };
 
 interface Options {
-  /** Instant-Load-Vorlagen an den neuen Datensatz hängen (Startseite kennt die Server-Keys) */
+  /** Instant-Load-KI-Spalten an den neuen Datensatz hängen (Startseite kennt die Server-Keys) */
   autoApplyPresets: (runId: string, source: PresetSource) => Set<string>;
 }
 

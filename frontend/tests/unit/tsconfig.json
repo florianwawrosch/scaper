@@ -22,7 +22,8 @@
     "../../lib/enrichMapping.ts",
     "../../lib/tableQuery.ts",
     "../../lib/enrichPlan.ts",
-    "../../lib/leadKeys.ts"
+    "../../lib/leadKeys.ts",
+    "../../lib/blocklist.ts"
   ],
   "include": []
 }

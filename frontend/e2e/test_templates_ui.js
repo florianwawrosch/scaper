@@ -1,7 +1,7 @@
-// End-to-end: Vorlagen-System — ⚙ "Als Vorlage speichern" mit Instant Load (CSV),
-// Settings-Tab zeigt die eigene Vorlage, neuer CSV-Upload hängt die Spalte
+// End-to-end: KI-Spalten — ⚙ «In Einstellungen speichern» mit Instant Load (CSV),
+// Settings-Tabelle zeigt die eigene KI-Spalte, neuer CSV-Upload hängt sie
 // automatisch an und (autoRun) füllt sie per (gemocktem) /api/ai/analyze aus.
-// Danach: ☆ Vorlage-Menü lädt eine eingebaute Vorlage; Settings löscht die eigene.
+// Danach: «+ KI-Spalte»-Menü lädt eine eingebaute; Settings löscht die eigene.
 const { playwright, login, fixture, shot, ok, BASE_URL, DIR } = require('./helpers');
 const { chromium } = playwright();
 const BASE = BASE_URL;
@@ -46,8 +46,9 @@ fs.writeFileSync(PLAIN_CSV, 'page_name,ad_text,email\nCoach Anna,Ich helfe dir b
   await page.waitForSelector('text=Coach Anna');
   ok(true, 'Upload → Viewer ohne Modal');
 
-  // ── 2) KI-Spalte anlegen, Prompt setzen, als Vorlage mit Instant Load (CSV) + autoRun speichern ──
-  await page.click('button:has-text("KI-Spalte")');
+  // ── 2) KI-Spalte anlegen, Prompt setzen, in den Einstellungen mit Instant Load (CSV) + autoRun speichern ──
+  await page.click('[data-testid="ai-column-menu-btn"]');
+  await page.click('[data-testid="ai-column-new"]');
   await page.waitForSelector('text=Spalte konfigurieren');
   const nameInput = page.locator('input[placeholder="Spaltenname"]');
   await nameInput.fill('ki_coach');
@@ -56,31 +57,33 @@ fs.writeFileSync(PLAIN_CSV, 'page_name,ad_text,email\nCoach Anna,Ich helfe dir b
   await page.click('[data-testid="editor-save-template"]');
   await page.waitForSelector('[data-testid="template-save-form"]');
   const form = page.locator('[data-testid="template-save-form"]');
-  await form.locator('input[placeholder="Vorlagenname"]').fill('Coach-Check');
+  ok((await form.innerText()).includes('ki_coach'), 'Formular zeigt den Spaltennamen als Titel (kein extra Vorlagenname)');
   await form.locator('label:has-text("CSV/Excel-Upload") input').check();
   await form.locator('label:has-text("direkt ausfüllen") input').check();
-  await form.locator('button:has-text("Vorlage speichern")').click();
-  await page.waitForSelector('text=Vorlage «Coach-Check» gespeichert');
+  await form.locator('[data-testid="template-save-confirm"]').click();
+  await page.waitForSelector('text=KI-Spalte «ki_coach» gespeichert');
   const stored = await page.evaluate(() => ({
     presets: JSON.parse(localStorage.getItem('user_presets') || '[]'),
     flags: JSON.parse(localStorage.getItem('preset_flags') || '{}'),
   }));
-  ok(stored.presets.length === 1 && stored.presets[0].name === 'Coach-Check' && stored.presets[0].columns[0].name === 'ki_coach', 'user_presets enthält Coach-Check/ki_coach');
+  ok(stored.presets.length === 1 && stored.presets[0].name === 'ki_coach' && stored.presets[0].columns[0].name === 'ki_coach' && stored.presets[0].columns[0].provider === 'anthropic', 'user_presets enthält ki_coach mit Modell');
+  const cfgSaved = await page.evaluate(() => JSON.parse(localStorage.getItem(`analysis_configs_${location.pathname.split('/csv/')[1]}`))[0]);
+  ok(cfgSaved.presetId === stored.presets[0].id, 'Config merkt sich die Herkunft (presetId)');
   const fid = stored.presets[0].id;
   ok(stored.flags[fid]?.autoAdd?.csv === true && stored.flags[fid]?.autoRun === true, 'preset_flags: autoAdd.csv + autoRun');
 
-  // ── 3) Settings → KI-Vorlagen zeigt die eigene Vorlage mit gesetzten Schaltern ──
+  // ── 3) Settings → KI-Spalten zeigt die eigene KI-Spalte mit gesetzten Schaltern ──
   await page.goto(`${BASE}/settings`, { waitUntil: 'networkidle' });
-  await page.click('text=KI-Vorlagen');
+  await page.click('text=KI-Spalten');
   await page.waitForSelector(`[data-testid="tpl-${fid}"]`);
   ok(await page.locator(`[data-testid="tpl-auto-csv-${fid}"]`).isChecked(), 'Settings: CSV-Instant-Load angehakt');
   ok(await page.locator(`[data-testid="tpl-autorun-${fid}"]`).isChecked(), 'Settings: direkt ausfüllen angehakt');
   ok(!(await page.locator(`[data-testid="tpl-auto-meta-${fid}"]`).isChecked()), 'Settings: Meta nicht angehakt');
-  // Prompt der eigenen Vorlage bearbeiten + speichern
-  const card = page.locator(`[data-testid="tpl-${fid}"]`);
-  await card.locator('textarea').fill('Ist diese Person ein Coach oder Yoga-Lehrer? Antworte ja oder nein.');
-  await card.locator(`[data-testid="tpl-save-${fid}"]`).click();
-  await page.waitForSelector('text=✓ Gespeichert');
+  // Prompt der eigenen KI-Spalte bearbeiten + speichern
+  await page.click(`[data-testid="tpl-edit-${fid}"]`);
+  await page.fill(`[data-testid="tpl-prompt-${fid}"]`, 'Ist diese Person ein Coach oder Yoga-Lehrer? Antworte ja oder nein.');
+  await page.click(`[data-testid="tpl-save-${fid}"]`);
+  await page.waitForSelector(`[data-testid="tpl-saved-${fid}"]`);
   const edited = await page.evaluate(() => JSON.parse(localStorage.getItem('user_presets'))[0].columns[0].prompt);
   ok(edited.includes('Yoga-Lehrer'), 'Settings: Prompt der eigenen Vorlage gespeichert');
   await page.screenshot({ path: shot('tpl_settings.png') });
@@ -101,20 +104,20 @@ fs.writeFileSync(PLAIN_CSV, 'page_name,ad_text,email\nCoach Anna,Ich helfe dir b
   ok(persisted.fields.includes('ki_coach') && persisted.autorunLeft === null, 'Ergebnisse persistiert, Autorun-Flag entfernt');
   await page.screenshot({ path: shot('tpl_autorun.png') });
 
-  // ── 5) ☆ Vorlage-Menü: eingebaute KEEP/DROP laden (ohne ausfüllen) ──
-  await page.click('[data-testid="preset-menu-btn"]');
-  await page.waitForSelector('[data-testid="preset-menu"]');
-  const menuText = await page.locator('[data-testid="preset-menu"]').innerText();
-  ok(menuText.includes('Coach-Check') && menuText.includes('⚡ CSV ▶'), 'Menü zeigt eigene Vorlage mit ⚡ CSV ▶');
+  // ── 5) «+ KI-Spalte»-Menü: eigene ist geladen (gesperrt), eingebaute KEEP/DROP laden (ohne ausfüllen) ──
+  await page.click('[data-testid="ai-column-menu-btn"]');
+  await page.waitForSelector('[data-testid="ai-column-menu"]');
+  const menuText = await page.locator('[data-testid="ai-column-menu"]').innerText();
+  ok(menuText.includes('ki_coach') && menuText.includes('⚡ CSV') && menuText.includes('▶ füllt sofort aus'), 'Menü zeigt eigene KI-Spalte mit ⚡ CSV + ▶');
+  ok((await page.locator(`[data-testid="preset-loaded-${fid}"]`).count()) === 1, 'automatisch geladene KI-Spalte ist im Menü gesperrt');
   await page.screenshot({ path: shot('tpl_menu.png') });
-  const keepRow = page.locator('[data-testid="preset-menu"] div', { hasText: 'KEEP/DROP', has: page.locator('button:has-text("Laden")') }).last();
-  await keepRow.locator('button:has-text("Laden")').click();
+  await page.click('[data-testid="preset-load-keep_drop"]');
   await page.waitForSelector('th:has-text("ki_bewertung")');
   ok(true, 'Vorlage-Menü: ki_bewertung angehängt');
   // Zweiter Lauf persistiert und darf ki_coach NICHT aus der CSV verdrängen
   const before = aiCalls;
-  await page.click('[data-testid="preset-menu-btn"]');
-  await page.click('[data-testid="preset-menu-btn"]'); // schließen
+  await page.click('[data-testid="ai-column-menu-btn"]');
+  await page.click('[data-testid="ai-column-menu-btn"]'); // schließen
   const header = page.locator('th:has-text("ki_bewertung")');
   await header.hover();
   await header.locator('button[title*="nalys"], button:has-text("▶")').first().click();
@@ -138,9 +141,9 @@ fs.writeFileSync(PLAIN_CSV, 'page_name,ad_text,email\nCoach Anna,Ich helfe dir b
   const metaFields = await page.evaluate((id) => JSON.parse(localStorage.getItem(`csv_run_${id}`)).fields, runId);
   ok(metaFields.includes('ki_coach') && metaFields.includes('ki_bewertung'), `meta.fields enthält beide KI-Spalten: ${metaFields.join(',')}`);
 
-  // ── 6) Settings: Vorlage löschen ──
+  // ── 6) Settings: KI-Spalte löschen ──
   await page.goto(`${BASE}/settings`, { waitUntil: 'networkidle' });
-  await page.click('text=KI-Vorlagen');
+  await page.click('text=KI-Spalten');
   await page.waitForSelector(`[data-testid="tpl-${fid}"]`);
   await page.locator(`[data-testid="tpl-${fid}"] [data-testid="tpl-delete-${fid}"]`).click();
   await page.locator(`[data-testid="tpl-${fid}"] button:has-text("Ja")`).click();
@@ -149,10 +152,10 @@ fs.writeFileSync(PLAIN_CSV, 'page_name,ad_text,email\nCoach Anna,Ich helfe dir b
   const after = await page.evaluate(() => ({ p: JSON.parse(localStorage.getItem('user_presets') || '[]').length, f: Object.keys(JSON.parse(localStorage.getItem('preset_flags') || '{}')).length }));
   ok(after.p === 0 && after.f === 0, 'user_presets + preset_flags geleert');
 
-  // ── 7) "+ Neue Vorlage" in Settings ──
+  // ── 7) «+ Neue KI-Spalte» in Settings öffnet den Editor ──
   await page.click('[data-testid="tpl-new"]');
-  await page.waitForSelector('input[placeholder="Vorlagenname"]');
-  ok((await page.evaluate(() => JSON.parse(localStorage.getItem('user_presets')).length)) === 1, 'Settings: Neue Vorlage angelegt');
+  await page.waitForSelector('[data-testid^="tpl-editor-"]');
+  ok((await page.evaluate(() => JSON.parse(localStorage.getItem('user_presets')).length)) === 1, 'Settings: Neue KI-Spalte angelegt');
 
   ok(errors.length === 0, `keine Page/Console-Errors${errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''}`);
   await browser.close();

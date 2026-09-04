@@ -9,7 +9,13 @@ import { linkTarget } from '@/lib/tableQuery';
 import { downloadCsv, downloadXlsx } from '@/lib/tableExport';
 import { mono } from '@/app/theme';
 
-interface AiColumn { name: string; values: string[]; label?: string }
+interface AiColumn {
+  name: string;
+  values: string[];
+  label?: string;
+  /** In der Tabelle ausblenden — bleibt in Suche, Filter und Export enthalten */
+  hidden?: boolean;
+}
 
 /** Auswertungs-Chip über der Tabelle; mit filter wird er zum Ein-Klick-Filter */
 export interface StatChip {
@@ -44,8 +50,6 @@ interface DataTableProps {
   stats?: StatChip[];
   /** Bei Erhöhung scrollt die Tabelle ans rechte Ende (Parent hat eine Spalte angelegt) */
   scrollSignal?: number;
-  /** "+ KI-Spalte" header button: creates a new AI column directly in the table */
-  onAddAiColumn?: () => void;
   /** ⚙ in an AI column header: open the configuration for that column */
   onConfigureAiColumn?: (name: string) => void;
   /** ▶ in an AI column header: run the analysis for that column */
@@ -54,14 +58,14 @@ interface DataTableProps {
   onBlockPages?: (rows: Record<string, unknown>[]) => void;
   /** Weitere Export-Buttons neben ↓ CSV / ↓ XLSX (z.B. Outreach-CSV) */
   exportPresets?: ExportPreset[];
-  /** Zusätzliches Toolbar-Element links von «+ KI-Spalte» (z.B. Vorlagen-Menü) */
+  /** Zusätzliche Toolbar-Elemente vor den Export-Buttons (Abgleich, «+ KI-Spalte»-Menü) */
   toolbarExtra?: React.ReactNode;
 }
 
 
 export function DataTable({
   data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange,
-  stats, scrollSignal = 0, onAddAiColumn, onConfigureAiColumn, onRunAiColumn, onBlockPages,
+  stats, scrollSignal = 0, onConfigureAiColumn, onRunAiColumn, onBlockPages,
   exportPresets = [], toolbarExtra,
 }: DataTableProps) {
   const {
@@ -71,6 +75,9 @@ export function DataTable({
     allColumns, visibleRawColumns, extended, uniqueValues, sorted, paginated,
     chipFilterActive, toggleChipFilter,
   } = useTableState(data, rawColumns, aiColumns);
+  // Angezeigte KI-Spalten; ausgeblendete (z.B. Einzelspalten einer Multi-Output-Antwort)
+  // stecken weiterhin in extended/allColumns und damit in Suche und Export
+  const shownAi = aiColumns.filter(c => !c.hidden);
   const [openFilter,  setOpenFilter]  = useState<{ col: string; rect: DOMRect } | null>(null);
   const [colMenuOpen, setColMenuOpen] = useState(false);
 
@@ -230,17 +237,6 @@ export function DataTable({
           {excludedRows.size > 0 && ` · ${includedCount} ausgewählt`}
         </span>
 
-        {/* Zeilen pro Seite */}
-        <select
-          value={pageSize}
-          onChange={e => setPageSize(Number(e.target.value))}
-          title="Zeilen pro Seite"
-          data-testid="page-size"
-          style={{ ...mono, fontSize: 10, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 4, color: '#9aa7bd', padding: '2px 6px', outline: 'none', cursor: 'pointer' }}
-        >
-          {PAGE_SIZES.map(n => <option key={n} value={n}>{n === 0 ? 'Alle Zeilen' : `${n} / Seite`}</option>)}
-        </select>
-
         {/* Kompakt / Erweitert */}
         <button
           onClick={() => setViewMode(expanded ? 'compact' : 'expanded')}
@@ -298,13 +294,6 @@ export function DataTable({
         </div>
 
         {toolbarExtra}
-        {onAddAiColumn && (
-          <button
-            onClick={onAddAiColumn}
-            title="Neue KI-Spalte anlegen"
-            style={{ ...mono, fontSize: 10, padding: '2px 10px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(232,176,75,.35)', background: 'rgba(232,176,75,.08)', color: '#e8b04b', whiteSpace: 'nowrap' }}
-          ><Glyph>+</Glyph>KI-Spalte</button>
-        )}
         <button
           onClick={exportCsv}
           disabled={sorted.length === 0}
@@ -363,7 +352,7 @@ export function DataTable({
                 );
               })}
               {/* AI columns at the end, in creation order */}
-              {aiColumns.map(col => {
+              {shownAi.map(col => {
                 const hasFilter = colFilters[col.name] && (colFilters[col.name].text || colFilters[col.name].values !== null);
                 return (
                   <th key={col.name} style={{ ...thStyle, color: '#e8b04b', background: 'rgba(232,176,75,.04)', minWidth: 170, borderLeft: '1px dashed rgba(232,176,75,.2)' }}>
@@ -426,7 +415,7 @@ export function DataTable({
                       {renderCell(String(row[col] ?? ''))}
                     </td>
                   ))}
-                  {aiColumns.map(col => {
+                  {shownAi.map(col => {
                     const val = String(row[col.name] ?? '—');
                     const isPlaceholder = isPendingAiValue(val);
                     const isError = isAiError(val);
@@ -451,7 +440,7 @@ export function DataTable({
             })}
             {paginated.length === 0 && (
               <tr>
-                <td colSpan={visibleRawColumns.length + aiColumns.length + (onExcludeChange ? 2 : 1)} style={{ ...mono, padding: '28px', textAlign: 'center', fontSize: 11, color: '#5f6e87' }}>
+                <td colSpan={visibleRawColumns.length + shownAi.length + (onExcludeChange ? 2 : 1)} style={{ ...mono, padding: '28px', textAlign: 'center', fontSize: 11, color: '#5f6e87' }}>
                   Keine Daten
                 </td>
               </tr>
@@ -460,22 +449,36 @@ export function DataTable({
         </table>
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 10px', borderTop: '1px solid rgba(255,255,255,.07)', background: 'rgba(255,255,255,.02)' }}>
-          <span style={{ ...mono, fontSize: 10, color: '#5f6e87' }}>Seite {page} / {totalPages} · {pageStart + 1}–{Math.min(pageStart + paginated.length, sorted.length)} von {sorted.length}</span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {[['←', -1], ['→', 1]].map(([lbl, dir]) => (
+      {/* Paginierung — immer sichtbar, hier sitzt auch die Zeilen-pro-Seite-Auswahl */}
+      <div data-testid="pagination" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 10px', borderTop: '1px solid rgba(255,255,255,.07)', background: 'rgba(255,255,255,.02)' }}>
+        <span style={{ ...mono, fontSize: 10, color: '#5f6e87' }}>
+          {sorted.length === 0 ? 'Keine Zeilen' : `Seite ${page} / ${totalPages} · ${pageStart + 1}–${Math.min(pageStart + paginated.length, sorted.length)} von ${sorted.length}`}
+        </span>
+        <label style={{ ...mono, fontSize: 10, color: '#5f6e87', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          Zeilen pro Seite
+          <select
+            value={pageSize}
+            onChange={e => setPageSize(Number(e.target.value))}
+            data-testid="page-size"
+            style={{ ...mono, fontSize: 10, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 4, color: '#9aa7bd', padding: '2px 6px', outline: 'none', cursor: 'pointer' }}
+          >
+            {PAGE_SIZES.map(n => <option key={n} value={n}>{n === 0 ? 'Alle' : n}</option>)}
+          </select>
+        </label>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[['←', -1], ['→', 1]].map(([lbl, dir]) => {
+            const off = dir === -1 ? page === 1 : page >= totalPages;
+            return (
               <button
                 key={lbl as string}
                 onClick={() => setPage(p => Math.min(totalPages, Math.max(1, p + (dir as number))))}
-                disabled={dir === -1 ? page === 1 : page === totalPages}
-                style={{ ...mono, fontSize: 11, padding: '2px 8px', border: '1px solid rgba(255,255,255,.1)', borderRadius: 4, background: 'none', color: '#9aa7bd', cursor: 'pointer' }}
+                disabled={off}
+                style={{ ...mono, fontSize: 11, padding: '2px 8px', border: '1px solid rgba(255,255,255,.1)', borderRadius: 4, background: 'none', color: '#9aa7bd', cursor: off ? 'default' : 'pointer', opacity: off ? .35 : 1 }}
               >{lbl}</button>
-            ))}
-          </div>
+            );
+          })}
         </div>
-      )}
+      </div>
 
       {/* Filter dropdown portal */}
       {openFilter && (

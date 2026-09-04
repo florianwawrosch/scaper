@@ -24,7 +24,7 @@ export interface AiColumn { name: string; values: string[] }
 /**
  * Datensatz + KI-Spalten eines CSV-Runs: laden, Configs verwalten, Spalten
  * ausführen (Chunking, feld_hash-Cache, Multi-Output-Split, Regeln),
- * Ergebnisse in die CSV persistieren, Autorun, Vorlagen laden/speichern.
+ * Ergebnisse in die CSV persistieren, Autorun, gespeicherte KI-Spalten laden/speichern.
  * Die Seite kümmert sich nur noch um Layout und Interaktion.
  */
 export function useAiColumns(id: string) {
@@ -176,7 +176,7 @@ export function useAiColumns(id: string) {
     persistConfigs(aiConfigs.map(c => {
       if (c.id !== cfgId) return c;
       const next = { ...c, ...patch };
-      // Vorlagen-Version als angepasst markieren, sobald der Prompt abweicht
+      // Prompt-Version als angepasst markieren, sobald der Prompt abweicht
       if (patch.prompt !== undefined && patch.prompt !== c.prompt && c.promptVersion && !c.promptVersion.endsWith('*')) {
         next.promptVersion = `${c.promptVersion}*`;
       }
@@ -305,8 +305,8 @@ export function useAiColumns(id: string) {
     else showToast('Für diese Spalte gibt es keine Konfiguration', 'warning');
   };
 
-  // Autorun («▶ Laden + Analysieren», Instant-Load-Vorlagen mit «direkt
-  // ausfüllen», «▶» im Vorlagen-Menü): der Viewer füllt die vorgemerkten
+  // Autorun («▶ Laden + Analysieren», KI-Spalten mit «direkt ausfüllen» —
+  // beim Import oder aus dem «+ KI-Spalte»-Menü): der Viewer füllt die vorgemerkten
   // Spalten selbst aus, sobald Daten und Configs da sind — nacheinander, damit
   // Provider-Rate-Limits nicht doppelt getroffen werden. Das Flag wird sofort
   // entfernt, damit auch StrictMode-Doppel-Effekte nur einmal starten.
@@ -328,28 +328,32 @@ export function useAiColumns(id: string) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, aiConfigs, id]);
 
-  /** Vorlage in diesen Datensatz laden (Spalten anhängen; autoRun = sofort ausfüllen) */
-  const loadPreset = (preset: ImportPreset, autoRun: boolean) => {
+  /**
+   * Gespeicherte KI-Spalte in diesen Datensatz laden. Ob sie sofort ausgefüllt
+   * wird, entscheidet ihr Schalter «direkt ausfüllen» (autoRun); dieselbe
+   * KI-Spalte lässt sich nicht zweimal laden (applyPresets prüft Herkunft + Name).
+   */
+  const loadPreset = (preset: ImportPreset) => {
     if (!run) return;
     if (providers.length === 0) return showToast('Kein KI-API Key konfiguriert — Einstellungen prüfen', 'warning');
     const provider = providers.includes('anthropic') ? 'anthropic' : providers[0];
-    const { added, autoRun: toRun } = applyPresets(id, [preset], provider, { forceAutoRun: autoRun });
-    if (added.length === 0) return showToast(`Alle Spalten von «${preset.name}» sind schon vorhanden`, 'info');
+    const { added, autoRun: toRun } = applyPresets(id, [preset], provider, { providers });
+    if (added.length === 0) return showToast(`«${preset.name}» ist in diesem Datensatz schon geladen`, 'info');
     setAiConfigs(loadAiConfigs(id)); // löst bei autoRun den Autorun-Effect aus
     setScrollSignal(s => s + 1);
     if (toRun.length === 0) {
-      showToast(`Vorlage «${preset.name}» geladen — ${added.length} ${added.length === 1 ? 'Spalte' : 'Spalten'} angehängt, mit ▶ ausfüllen`, 'success');
+      showToast(`KI-Spalte «${preset.name}» angehängt — mit ▶ ausfüllen`, 'success');
     }
   };
 
-  /** KI-Spalten als wiederverwendbare Vorlage sichern (⚙-Panel oder ☆-Menü) */
-  const saveTemplate = (name: string, flags: PresetFlags, configs: AnalysisConfig[]) => {
-    const withPrompt = configs.filter(c => c.prompt.trim());
-    if (withPrompt.length === 0) return showToast('Keine Spalte mit Prompt zum Speichern', 'warning');
-    const preset = saveUserPreset(presetFromConfigs(name, withPrompt, flags));
+  /** ⚙-Panel: diese KI-Spalte in den Einstellungen speichern — die Config merkt sich die Herkunft */
+  const saveTemplate = (cfg: AnalysisConfig, flags: PresetFlags) => {
+    if (!cfg.prompt.trim()) return showToast('Erst einen Prompt eingeben', 'warning');
+    const preset = saveUserPreset(presetFromConfigs(cfg.name, [cfg], flags));
+    persistConfigs(aiConfigs.map(c => (c.id === cfg.id ? { ...c, presetId: preset.id } : c)));
     const auto = Object.values(flags.autoAdd ?? {}).some(Boolean);
     showToast(
-      `Vorlage «${preset.name}» gespeichert${auto ? ` — wird beim Import automatisch geladen${flags.autoRun ? ' und ausgefüllt' : ''}` : ''} · verwalten unter Einstellungen → KI-Vorlagen`,
+      `KI-Spalte «${preset.name}» gespeichert${auto ? ` — wird beim Import automatisch geladen${flags.autoRun ? ' und ausgefüllt' : ''}` : ''} · Einstellungen → KI-Spalten`,
       'success', 6000,
     );
   };

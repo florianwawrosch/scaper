@@ -11,7 +11,7 @@ const TEST_CSV = fixture('test_linkedin.csv');
   const fileInput = await page.locator('input[type="file"]');
   await fileInput.setInputFiles(TEST_CSV);
   await page.waitForTimeout(1000);
-  await page.locator('button:has-text("Ohne Vorlage")').click();
+  await page.locator('button:has-text("Ohne KI-Spalte")').click();
   await page.waitForTimeout(1500);
 
   // 1. Global search filter

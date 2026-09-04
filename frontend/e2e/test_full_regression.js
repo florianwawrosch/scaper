@@ -43,11 +43,12 @@ const TEST_CSV = fixture('test_linkedin.csv');
 
   const headers = await page.locator('th').allTextContents();
   const hasZielgruppeCol = headers.some(h => h.includes('ki_zielgruppe'));
-  console.log('ki_zielgruppe column exists:', hasZielgruppeCol);
+  console.log('ki_zielgruppe hidden by default (one AI column = one table column):', !hasZielgruppeCol);
+  console.log('ki_klassifizierung column exists:', headers.some(h => h.includes('ki_klassifizierung')));
 
   // Check the derived rule computed correctly: Coach+ja+nein+selbststaendig -> zielgruppe=ja
-  const cellTexts = await page.locator('td').allTextContents();
-  const hasJa = cellTexts.some(t => t.trim() === 'ja');
+  // (rule column is hidden by default; the stat chip shows its distribution)
+  const hasJa = /ki_zielgruppe: 3 ja/.test(bodyText);
   console.log('Derived rule computed "ja" for zielgruppe:', hasJa);
 
   console.log('\nConsole/page errors:', consoleErrors.length);

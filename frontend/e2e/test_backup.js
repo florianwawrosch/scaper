@@ -31,7 +31,7 @@ const fs = require('fs');
   await page.waitForSelector('[data-testid="data-stats"]');
   await page.waitForFunction(() => document.querySelector('[data-testid="data-stats"]')?.textContent?.includes('Datensätze'));
   const statsText = await page.locator('[data-testid="data-stats"]').innerText();
-  ok(/Datensätze\s*1/i.test(statsText) && /Zeilen\s*2/i.test(statsText) && /Eigene Vorlagen\s*1/i.test(statsText), `Bestand: 1 Datensatz, 2 Zeilen, 1 Vorlage`);
+  ok(/Datensätze\s*1/i.test(statsText) && /Zeilen\s*2/i.test(statsText) && /Eigene KI-Spalten\s*1/i.test(statsText), `Bestand: 1 Datensatz, 2 Zeilen, 1 KI-Spalte`);
   await page.screenshot({ path: shot('data_tab.png'), fullPage: true });
 
   // Backup ohne Keys
@@ -40,12 +40,11 @@ const fs = require('fs');
   const backup = JSON.parse(fs.readFileSync(path, 'utf8'));
   ok(backup.app === 'lead-pipeline' && backup.csv[id] && backup.csv[id].includes('Anna'), 'Backup enthält CSV-Text des Datensatzes');
   ok(backup.localStorage[`analysis_configs_${id}`] && backup.localStorage.user_presets && backup.localStorage.presets && backup.localStorage.blocklist, 'Backup enthält Configs, Vorlagen, Suchen, Blockliste');
-  ok(!JSON.stringify(backup.localStorage.appSettings).includes('sk-secret'), 'API-Keys ohne Häkchen NICHT im Backup');
-  // Backup mit Keys
-  await page.click('[data-testid="backup-keys"]');
-  const [dl2] = await Promise.all([page.waitForEvent('download'), page.click('[data-testid="backup-download"]')]);
-  const backup2 = JSON.parse(fs.readFileSync(await dl2.path(), 'utf8'));
-  ok(JSON.stringify(backup2.localStorage.appSettings).includes('sk-secret'), 'mit Häkchen: Keys im Backup');
+  ok(!JSON.stringify(backup.localStorage.appSettings).includes('sk-secret'), 'API-Keys NIE im Backup');
+  ok((await page.locator('[data-testid="backup-keys"]').count()) === 0, 'kein Schalter für Keys im Backup');
+  // Alte Datei mit Keys darf die Browser-Keys beim Einspielen nicht anfassen
+  const backup2 = JSON.parse(JSON.stringify(backup));
+  backup2.localStorage.appSettings = JSON.stringify({ ...JSON.parse(backup.localStorage.appSettings), apiKeys: { anthropic: 'from-file' } });
 
   // Alles löschen
   await page.click('[data-testid="wipe-all"]');
@@ -54,7 +53,7 @@ const fs = require('fs');
   const after = await page.evaluate(() => ({ ls: Object.keys(localStorage).filter(k => k.startsWith('csv_run_') || k === 'user_presets' || k === 'appSettings').length }));
   ok(after.ls === 0, 'localStorage geleert');
 
-  // Wiederherstellen (mit Keys)
+  // Wiederherstellen (Datei enthält Keys — werden ignoriert)
   const restoreFile = `${require('path').dirname(path)}/restore.json`;
   fs.writeFileSync(restoreFile, JSON.stringify(backup2));
   await page.setInputFiles('[data-testid="backup-file"]', restoreFile);
@@ -66,7 +65,7 @@ const fs = require('fs');
     meta: localStorage.getItem(`csv_run_${id}`), presets: localStorage.getItem('user_presets'),
     keys: JSON.parse(localStorage.getItem('appSettings')).apiKeys.anthropic,
   }), id);
-  ok(!!restored.meta && !!restored.presets && restored.keys === 'sk-secret', 'Meta, Vorlagen und Keys wiederhergestellt');
+  ok(!!restored.meta && !!restored.presets && !restored.keys, 'Meta + Vorlagen wiederhergestellt, Keys aus der Datei ignoriert');
   await page.goto(`${BASE_URL}/csv/${id}`, { waitUntil: 'networkidle' });
   await page.waitForSelector('text=Anna');
   ok((await page.textContent('body')).includes('Bob'), 'Datensatz nach Restore im Viewer ladbar (CSV aus IndexedDB)');
