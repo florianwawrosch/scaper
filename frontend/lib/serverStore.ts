@@ -10,16 +10,14 @@ import path from 'path';
 export interface StoreItem { key: string; value: string; updatedAt: string }
 export interface StoreTombstone { key: string; deletedAt: string }
 export interface StoreManifest {
-  /** Kleine Einträge (alles außer CSV-Text) mit Wert */
+  /** Kleine Einträge mit Wert */
   items: StoreItem[];
-  /** CSV-Texte nur als Liste (Key + Stand) — werden einzeln geladen */
-  datasets: { key: string; updatedAt: string }[];
+  /** Große Einträge (CSV-Texte, KI-Cache-Hashes) nur als Liste (Key + Stand) — werden einzeln geladen */
+  large: { key: string; updatedAt: string }[];
   tombstones: StoreTombstone[];
 }
 
-/** CSV-Text-Keys sind groß und werden nicht im Manifest mitgeschickt */
-const CSV_TEXT_PREFIX = 'csv_text_';
-const isCsvTextKey = (key: string) => key.startsWith(CSV_TEXT_PREFIX);
+import { isLargeKey } from './storeKeys';
 
 export interface StoreDriver {
   name: string;
@@ -57,10 +55,10 @@ export function fileDriver(dir: string): StoreDriver {
     name: 'file',
     async manifest() {
       const all = await readAll();
-      const m: StoreManifest = { items: [], datasets: [], tombstones: [] };
+      const m: StoreManifest = { items: [], large: [], tombstones: [] };
       for (const [key, r] of all) {
         if (r.deleted) m.tombstones.push({ key, deletedAt: r.updatedAt });
-        else if (isCsvTextKey(key)) m.datasets.push({ key, updatedAt: r.updatedAt });
+        else if (isLargeKey(key)) m.large.push({ key, updatedAt: r.updatedAt });
         else m.items.push({ key, value: r.value, updatedAt: r.updatedAt });
       }
       return m;
@@ -113,12 +111,12 @@ function postgresDriver(url: string): StoreDriver {
     name: 'postgres',
     async manifest() {
       const sql = await pgSql(url);
-      const rows = await sql`SELECT key, CASE WHEN key LIKE ${CSV_TEXT_PREFIX + '%'} THEN '' ELSE value END AS value, updated_at, deleted FROM lp_store`;
-      const m: StoreManifest = { items: [], datasets: [], tombstones: [] };
+      const rows = await sql`SELECT key, CASE WHEN key LIKE 'csv_text_%' OR key LIKE 'analysis_hashes_%' THEN '' ELSE value END AS value, updated_at, deleted FROM lp_store`;
+      const m: StoreManifest = { items: [], large: [], tombstones: [] };
       for (const r of rows) {
         const key = String(r.key), updatedAt = iso(r.updated_at);
         if (r.deleted) m.tombstones.push({ key, deletedAt: updatedAt });
-        else if (isCsvTextKey(key)) m.datasets.push({ key, updatedAt });
+        else if (isLargeKey(key)) m.large.push({ key, updatedAt });
         else m.items.push({ key, value: String(r.value ?? ''), updatedAt });
       }
       return m;

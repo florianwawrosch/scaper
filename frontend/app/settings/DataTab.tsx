@@ -7,7 +7,6 @@ import { useToast } from '@/app/components/Toast';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { T } from '@/app/theme';
 import { useStoreStatus } from '@/app/components/StoreGate';
-import { hydrate } from '@/lib/store';
 
 const fmtBytes = (n?: number) => n == null ? '—' : n > 1e9 ? `${(n / 1e9).toFixed(2)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1e3)} KB`;
 
@@ -63,7 +62,7 @@ export function DataTab() {
 
   const wipe = async () => {
     await wipeLocalData();
-    showToast('Alle Daten gelöscht — lokal und im gemeinsamen Speicher', 'info');
+    showToast('Alle Daten gelöscht', 'info');
     refresh();
   };
 
@@ -86,34 +85,28 @@ export function DataTab() {
           Deine <em style={{ color: T.gold }}>Daten</em>
         </h1>
         <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
-          Datensätze, KI-Spalten, gespeicherte Suchen und Blockliste liegen im gemeinsamen Speicher — jeder angemeldete
-          Kollege sieht denselben Stand. Der Browser hält nur eine Kopie als Cache; API-Keys bleiben immer nur im Browser.
+          Datensätze, KI-Spalten, gespeicherte Suchen und Blockliste werden auf dem Server gespeichert — jeder angemeldete
+          Kollege sieht denselben Stand. API-Keys bleiben nur im Browser.
         </p>
       </div>
 
-      {/* Gemeinsamer Speicher */}
-      <div data-testid="store-panel" style={{ border: `1px solid ${store.status === 'synced' ? T.tealB : store.status === 'local' ? 'rgba(232,176,75,.35)' : T.lineS}`, borderRadius: 8, padding: '14px 18px', marginBottom: 16, background: T.panel2 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: T.ink, flex: 1 }}>Gemeinsamer Speicher</p>
-          <span style={{ fontFamily: T.mono, fontSize: 10, color: store.status === 'synced' ? T.teal : store.status === 'error' ? '#e8736b' : store.status === 'local' ? T.gold : T.inkD }}>
-            {store.status === 'synced' ? '● verbunden' : store.status === 'syncing' ? '● wird synchronisiert…' : store.status === 'error' ? `● Fehler${store.error ? ` (${store.error})` : ''}` : store.status === 'local' ? '● nicht konfiguriert — nur lokal' : '● …'}
-          </span>
-          <button type="button" onClick={() => { hydrate().then(refresh); }} style={btn(false)}>↻ Jetzt abgleichen</button>
-        </div>
-        {store.status === 'local' ? (
+      {store.status === 'local' && (
+        <div data-testid="store-panel" style={{ border: '1px solid rgba(232,176,75,.35)', borderRadius: 8, padding: '14px 18px', marginBottom: 16, background: T.panel2 }}>
+          <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: T.gold, marginBottom: 6 }}>Keine Datenbank verbunden</p>
           <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkD, lineHeight: 1.6 }}>
-            Ohne Datenbank sieht jeder Browser nur seine eigenen Daten. So verbindest du den gemeinsamen Speicher:
-            in Vercel das Projekt öffnen → <strong>Storage</strong> → <strong>Create Database</strong> → <strong>Neon (Postgres)</strong> →
-            mit dem Projekt verbinden (setzt <code style={{ fontFamily: T.mono }}>DATABASE_URL</code> automatisch) → einmal neu deployen.
-            Die Tabelle legt die App selbst an; beim ersten Laden werden die Daten dieses Browsers hochgeladen.
+            Ohne Datenbank speichert die App nur in diesem Browser — Kollegen sehen deine Datensätze nicht, ein Browser-Wechsel
+            bedeutet leere History. So verbindest du sie (einmalig): in Vercel das Projekt öffnen → <strong>Storage</strong> →
+            <strong> Create Database</strong> → <strong>Neon (Postgres)</strong> → mit dem Projekt verbinden
+            (setzt <code style={{ fontFamily: T.mono }}>DATABASE_URL</code> automatisch) → einmal neu deployen.
+            Die Tabelle legt die App selbst an; die Daten dieses Browsers werden beim ersten Laden übernommen.
           </p>
-        ) : (
-          <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, lineHeight: 1.6 }}>
-            Änderungen werden sofort hochgeladen; beim Öffnen der App und beim Zurückkehren in den Tab wird der Serverstand übernommen.
-            Bei Konflikten gewinnt der Server (zuletzt gespeichert).
-          </p>
-        )}
-      </div>
+        </div>
+      )}
+      {store.status === 'error' && (
+        <div data-testid="store-panel" style={{ border: '1px solid rgba(232,115,107,.35)', borderRadius: 8, padding: '12px 18px', marginBottom: 16, background: T.panel2 }}>
+          <p style={{ fontFamily: T.mono, fontSize: 12, color: '#e8736b' }}>Server nicht erreichbar{store.error ? ` (${store.error})` : ''} — Speichern wird automatisch wiederholt.</p>
+        </div>
+      )}
 
       {/* Bestand */}
       <div data-testid="data-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 24 }}>
@@ -164,9 +157,9 @@ export function DataTab() {
       <div style={{ border: '1px solid rgba(232,115,107,.25)', borderRadius: 8, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ flex: 1 }}>
           <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: '#e8736b' }}>Alle Daten löschen</p>
-          <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, lineHeight: 1.5 }}>Datensätze, KI-Spalten, Suchen, Blockliste — in diesem Browser <strong style={{ color: T.inkD }}>und im gemeinsamen Speicher, also für alle Kollegen</strong> — plus die hier gespeicherten API-Keys. Vorher Backup ziehen.</p>
+          <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, lineHeight: 1.5 }}>Datensätze, KI-Spalten, Suchen, Blockliste — auf dem Server, <strong style={{ color: T.inkD }}>also für alle Kollegen</strong> — plus die in diesem Browser gespeicherten API-Keys. Vorher Backup ziehen.</p>
         </div>
-        <ConfirmDelete label="Alles löschen" title="Alle Daten löschen — auch im gemeinsamen Speicher" question="Wirklich alles löschen — für alle?" testId="wipe-all" onConfirm={wipe} style={{ display: 'flex', alignItems: 'center' }} />
+        <ConfirmDelete label="Alles löschen" title="Alle Daten löschen — für alle Kollegen" question="Wirklich alles löschen — für alle?" testId="wipe-all" onConfirm={wipe} style={{ display: 'flex', alignItems: 'center' }} />
       </div>
     </>
   );

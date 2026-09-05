@@ -7,6 +7,7 @@
 // API-Keys und Anzeige-Einstellungen bleiben bewusst nur im Browser.
 
 import type { StoreManifest } from './serverStore';
+import { isLargeKey } from './storeKeys';
 
 const SHARED_EXACT = ['user_presets', 'preset_flags', 'preset_overrides', 'presets', 'blocklist'];
 const SHARED_PREFIXES = ['csv_run_', 'analysis_configs_', 'analysis_hashes_', 'csv_text_'];
@@ -14,9 +15,12 @@ export const isSharedKey = (key: string) => SHARED_EXACT.includes(key) || SHARED
 
 export type StoreStatus = 'init' | 'local' | 'syncing' | 'synced' | 'error';
 
-const PENDING_KEY   = 'lp_sync_pending';   // { key: 'set' | 'del' }
-const CSV_REMOTE_KEY = 'lp_csv_remote';    // { csv_text_<id>: updatedAt } — Stand auf dem Server
-const CSV_LOCAL_KEY  = 'lp_csv_local';     // { csv_text_<id>: updatedAt } — Stand, den dieses Gerät hat
+const PENDING_KEY   = 'lp_sync_pending';   // { key: { op, v } }
+const REMOTE_KEY    = 'lp_csv_remote';     // { <großer Key>: updatedAt } — Stand auf dem Server
+const LOCAL_KEY     = 'lp_csv_local';      // { <großer Key>: updatedAt } — Stand, den dieses Gerät hat
+/** Größere Werte werden in Teilen hochgeladen (Vercel nimmt ~4,5 MB pro Request) */
+export const PART_SIZE = 2_500_000;
+const PARTS_HEADER = 'parts:';
 export const STORE_EVENT = 'lp-store-updated';
 
 /** Nur im echten Browser synchronisieren (Unit-Tests haben ein window-Shim, aber kein document) */
@@ -75,14 +79,102 @@ export function lsRemove(key: string): void {
 /** CSV-Text (IndexedDB) als geändert/gelöscht vormerken — ruft csvStorage auf */
 export const markCsvText = (id: string, op: 'set' | 'del') => markPending(`csv_text_${id}`, op);
 
-export const csvRemoteStamp = (id: string): string | undefined => readJson<Record<string, string>>(CSV_REMOTE_KEY, {})[`csv_text_${id}`];
-export const csvLocalStamp  = (id: string): string | undefined => readJson<Record<string, string>>(CSV_LOCAL_KEY, {})[`csv_text_${id}`];
-export function setCsvStamps(id: string, updatedAt: string | null) {
-  for (const k of [CSV_REMOTE_KEY, CSV_LOCAL_KEY]) {
+export const remoteStamp = (key: string): string | undefined => readJson<Record<string, string>>(REMOTE_KEY, {})[key];
+export const localStamp  = (key: string): string | undefined => readJson<Record<string, string>>(LOCAL_KEY, {})[key];
+/** Nach Upload/Download: dieses Gerät hat jetzt den Serverstand `updatedAt` (null = gelöscht) */
+export function setStamps(key: string, updatedAt: string | null) {
+  for (const k of [REMOTE_KEY, LOCAL_KEY]) {
     const m = readJson<Record<string, string>>(k, {});
-    if (updatedAt) m[`csv_text_${id}`] = updatedAt; else delete m[`csv_text_${id}`];
+    if (updatedAt) m[key] = updatedAt; else delete m[key];
     writeJson(k, m);
   }
+}
+
+/** Wert in Teile schneiden, wenn er zu groß für einen Request ist (reine Funktion, getestet) */
+export function splitParts(value: string, size = PART_SIZE): { header: string; parts: string[] } | null {
+  if (value.length <= size) return null;
+  const parts: string[] = [];
+  for (let i = 0; i < value.length; i += size) parts.push(value.slice(i, i + size));
+  return { header: `${PARTS_HEADER}${parts.length}`, parts };
+}
+export const partsCount = (value: string): number => (value.startsWith(PARTS_HEADER) ? Number(value.slice(PARTS_HEADER.length)) || 0 : 0);
+
+async function getJson<T>(url: string, timeoutMs = 30000): Promise<T | null> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!res.ok) return null;
+  return res.json() as Promise<T>;
+}
+
+/** Einen (evtl. geteilten) Wert vom Server lesen */
+export async function fetchValue(key: string): Promise<{ value: string; updatedAt: string } | null> {
+  const head = await getJson<{ value: string; updatedAt: string }>(`/api/store?key=${encodeURIComponent(key)}`);
+  if (!head) return null;
+  const n = partsCount(head.value);
+  if (!n) return head;
+  const parts: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const part = await getJson<{ value: string }>(`/api/store?key=${encodeURIComponent(`${key}.p${i}`)}`);
+    if (!part) return null;
+    parts.push(part.value);
+  }
+  return { value: parts.join(''), updatedAt: head.updatedAt };
+}
+
+async function putValue(key: string, value: string): Promise<Response> {
+  return fetch('/api/store', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key, value }) });
+}
+
+/** Teile-Keys, die der Server (laut letztem Stand) für diesen Key hat */
+const knownParts = (key: string): string[] => Object.keys(readJson<Record<string, string>>(REMOTE_KEY, {})).filter(k => k.startsWith(`${key}.p`));
+
+/**
+ * Hochladen — große Werte zuerst in Teilen, dann der Kopf-Eintrag (macht die
+ * Teile gültig). Teile merken wir uns, damit Löschen und ein späterer kleinerer
+ * Upload keine verwaisten Teile zurücklassen.
+ */
+async function uploadValue(key: string, value: string): Promise<Response> {
+  const split = splitParts(value);
+  const before = knownParts(key);
+  if (!split) {
+    const r = await putValue(key, value);
+    if (r.ok) for (const k of before) { await fetch(`/api/store?key=${encodeURIComponent(k)}`, { method: 'DELETE' }).catch(() => {}); setStamps(k, null); }
+    return r;
+  }
+  const now = new Date().toISOString();
+  for (let i = 0; i < split.parts.length; i++) {
+    const partKey = `${key}.p${i}`;
+    const r = await putValue(partKey, split.parts[i]);
+    if (!r.ok) return r;
+    setStamps(partKey, now);
+  }
+  for (const k of before) {
+    const idx = Number(k.slice(`${key}.p`.length));
+    if (idx >= split.parts.length) { await fetch(`/api/store?key=${encodeURIComponent(k)}`, { method: 'DELETE' }).catch(() => {}); setStamps(k, null); }
+  }
+  return putValue(key, split.header);
+}
+
+/** Löschen — inkl. aller Teile, die der Server für diesen Key kennt */
+async function deleteValue(key: string): Promise<Response> {
+  for (const k of knownParts(key)) { await fetch(`/api/store?key=${encodeURIComponent(k)}`, { method: 'DELETE' }).catch(() => {}); setStamps(k, null); }
+  return fetch(`/api/store?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
+}
+
+/**
+ * Großen localStorage-Key (KI-Cache-Hashes) vor dem Lesen auf Serverstand
+ * bringen — sonst würde ▶ nach einem Gerätewechsel alles neu klassifizieren.
+ */
+export async function ensureLocalKey(key: string): Promise<void> {
+  if (!inBrowser() || status === 'local') return;
+  const remote = remoteStamp(key);
+  if (!remote || localStamp(key) === remote) return;
+  if (pending()[key]) return; // eigene, noch nicht hochgeladene Änderung hat Vorrang
+  try {
+    const got = await fetchValue(key);
+    if (!got) return;
+    localStorage.setItem(key, got.value);
+    setStamps(key, got.updatedAt);
+  } catch {}
 }
 
 // ── Packen großer Texte: gzip + base64 (CSV-Texte werden 4–8× kleiner) ──
@@ -135,16 +227,16 @@ function flush(): Promise<void> {
       try {
         let res: Response;
         if (op === 'del') {
-          res = await fetch(`/api/store?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
-          if (res.ok && key.startsWith('csv_text_')) setCsvStamps(key.slice('csv_text_'.length), null);
+          res = await deleteValue(key);
+          if (res.ok && isLargeKey(key)) setStamps(key, null);
         } else {
           const value = await valueFor(key);
           if (value === null) { res = new Response(null, { status: 204 }); }
           else {
-            res = await fetch('/api/store', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key, value }) });
-            if (res.ok && key.startsWith('csv_text_')) {
+            res = await uploadValue(key, value);
+            if (res.ok && isLargeKey(key)) {
               const { updatedAt } = await res.json() as { updatedAt: string };
-              setCsvStamps(key.slice('csv_text_'.length), updatedAt);
+              setStamps(key, updatedAt);
             }
           }
         }
@@ -177,25 +269,29 @@ export interface HydratePlan {
   upload: string[];
   /** Datensatz-IDs, deren CSV-Text nur lokal liegt und hochgeladen werden muss */
   csvUpload: string[];
-  /** csv_text_<id> → updatedAt auf dem Server */
-  csvRemote: Record<string, string>;
+  /** großer Key → updatedAt auf dem Server (CSV-Texte, Hashes, Teile) */
+  remote: Record<string, string>;
 }
 
-/** Reine Merge-Logik (testbar): lokaler Stand + Manifest → was tun */
+/**
+ * Reine Merge-Logik (testbar): lokaler Stand + Manifest → was tun. Kleine Keys:
+ * Server gewinnt, nur-lokale hochladen, Tombstones lokal entfernen. Große Keys
+ * (Hashes, CSV-Texte) werden nur nach Stand verglichen und bei Bedarf einzeln geladen.
+ */
 export function planHydrate(local: Record<string, string>, m: StoreManifest, localCsvIds: string[]): HydratePlan {
   const tomb = new Set(m.tombstones.map(t => t.key));
   const server = new Map(m.items.map(i => [i.key, i.value] as const));
-  const plan: HydratePlan = { setLocal: [], removeLocal: [], upload: [], csvUpload: [], csvRemote: {} };
+  const plan: HydratePlan = { setLocal: [], removeLocal: [], upload: [], csvUpload: [], remote: {} };
+  for (const d of m.large) plan.remote[d.key] = d.updatedAt;
   for (const [key, value] of server) if (local[key] !== value) plan.setLocal.push({ key, value });
   for (const key of Object.keys(local)) {
-    if (server.has(key)) continue;
+    if (server.has(key) || (isLargeKey(key) && plan.remote[key])) continue;
     if (tomb.has(key)) plan.removeLocal.push(key); else plan.upload.push(key);
   }
-  for (const d of m.datasets) plan.csvRemote[d.key] = d.updatedAt;
   const removed = new Set(plan.removeLocal);
   for (const id of localCsvIds) {
     const key = `csv_text_${id}`;
-    if (plan.csvRemote[key] || tomb.has(key) || removed.has(`csv_run_${id}`)) continue;
+    if (plan.remote[key] || tomb.has(key) || removed.has(`csv_run_${id}`)) continue;
     if (local[`csv_run_${id}`] !== undefined || server.has(`csv_run_${id}`)) plan.csvUpload.push(id);
   }
   return plan;
@@ -236,9 +332,10 @@ export async function hydrate(): Promise<StoreStatus> {
         const { deleteCsvTextLocal } = await import('./csvStorage');
         await deleteCsvTextLocal(id).catch(() => {});
         for (const k of [`analysis_configs_${id}`, `analysis_hashes_${id}`]) { try { localStorage.removeItem(k); } catch {} }
+        setStamps(`csv_text_${id}`, null); setStamps(`analysis_hashes_${id}`, null);
       }
     }
-    writeJson(CSV_REMOTE_KEY, plan.csvRemote);
+    writeJson(REMOTE_KEY, plan.remote);
     const p = pending();
     for (const key of plan.upload) p[key] = { op: 'set', v: 0 };
     for (const id of plan.csvUpload) p[`csv_text_${id}`] = { op: 'set', v: 0 };
@@ -261,7 +358,7 @@ export async function wipeSharedStore(): Promise<boolean> {
   if (!inBrowser() || status === 'local') return false;
   try {
     const res = await fetch('/api/store?all=1', { method: 'DELETE' });
-    writeJson(PENDING_KEY, {}); writeJson(CSV_REMOTE_KEY, {}); writeJson(CSV_LOCAL_KEY, {});
+    writeJson(PENDING_KEY, {}); writeJson(REMOTE_KEY, {}); writeJson(LOCAL_KEY, {});
     return res.ok;
   } catch { return false; }
 }

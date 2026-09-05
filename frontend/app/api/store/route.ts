@@ -14,7 +14,7 @@ const driverFor = (req: NextRequest) => getStoreDriver(req.cookies.get('lp_ns')?
 export async function GET(req: NextRequest) {
   const driver = driverFor(req);
   const key = req.nextUrl.searchParams.get('key');
-  if (!driver) return NextResponse.json(key ? { detail: 'Kein gemeinsamer Speicher konfiguriert' } : { configured: false, driver: null, items: [], datasets: [], tombstones: [] }, { status: key ? 503 : 200 });
+  if (!driver) return NextResponse.json(key ? { detail: 'Kein gemeinsamer Speicher konfiguriert' } : { configured: false, driver: null, items: [], large: [], tombstones: [] }, { status: key ? 503 : 200 });
   try {
     if (key) {
       if (!isValidKey(key)) return NextResponse.json({ detail: 'Ungültiger Key' }, { status: 400 });

@@ -6,9 +6,9 @@ import { hydrate, isHydrated, subscribeStore, getStoreStatus, getStoreError, typ
 import { mono } from '@/app/theme';
 
 /**
- * Lädt beim ersten Aufruf den gemeinsamen Speicher (Server) in den lokalen
- * Cache, bevor Seiten rendern — sonst sähe man kurz den alten Stand dieses
- * Geräts. Danach: erneut beim Zurückkehren in den Tab und alle 60 s.
+ * Lädt beim ersten Aufruf die Daten vom Server in den Browser-Cache, bevor
+ * Seiten rendern — sonst sähe man kurz einen alten Stand. Danach: erneut beim
+ * Zurückkehren in den Tab und alle 5 Minuten.
  */
 export function StoreGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -25,43 +25,44 @@ export function StoreGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible' && isHydrated()) void hydrate(); };
     document.addEventListener('visibilitychange', onVisible);
-    const timer = setInterval(() => { if (document.visibilityState === 'visible' && isHydrated()) void hydrate(); }, 60000);
+    const timer = setInterval(() => { if (document.visibilityState === 'visible' && isHydrated()) void hydrate(); }, 300000);
     return () => { document.removeEventListener('visibilitychange', onVisible); clearInterval(timer); };
   }, []);
 
   if (!ready && pathname !== '/login') {
     return (
+      <>
+        <StoreBanner />
       <div data-testid="store-loading" style={{ ...mono, fontSize: 11, color: '#5f6e87', padding: '48px 32px', textAlign: 'center' }}>
-        Gemeinsame Daten werden geladen…
+        Lade…
       </div>
+      </>
     );
   }
-  return <>{children}</>;
+  return <><StoreBanner />{children}</>;
 }
 
-/** Aktueller Sync-Status (für die Kopfzeile / Einstellungen) */
+/** Zustand der Server-Speicherung (nur für Hinweisleiste und Einstellungen → Daten) */
 export function useStoreStatus(): { status: StoreStatus; error: string } {
   const [status, setStatus] = useState<StoreStatus>(() => getStoreStatus());
   useEffect(() => subscribeStore(setStatus), []);
   return { status, error: getStoreError() };
 }
 
-const LABEL: Record<StoreStatus, { text: string; color: string; title: string }> = {
-  init:    { text: '☁ …',       color: '#5f6e87', title: 'Gemeinsamer Speicher wird geladen' },
-  local:   { text: '☁ nur lokal', color: '#e8b04b', title: 'Kein gemeinsamer Speicher konfiguriert — Daten liegen nur in diesem Browser. Einstellungen → Daten zeigt, wie man ihn verbindet.' },
-  syncing: { text: '☁ sync…',   color: '#9aa7bd', title: 'Änderungen werden hochgeladen' },
-  synced:  { text: '☁ geteilt', color: '#4fd1c5', title: 'Gemeinsamer Speicher verbunden — alle Kollegen sehen denselben Stand' },
-  error:   { text: '☁ Fehler',  color: '#e8736b', title: 'Synchronisation fehlgeschlagen — wird automatisch erneut versucht' },
-};
-
-/** Kleine Status-Pille für die Kopfzeile */
-export function StoreStatusPill() {
+/**
+ * Hinweisleiste — erscheint NUR, wenn etwas nicht stimmt: keine Datenbank
+ * verbunden (Daten bleiben in diesem Browser) oder Server nicht erreichbar.
+ * Im Normalbetrieb ist nichts zu sehen.
+ */
+export function StoreBanner() {
   const { status, error } = useStoreStatus();
-  const l = LABEL[status];
+  if (status !== 'local' && status !== 'error') return null;
+  const local = status === 'local';
   return (
-    <span data-testid="store-status" data-status={status} title={status === 'error' && error ? `${l.title} (${error})` : l.title}
-      style={{ ...mono, fontSize: 10, color: l.color, border: `1px solid ${l.color}33`, borderRadius: 10, padding: '2px 8px', whiteSpace: 'nowrap', marginRight: 8 }}>
-      {l.text}
-    </span>
+    <div data-testid="store-banner" data-status={status} style={{ ...mono, fontSize: 11, padding: '6px 32px', textAlign: 'center', color: local ? '#e8b04b' : '#e8736b', background: local ? 'rgba(232,176,75,.08)' : 'rgba(232,115,107,.08)', borderBottom: `1px solid ${local ? 'rgba(232,176,75,.25)' : 'rgba(232,115,107,.25)'}` }}>
+      {local
+        ? 'Keine Datenbank verbunden — Daten werden nur in diesem Browser gespeichert, Kollegen sehen sie nicht. Einrichtung: Einstellungen → Daten.'
+        : `Speichern auf dem Server fehlgeschlagen${error ? ` (${error})` : ''} — wird automatisch erneut versucht.`}
+    </div>
   );
 }

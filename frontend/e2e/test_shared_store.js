@@ -2,14 +2,16 @@
 // Datensätze, KI-Spalten und Blockliste; Löschen auf dem einen verschwindet beim anderen
 const { playwright, login, ok, BASE_URL } = require('./helpers');
 const { chromium } = playwright();
+/** Warten, bis alle vorgemerkten Änderungen dieses Browsers auf dem Server sind */
+const settled = (p) => p.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('lp_sync_pending') || '{}')).length === 0);
 (async () => {
   const browser = await chromium.launch();
   const ctxA = await browser.newContext({ viewport: { width: 1400, height: 900 } });
   const a = await ctxA.newPage();
   const ns = await login(a);
   await a.goto(BASE_URL, { waitUntil: 'networkidle' });
-  await a.waitForSelector('[data-testid="store-status"][data-status="synced"]');
-  ok(true, 'Kopfzeile zeigt «geteilt» (Server verbunden)');
+  await settled(a);
+  ok((await a.locator('[data-testid="store-banner"]').count()) === 0, 'keine Hinweisleiste — Server verbunden, nichts zu sehen');
 
   // Kollege A: Datensatz (Meta + CSV-Text) anlegen, KI-Spalte und Blocklisten-Eintrag speichern
   const id = 'csv_shared_' + Date.now();
@@ -19,8 +21,8 @@ const { chromium } = playwright();
     await new Promise((res, rej) => { req.onupgradeneeded = () => req.result.createObjectStore('files'); req.onsuccess = res; req.onerror = () => rej(req.error); });
     await new Promise((res, rej) => { const tx = req.result.transaction('files', 'readwrite'); tx.objectStore('files').put('page_name,ad_text\nAnna Coach,Abnehmen\nBob Maler,Wände\n', id); tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
   }, id);
-  await a.reload({ waitUntil: 'networkidle' }); // Hydrate lädt nur-lokale Einträge hoch
-  await a.waitForSelector('[data-testid="store-status"][data-status="synced"]');
+  await a.reload({ waitUntil: 'networkidle' }); // Laden schickt nur-lokale Einträge zum Server
+  await settled(a);
   await a.goto(`${BASE_URL}/settings?tab=templates`, { waitUntil: 'networkidle' });
   await a.click('[data-testid="tpl-new"]');
   await a.waitForSelector('[data-testid^="tpl-editor-"]');
@@ -33,7 +35,7 @@ const { chromium } = playwright();
   await a.fill('[data-testid="block-input"]', 'https://www.facebook.com/ads/library/?view_all_page_id=4242424242');
   await a.click('[data-testid="block-add"]');
   await a.waitForSelector('[data-testid="block-row"]');
-  await a.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('lp_sync_pending') || '{}')).length === 0);
+  await settled(a);
 
   // Kollege B: frischer Browser, gleicher Speicher
   const ctxB = await browser.newContext({ viewport: { width: 1400, height: 900 } });
@@ -69,8 +71,7 @@ const { chromium } = playwright();
   // A löscht den Datensatz → bei B weg
   await a.locator('button[title="Eintrag löschen"]').first().click();
   await a.locator('button:has-text("Ja")').click();
-  await a.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('lp_sync_pending') || '{}')).length === 0);
-  await a.waitForSelector('[data-testid="store-status"][data-status="synced"]');
+  await settled(a);
   await b.goto(`${BASE_URL}/runs`, { waitUntil: 'networkidle' });
   await b.waitForFunction(() => !document.body.innerText.includes('kollege-a'));
   ok(true, 'Löschen bei A entfernt den Datensatz auch bei B (Tombstone)');

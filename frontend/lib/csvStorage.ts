@@ -1,7 +1,7 @@
 // CSV-Text je Datensatz: lokal in IndexedDB (schnell, groß), gespiegelt in den
 // gemeinsamen Speicher (lib/store). Lesen holt den Serverstand, wenn er neuer
 // ist als das, was dieses Gerät hat; Schreiben merkt den Upload vor.
-import { markCsvText, csvRemoteStamp, csvLocalStamp, setCsvStamps, unpackText, getStoreStatus } from './store';
+import { markCsvText, remoteStamp, localStamp, setStamps, fetchValue, unpackText, getStoreStatus } from './store';
 
 const DB_NAME = 'scaper_csv';
 const STORE   = 'files';
@@ -72,16 +72,16 @@ export async function saveCsvText(id: string, text: string): Promise<void> {
  * lokal ablegen. Ohne Server oder bei Netzfehler zählt der lokale Stand.
  */
 export async function loadCsvText(id: string): Promise<string | null> {
+  const key = `csv_text_${id}`;
   const local = await loadCsvTextLocal(id).catch(() => null);
-  const remote = csvRemoteStamp(id);
-  if (!remote || getStoreStatus() === 'local' || (local !== null && csvLocalStamp(id) === remote)) return local;
+  const remote = remoteStamp(key);
+  if (!remote || getStoreStatus() === 'local' || (local !== null && localStamp(key) === remote)) return local;
   try {
-    const res = await fetch(`/api/store?key=${encodeURIComponent(`csv_text_${id}`)}`, { signal: AbortSignal.timeout(30000) });
-    if (!res.ok) return local;
-    const { value, updatedAt } = await res.json() as { value: string; updatedAt: string };
-    const text = await unpackText(value);
+    const got = await fetchValue(key);
+    if (!got) return local;
+    const text = await unpackText(got.value);
     await putLocal(id, text).catch(() => {});
-    setCsvStamps(id, updatedAt);
+    setStamps(key, got.updatedAt);
     return text;
   } catch { return local; }
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { loadCsvRun, saveCsvRunColumns } from '@/lib/csvRuns';
-import { lsSet } from '@/lib/store';
+import { lsSet, ensureLocalKey } from '@/lib/store';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
@@ -208,6 +208,7 @@ export function useAiColumns(id: string) {
     const promptHash = shortHash([cfg.provider, cfg.model, cfg.prompt, ...(cfg.inputColumns ?? [])].join('\x1f'));
     const rowHashes = run.data.map(r => rowFingerprint(r, cfg.inputColumns));
     const hashKey = `analysis_hashes_${id}`;
+    await ensureLocalKey(hashKey); // Cache eines Kollegen/anderen Geräts übernehmen — sonst würde alles neu klassifiziert
     let allHashes: Record<string, { promptHash: string; rowHashes: string[] }> = {};
     try { allHashes = JSON.parse(localStorage.getItem(hashKey) ?? '{}'); } catch {}
 

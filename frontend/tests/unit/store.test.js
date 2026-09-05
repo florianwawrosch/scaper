@@ -11,7 +11,7 @@ const manifest = {
     { key: 'csv_run_a', value: '{"filename":"a"}', updatedAt: '2026-01-02T00:00:00Z' },
     { key: 'blocklist', value: '[]', updatedAt: '2026-01-02T00:00:00Z' },
   ],
-  datasets: [{ key: 'csv_text_a', updatedAt: '2026-01-02T00:00:00Z' }],
+  large: [{ key: 'csv_text_a', updatedAt: '2026-01-02T00:00:00Z' }, { key: 'analysis_hashes_a', updatedAt: '2026-01-02T00:00:00Z' }],
   tombstones: [{ key: 'csv_run_deleted', deletedAt: '2026-01-03T00:00:00Z' }, { key: 'csv_text_deleted', deletedAt: '2026-01-03T00:00:00Z' }],
 };
 const local = {
@@ -20,16 +20,22 @@ const local = {
   csv_run_deleted: '{}',            // auf dem Server gelöscht → lokal weg
   csv_run_new: '{"filename":"new"}',// nur lokal → hochladen (inkl. CSV-Text)
   analysis_configs_new: '[]',       // nur lokal → hochladen
+  analysis_hashes_a: '{}',          // groß + auf dem Server → nur nach Stand vergleichen, nicht hochladen
+  analysis_hashes_new: '{}',        // groß + nur lokal → hochladen
 };
 const plan = S.planHydrate(local, manifest, ['a', 'deleted', 'new', 'orphan']);
 ok(plan.setLocal.map(x => x.key).sort().join() === 'csv_run_a,user_presets', `Server gewinnt / Neues vom Server: ${plan.setLocal.map(x => x.key).join(',')}`);
 ok(plan.removeLocal.join() === 'csv_run_deleted', 'Tombstone → lokal entfernen');
-ok(plan.upload.sort().join() === 'analysis_configs_new,csv_run_new', `nur-lokale Keys hochladen: ${plan.upload.join(',')}`);
+ok(plan.upload.sort().join() === 'analysis_configs_new,analysis_hashes_new,csv_run_new', `nur-lokale Keys hochladen (große nur, wenn der Server sie nicht kennt): ${plan.upload.join(',')}`);
 ok(plan.csvUpload.join() === 'new', `CSV-Text nur für nur-lokale Datensätze hochladen (nicht für gelöschte/verwaiste): ${plan.csvUpload.join(',')}`);
-ok(plan.csvRemote['csv_text_a'] === '2026-01-02T00:00:00Z', 'Serverstand der CSV-Texte gemerkt');
+ok(plan.remote['csv_text_a'] === '2026-01-02T00:00:00Z' && plan.remote['analysis_hashes_a'], 'Serverstand großer Keys gemerkt');
+// Teile-Upload
+ok(S.splitParts('abc', 10) === null, 'kleiner Wert → keine Teile');
+const sp = S.splitParts('x'.repeat(25), 10);
+ok(sp.parts.length === 3 && sp.parts.join('') === 'x'.repeat(25) && sp.header === 'parts:3' && S.partsCount(sp.header) === 3 && S.partsCount('gz:abc') === 0, 'großer Wert → 3 Teile + Kopf');
 
 // Erster Start eines leeren Servers: alles Lokale wird hochgeladen, nichts entfernt
-const p2 = S.planHydrate({ csv_run_x: '{}', user_presets: '[]' }, { items: [], datasets: [], tombstones: [] }, ['x']);
+const p2 = S.planHydrate({ csv_run_x: '{}', user_presets: '[]' }, { items: [], large: [], tombstones: [] }, ['x']);
 ok(p2.upload.length === 2 && p2.csvUpload.join() === 'x' && p2.removeLocal.length === 0 && p2.setLocal.length === 0, 'leerer Server → Migration: alles hochladen');
 // Leerer Browser, voller Server: alles übernehmen
 const p3 = S.planHydrate({}, manifest, []);

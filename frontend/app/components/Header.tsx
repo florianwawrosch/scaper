@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { mono } from '@/app/theme';
-import { StoreStatusPill } from './StoreGate';
 
 const NAV = [
   { href: '/',         label: 'Import' },
@@ -62,7 +61,6 @@ export function Header() {
 
         {/* Nav */}
         <nav style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <StoreStatusPill />
           {NAV.map(({ href, label }) => {
             const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
             return (
