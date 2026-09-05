@@ -253,14 +253,14 @@ export function presetFromConfigs(name: string, configs: AnalysisConfig[], extra
   }));
   return {
     id: newPresetId(),
-    name: name.trim() || `Vorlage ${new Date().toLocaleDateString('de-DE')}`,
+    name: name.trim() || `ki_spalte_${new Date().toLocaleDateString('de-DE')}`,
     columns,
     userDefined: true,
     ...extra,
   };
 }
 
-// ── Instant-Load-Flags (für eingebaute UND eigene Vorlagen) ──
+// ── Lade-Schalter (für eingebaute UND eigene KI-Spalten) ──
 const FLAGS_KEY = 'preset_flags';
 type FlagStore = Record<string, PresetFlags>;
 
@@ -290,7 +290,7 @@ export function setPresetFlags(id: string, flags: PresetFlags): void {
   lsSet(FLAGS_KEY, JSON.stringify(all));
 }
 
-/** Alle Vorlagen (eingebaut + eigene) inkl. Prompt-Overrides und Instant-Load-Flags */
+/** Alle KI-Spalten (eingebaut + eigene) inkl. Anpassungen und Lade-Schaltern */
 export function getEffectivePresets(): ImportPreset[] {
   const flags = loadFlags();
   return [...builtinPresets(), ...loadUserPresets()].map(p => {
@@ -299,14 +299,14 @@ export function getEffectivePresets(): ImportPreset[] {
   });
 }
 
-/** Vorlagen, die bei dieser Quelle automatisch geladen werden sollen */
+/** KI-Spalten, die bei dieser Quelle automatisch geladen werden sollen */
 export function presetsForSource(source: PresetSource): ImportPreset[] {
   return getEffectivePresets().filter(p => p.autoAdd?.[source]);
 }
 
 /**
- * Eingabespalten, die die Vorlage voraussetzt, aber im Datensatz fehlen.
- * Leer = anwendbar. Vorlagen ohne inputColumns nutzen alle Spalten und
+ * Eingabespalten, die die KI-Spalte voraussetzt, aber im Datensatz fehlen.
+ * Leer = anwendbar. KI-Spalten ohne inputColumns nutzen alle Spalten und
  * passen immer.
  */
 export function presetMissingInputs(p: ImportPreset, fields: string[]): string[] {
@@ -326,7 +326,7 @@ export function detectPreset(fields: string[]): ImportPreset | null {
 }
 
 /**
- * Provider für neue Vorlagen-Spalten: anthropic bevorzugt (der v5-Prompt ist
+ * Fallback-Anbieter beim Laden: anthropic bevorzugt (der LinkedIn-Prompt ist
  * auf Claude abgestimmt), sonst der erste Provider mit Key (Browser oder Server).
  */
 export function pickPresetProvider(serverKeys: Record<string, boolean> = {}): string {
@@ -393,7 +393,7 @@ function appendAutorunIds(runId: string, ids: string[]): void {
 export interface ApplyResult {
   /** Neu angehängte Configs (Spalten, die es noch nicht gab) */
   added: AnalysisConfig[];
-  /** Vorlagen, deren Spalten schon alle vorhanden waren */
+  /** KI-Spalten, die schon geladen waren */
   skipped: ImportPreset[];
   /** Configs, die der Viewer direkt ausfüllen soll */
   autoRun: AnalysisConfig[];

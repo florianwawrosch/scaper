@@ -18,8 +18,8 @@ export interface StoreManifest {
 }
 
 /** CSV-Text-Keys sind groß und werden nicht im Manifest mitgeschickt */
-export const CSV_TEXT_PREFIX = 'csv_text_';
-export const isCsvTextKey = (key: string) => key.startsWith(CSV_TEXT_PREFIX);
+const CSV_TEXT_PREFIX = 'csv_text_';
+const isCsvTextKey = (key: string) => key.startsWith(CSV_TEXT_PREFIX);
 
 export interface StoreDriver {
   name: string;
@@ -108,7 +108,7 @@ async function pgSql(url: string): Promise<Sql> {
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
 
-export function postgresDriver(url: string): StoreDriver {
+function postgresDriver(url: string): StoreDriver {
   return {
     name: 'postgres',
     async manifest() {

@@ -8,8 +8,8 @@
 
 import type { StoreManifest } from './serverStore';
 
-export const SHARED_EXACT = ['user_presets', 'preset_flags', 'preset_overrides', 'presets', 'blocklist'];
-export const SHARED_PREFIXES = ['csv_run_', 'analysis_configs_', 'analysis_hashes_', 'csv_text_'];
+const SHARED_EXACT = ['user_presets', 'preset_flags', 'preset_overrides', 'presets', 'blocklist'];
+const SHARED_PREFIXES = ['csv_run_', 'analysis_configs_', 'analysis_hashes_', 'csv_text_'];
 export const isSharedKey = (key: string) => SHARED_EXACT.includes(key) || SHARED_PREFIXES.some(p => key.startsWith(p));
 
 export type StoreStatus = 'init' | 'local' | 'syncing' | 'synced' | 'error';
@@ -87,7 +87,7 @@ export function setCsvStamps(id: string, updatedAt: string | null) {
 
 // ── Packen großer Texte: gzip + base64 (CSV-Texte werden 4–8× kleiner) ──
 const GZ = 'gz:';
-export async function packText(text: string): Promise<string> {
+async function packText(text: string): Promise<string> {
   if (typeof CompressionStream === 'undefined') return text;
   const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
   const buf = new Uint8Array(await new Response(stream).arrayBuffer());
@@ -121,7 +121,7 @@ async function valueFor(key: string): Promise<string | null> {
 }
 
 /** Alle vorgemerkten Änderungen zum Server schicken (seriell; bei Fehler später erneut) */
-export function flush(): Promise<void> {
+function flush(): Promise<void> {
   if (flushing) return flushing;
   flushing = (async () => {
     if (!inBrowser() || status === 'local') return;

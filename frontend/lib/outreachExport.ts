@@ -48,7 +48,7 @@ const CONTEXT_COLUMNS: [source: string, target: string][] = [
 const str = (v: unknown) => (v == null ? '' : String(v)).trim();
 
 /** Erste vorhandene Spalte aus einer Kandidatenliste (case-insensitiv). */
-export function findColumn(fields: string[], candidates: string[]): string | null {
+function findColumn(fields: string[], candidates: string[]): string | null {
   const lower = new Map(fields.map(f => [f.toLowerCase(), f]));
   for (const c of candidates) { const hit = lower.get(c); if (hit) return hit; }
   return null;

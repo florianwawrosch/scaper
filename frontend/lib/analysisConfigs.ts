@@ -25,7 +25,7 @@ export function saveAiConfigs(id: string, configs: AnalysisConfig[]): void {
  * First derived rule whose column actually exists in the dataset —
  * the "Zielgruppe" switch pages use to filter classified rows.
  */
-export function findDerivedRule(configs: AnalysisConfig[], fields: string[]): DerivedRule | null {
+function findDerivedRule(configs: AnalysisConfig[], fields: string[]): DerivedRule | null {
   for (const cfg of configs) {
     const rule = cfg.derived?.find(d => fields.includes(d.name));
     if (rule) return rule;

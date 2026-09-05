@@ -14,7 +14,7 @@ export interface BackupFile {
   app: 'lead-pipeline';
   version: 1;
   createdAt: string;
-  /** localStorage-Einträge (Metadaten, Configs, Vorlagen, …) */
+  /** localStorage-Einträge (Metadaten, Configs, KI-Spalten, …) */
   localStorage: Record<string, string>;
   /** CSV-Text je Datensatz-ID (IndexedDB) */
   csv: Record<string, string>;
