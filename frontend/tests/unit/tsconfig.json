@@ -23,7 +23,9 @@
     "../../lib/tableQuery.ts",
     "../../lib/enrichPlan.ts",
     "../../lib/leadKeys.ts",
-    "../../lib/blocklist.ts"
+    "../../lib/blocklist.ts",
+    "../../lib/store.ts",
+    "../../lib/serverStore.ts"
   ],
   "include": []
 }

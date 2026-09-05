@@ -1,0 +1,42 @@
+// Unit-Test lib/serverStore: Datei-Treiber (Manifest, get/set/del/Tombstone/wipe), Treiberwahl, Key-Prüfung
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { ok, lib } = require('./setup');
+const S = lib('serverStore');
+(async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lp-store-'));
+  const d = S.fileDriver(dir);
+  ok((await d.manifest()).items.length === 0, 'leer am Anfang');
+  const t1 = await d.set('user_presets', '[1]');
+  await d.set('csv_run_a', '{"f":1}');
+  await d.set('csv_text_a', 'gz:abc');
+  ok(typeof t1 === 'string' && !Number.isNaN(Date.parse(t1)), 'set liefert Zeitstempel');
+  let m = await d.manifest();
+  ok(m.items.map(i => i.key).sort().join() === 'csv_run_a,user_presets', 'Manifest: kleine Einträge mit Wert');
+  ok(m.datasets.length === 1 && m.datasets[0].key === 'csv_text_a' && !('value' in m.datasets[0]), 'Manifest: CSV-Text nur als Liste');
+  ok((await d.get('csv_text_a')).value === 'gz:abc', 'get liefert CSV-Text');
+  ok((await d.get('nix')) === null, 'get unbekannt → null');
+  await d.set('user_presets', '[2]');
+  ok((await d.get('user_presets')).value === '[2]', 'set überschreibt');
+  await d.del('csv_run_a');
+  m = await d.manifest();
+  ok(!m.items.some(i => i.key === 'csv_run_a') && m.tombstones.some(t => t.key === 'csv_run_a'), 'del → Tombstone statt Eintrag');
+  ok((await d.get('csv_run_a')) === null, 'gelöschter Key liest sich als null');
+  await d.set('csv_run_a', '{"f":2}');
+  ok((await d.get('csv_run_a')).value === '{"f":2}' && !(await d.manifest()).tombstones.some(t => t.key === 'csv_run_a'), 'erneutes set hebt Tombstone auf');
+  await d.wipe();
+  ok((await d.manifest()).items.length === 0 && (await d.manifest()).tombstones.length === 0, 'wipe leert alles');
+  ok(S.isValidKey('csv_run_csv_123') && S.isValidKey('user_presets') && !S.isValidKey('a/b') && !S.isValidKey('') && !S.isValidKey('x'.repeat(201)), 'Key-Prüfung');
+  // Treiberwahl
+  delete process.env.DATABASE_URL; delete process.env.POSTGRES_URL;
+  process.env.LP_STORE_DIR = dir;
+  ok(S.getStoreDriver().name === 'file' && S.getStoreDriver('abc').name === 'file', 'ohne DATABASE_URL: Datei-Treiber (mit Namensraum)');
+  process.env.DATABASE_URL = 'postgres://x';
+  ok(S.getStoreDriver().name === 'postgres', 'mit DATABASE_URL: Postgres');
+  delete process.env.DATABASE_URL; delete process.env.LP_STORE_DIR;
+  const prevEnv = process.env.NODE_ENV; process.env.NODE_ENV = 'production';
+  ok(S.getStoreDriver() === null, 'Produktion ohne Datenbank: kein Treiber (App bleibt lokal)');
+  process.env.NODE_ENV = prevEnv;
+  fs.rmSync(dir, { recursive: true, force: true });
+})().catch(e => { console.error('❌', e.message); process.exitCode = 1; });

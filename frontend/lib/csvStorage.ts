@@ -1,3 +1,8 @@
+// CSV-Text je Datensatz: lokal in IndexedDB (schnell, groß), gespiegelt in den
+// gemeinsamen Speicher (lib/store). Lesen holt den Serverstand, wenn er neuer
+// ist als das, was dieses Gerät hat; Schreiben merkt den Upload vor.
+import { markCsvText, csvRemoteStamp, csvLocalStamp, setCsvStamps, unpackText, getStoreStatus } from './store';
+
 const DB_NAME = 'scaper_csv';
 const STORE   = 'files';
 const DB_VER  = 1;
@@ -22,32 +27,66 @@ function openDb(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-export async function saveCsvText(id: string, text: string): Promise<void> {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx  = db.transaction(STORE, 'readwrite');
-    const req = tx.objectStore(STORE).put(text, id);
+function putLocal(id: string, text: string): Promise<void> {
+  return openDb().then(db => new Promise((resolve, reject) => {
+    const req = db.transaction(STORE, 'readwrite').objectStore(STORE).put(text, id);
     req.onsuccess = () => resolve();
     req.onerror   = () => reject(req.error);
-  });
+  }));
 }
 
-export async function loadCsvText(id: string): Promise<string | null> {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx  = db.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).get(id);
+/** Nur der lokale Stand (IndexedDB), ohne Server */
+export function loadCsvTextLocal(id: string): Promise<string | null> {
+  return openDb().then(db => new Promise((resolve, reject) => {
+    const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(id);
     req.onsuccess = () => resolve(req.result ?? null);
     req.onerror   = () => reject(req.error);
-  });
+  }));
+}
+
+export function deleteCsvTextLocal(id: string): Promise<void> {
+  return openDb().then(db => new Promise((resolve, reject) => {
+    const req = db.transaction(STORE, 'readwrite').objectStore(STORE).delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror   = () => reject(req.error);
+  }));
+}
+
+/** IDs aller lokal gespeicherten CSV-Texte */
+export function localCsvIds(): Promise<string[]> {
+  return openDb().then(db => new Promise<string[]>((resolve, reject) => {
+    const req = db.transaction(STORE, 'readonly').objectStore(STORE).getAllKeys();
+    req.onsuccess = () => resolve((req.result as IDBValidKey[]).map(String));
+    req.onerror   = () => reject(req.error);
+  })).catch(() => []);
+}
+
+export async function saveCsvText(id: string, text: string): Promise<void> {
+  await putLocal(id, text);
+  markCsvText(id, 'set');
+}
+
+/**
+ * CSV-Text lesen: lokal, außer der Server hat einen neueren Stand (anderes
+ * Gerät hat geschrieben) oder lokal fehlt er — dann vom Server holen und
+ * lokal ablegen. Ohne Server oder bei Netzfehler zählt der lokale Stand.
+ */
+export async function loadCsvText(id: string): Promise<string | null> {
+  const local = await loadCsvTextLocal(id).catch(() => null);
+  const remote = csvRemoteStamp(id);
+  if (!remote || getStoreStatus() === 'local' || (local !== null && csvLocalStamp(id) === remote)) return local;
+  try {
+    const res = await fetch(`/api/store?key=${encodeURIComponent(`csv_text_${id}`)}`, { signal: AbortSignal.timeout(30000) });
+    if (!res.ok) return local;
+    const { value, updatedAt } = await res.json() as { value: string; updatedAt: string };
+    const text = await unpackText(value);
+    await putLocal(id, text).catch(() => {});
+    setCsvStamps(id, updatedAt);
+    return text;
+  } catch { return local; }
 }
 
 export async function deleteCsvText(id: string): Promise<void> {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx  = db.transaction(STORE, 'readwrite');
-    const req = tx.objectStore(STORE).delete(id);
-    req.onsuccess = () => resolve();
-    req.onerror   = () => reject(req.error);
-  });
+  await deleteCsvTextLocal(id).catch(() => {});
+  markCsvText(id, 'del');
 }

@@ -9,6 +9,7 @@ import { defaultModel, modelsFor } from '@/lib/ai';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { AI_PROVIDERS } from '@/lib/ai';
 import { loadSettings } from '@/lib/settings';
+import { lsSet } from '@/lib/store';
 
 /** Import-Quelle, bei der eine KI-Spalte automatisch geladen werden kann */
 export type PresetSource = 'csv' | 'meta';
@@ -137,13 +138,13 @@ function loadOverrides(): OverrideStore {
 export function savePromptOverride(presetId: string, columnName: string, o: PromptOverride): void {
   const all = loadOverrides();
   all[presetId] = { ...all[presetId], [columnName]: o };
-  try { localStorage.setItem(OVERRIDES_KEY, JSON.stringify(all)); } catch {}
+  lsSet(OVERRIDES_KEY, JSON.stringify(all));
 }
 
 export function resetPresetOverrides(presetId: string): void {
   const all = loadOverrides();
   delete all[presetId];
-  try { localStorage.setItem(OVERRIDES_KEY, JSON.stringify(all)); } catch {}
+  lsSet(OVERRIDES_KEY, JSON.stringify(all));
 }
 
 export function hasOverride(presetId: string): boolean {
@@ -200,7 +201,7 @@ export function loadUserPresets(): ImportPreset[] {
       });
     }
     list = next.filter(p => p.columns.length > 0);
-    try { localStorage.setItem(FLAGS_KEY, JSON.stringify(flags)); } catch {}
+    lsSet(FLAGS_KEY, JSON.stringify(flags));
     changed = true;
   }
   // Migration 2: KI-Spalten ohne konkretes Modell bekommen den ersten Anbieter mit Key
@@ -216,7 +217,7 @@ export function loadUserPresets(): ImportPreset[] {
 function writeUserPresets(list: ImportPreset[]): void {
   // Flags leben separat (preset_flags), damit ein Preset-Objekt schlank bleibt
   const slim = list.map(p => ({ id: p.id, name: p.name, description: p.description, columns: p.columns, userDefined: true }));
-  try { localStorage.setItem(USER_PRESETS_KEY, JSON.stringify(slim)); } catch {}
+  lsSet(USER_PRESETS_KEY, JSON.stringify(slim));
 }
 
 /** KI-Spalte anlegen oder (gleiche id) überschreiben */
@@ -236,7 +237,7 @@ export function deleteUserPreset(id: string): void {
   writeUserPresets(loadUserPresets().filter(p => p.id !== id));
   const flags = loadFlags();
   delete flags[id];
-  try { localStorage.setItem(FLAGS_KEY, JSON.stringify(flags)); } catch {}
+  lsSet(FLAGS_KEY, JSON.stringify(flags));
 }
 
 /** Eindeutige Preset-ID (Zeitstempel + Zufall, damit auch schnelle Doppel-Saves nicht kollidieren) */
@@ -286,7 +287,7 @@ export function setPresetFlags(id: string, flags: PresetFlags): void {
   if (Object.keys(autoAdd).length) merged.autoAdd = autoAdd;
   if (flags.autoRun) merged.autoRun = true;
   if (Object.keys(merged).length) all[id] = merged; else delete all[id];
-  try { localStorage.setItem(FLAGS_KEY, JSON.stringify(all)); } catch {}
+  lsSet(FLAGS_KEY, JSON.stringify(all));
 }
 
 /** Alle Vorlagen (eingebaut + eigene) inkl. Prompt-Overrides und Instant-Load-Flags */

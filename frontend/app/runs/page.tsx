@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { deleteCsvText } from '@/lib/csvStorage';
+import { deleteCsvRun } from '@/lib/csvRuns';
+import { STORE_EVENT } from '@/lib/store';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { T } from '@/app/theme';
 
@@ -31,7 +32,7 @@ function summarizeConfig(c: Record<string, unknown> | undefined): string {
   return parts.join(' · ');
 }
 
-/** Alle Datensätze aus localStorage (Scrapes + CSV-Importe), neueste zuerst */
+/** Alle Datensätze aus dem lokalen Cache des gemeinsamen Speichers (Scrapes + CSV-Importe), neueste zuerst */
 function loadLocalRuns(): LocalRun[] {
   const items: LocalRun[] = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -61,16 +62,18 @@ export default function RunsList() {
   const PAGE_SIZE = 25;
 
   const deleteLocal = async (id: string) => {
-    try { localStorage.removeItem(`csv_run_${id}`); await deleteCsvText(id); } catch {}
+    try { await deleteCsvRun(id); } catch {}
     setRuns(prev => prev.filter(x => x.id !== id));
   };
 
   useEffect(() => {
     // localStorage gibt es erst im Browser: ein lazy useState würde beim
     // SSR-Prerender leer rendern und beim Hydrate springen — daher Effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRuns(loadLocalRuns());
-    setLoading(false);
+    // Der gemeinsame Speicher (andere Geräte/Kollegen) löst ein erneutes Lesen aus.
+    const read = () => { setRuns(loadLocalRuns()); setLoading(false); };
+    read();
+    window.addEventListener(STORE_EVENT, read);
+    return () => window.removeEventListener(STORE_EVENT, read);
   }, []);
 
   const filtered   = filter === 'all' ? runs : runs.filter(r => (filter === 'scrape') === r.isScrape);

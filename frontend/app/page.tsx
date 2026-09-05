@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { deleteCsvText } from '@/lib/csvStorage';
+
 import { loadSavedSearches, saveSavedSearch, deleteSavedSearch, type SavedSearch } from '@/lib/savedSearches';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist } from '@/lib/blocklist';
+import { deleteCsvRun } from '@/lib/csvRuns';
+import { STORE_EVENT } from '@/lib/store';
 import { presetsForSource, applyPresets, pickPresetProvider, availableProviders, type PresetSource } from '@/lib/aiTemplates';
 import { useCsvImport } from '@/app/hooks/useCsvImport';
 import { useScrapeForm, DEFAULT_FORM } from '@/app/hooks/useScrapeForm';
@@ -83,30 +85,34 @@ export default function Home() {
     // Local history renders instantly — no waiting for any network call.
     // localStorage gibt es erst im Browser: ein lazy useState würde beim
     // SSR-Prerender leer rendern und beim Hydrate springen — daher Effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPresets(loadSavedSearches());
-    const csvItems: {id:string;filename:string;createdAt:string;rowCount:number}[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('csv_run_csv_')) {
-        try {
-          const val = JSON.parse(localStorage.getItem(key)!);
-          const csvId = key.replace('csv_run_', '');
-          csvItems.push({ id: csvId, filename: val.filename, createdAt: val.createdAt, rowCount: val.rowCount ?? val.data?.length ?? 0 });
-        } catch {}
+    // Der gemeinsame Speicher (andere Geräte/Kollegen) löst ein erneutes Lesen aus.
+    const readLocal = () => {
+      setPresets(loadSavedSearches());
+      const csvItems: {id:string;filename:string;createdAt:string;rowCount:number}[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('csv_run_csv_')) {
+          try {
+            const val = JSON.parse(localStorage.getItem(key)!);
+            const csvId = key.replace('csv_run_', '');
+            csvItems.push({ id: csvId, filename: val.filename, createdAt: val.createdAt, rowCount: val.rowCount ?? val.data?.length ?? 0 });
+          } catch {}
+        }
       }
-    }
-    csvItems.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    setCsvRuns(csvItems);
-    setBlockCount(loadBlocklist().length);
+      csvItems.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      setCsvRuns(csvItems);
+      setBlockCount(loadBlocklist().length);
+    };
+    readLocal();
+    window.addEventListener(STORE_EVENT, readLocal);
 
     fetchKeyAvailability().then(setBackendKeys);
+    return () => window.removeEventListener(STORE_EVENT, readLocal);
   }, []);
 
   const deleteCsvImport = async (csvId: string) => {
     try {
-      localStorage.removeItem(`csv_run_${csvId}`);
-      await deleteCsvText(csvId);
+      await deleteCsvRun(csvId);
       setCsvRuns(prev => prev.filter(c => c.id !== csvId));
       showToast('Import gelöscht', 'success');
     } catch {

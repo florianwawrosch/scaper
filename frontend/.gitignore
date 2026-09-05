@@ -44,3 +44,4 @@ next-env.d.ts
 /e2e/.shots/
 /e2e/fixtures/plain_test.csv
 /tests/unit/.out/
+/.data/

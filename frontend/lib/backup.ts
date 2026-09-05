@@ -1,4 +1,5 @@
 import { loadCsvText, saveCsvText, deleteCsvText } from './csvStorage';
+import { lsSet, wipeSharedStore, isSharedKey } from './store';
 
 /**
  * Backup & Wiederherstellung aller lokalen Daten: Datensätze (Meta in
@@ -121,7 +122,7 @@ export async function restoreBackup(b: BackupFile, opts: { overwrite: boolean })
       continue;
     }
     if (!opts.overwrite && localStorage.getItem(k) !== null) { if (isDataset) skipped++; continue; }
-    localStorage.setItem(k, v);
+    if (isSharedKey(k)) lsSet(k, v); else localStorage.setItem(k, v);
     entries++;
     if (isDataset) {
       const id = k.slice(DATASET_PREFIX.length);
@@ -133,8 +134,12 @@ export async function restoreBackup(b: BackupFile, opts: { overwrite: boolean })
   return { datasets, skipped, entries };
 }
 
-/** Alles Lokale löschen — Datensätze, Configs, Vorlagen, Suchen, Blockliste, Einstellungen (inkl. Keys) */
+/**
+ * Alles löschen — Datensätze, Configs, KI-Spalten, Suchen, Blockliste, Einstellungen
+ * (inkl. Keys) in diesem Browser UND im gemeinsamen Speicher (für alle Kollegen).
+ */
 export async function wipeLocalData(): Promise<void> {
+  await wipeSharedStore();
   for (const id of datasetIds()) { try { await deleteCsvText(id); } catch {} }
-  for (const k of [...ownKeys(), SETTINGS_KEY]) localStorage.removeItem(k);
+  for (const k of [...ownKeys(), SETTINGS_KEY, 'lp_sync_pending', 'lp_csv_remote', 'lp_csv_local']) localStorage.removeItem(k);
 }

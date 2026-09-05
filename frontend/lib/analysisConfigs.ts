@@ -1,5 +1,6 @@
 import type { AnalysisConfig } from '@/lib/ai';
 import type { DerivedRule } from '@/lib/ai';
+import { lsSet } from '@/lib/store';
 
 /**
  * Single owner of the per-dataset AI-column config store
@@ -17,7 +18,7 @@ export function loadAiConfigs(id: string): AnalysisConfig[] {
 }
 
 export function saveAiConfigs(id: string, configs: AnalysisConfig[]): void {
-  try { localStorage.setItem(key(id), JSON.stringify(configs)); } catch {}
+  lsSet(key(id), JSON.stringify(configs));
 }
 
 /**

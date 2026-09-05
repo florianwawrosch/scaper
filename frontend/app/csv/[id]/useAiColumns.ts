@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { loadCsvRun, saveCsvRunColumns } from '@/lib/csvRuns';
+import { lsSet } from '@/lib/store';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
@@ -216,7 +217,7 @@ export function useAiColumns(id: string) {
       for (const [n, v] of Object.entries(derived)) upsertAiColumn(n, v);
       await persistColumnsToCsv({ [cfg.name]: merged, ...(lastSplit ?? {}), ...derived });
       allHashes[cfg.id] = { promptHash, rowHashes };
-      try { localStorage.setItem(hashKey, JSON.stringify(allHashes)); } catch {}
+      lsSet(hashKey, JSON.stringify(allHashes));
       return derived;
     };
 

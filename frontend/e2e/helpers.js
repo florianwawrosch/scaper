@@ -15,12 +15,19 @@ function playwright() {
   catch { return require('/opt/node22/lib/node_modules/playwright'); }
 }
 
-/** Loggt den Browser-Kontext über das echte /api/auth ein */
-async function login(page) {
+/**
+ * Loggt den Browser-Kontext über das echte /api/auth ein und gibt ihm einen
+ * eigenen Namensraum im gemeinsamen Speicher (Datei-Treiber der Entwicklung),
+ * damit Testläufe sich nicht gegenseitig Daten unterschieben. Zwei Kontexte
+ * mit demselben `ns` teilen sich den Speicher (Kollegen-Szenario).
+ */
+async function login(page, ns = 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)) {
   const r = await page.request.post(`${BASE_URL}/api/auth`, {
     data: { username: process.env.APP_USER || 'florian', password: process.env.APP_PASSWORD || 'testpass123' },
   });
   if (!r.ok()) throw new Error(`login failed HTTP ${r.status()}: ${await r.text()} — APP_USER/APP_PASSWORD passend zu .env.local setzen`);
+  await page.context().addCookies([{ name: 'lp_ns', value: ns, url: BASE_URL }]);
+  return ns;
 }
 
 const fixture = (name) => path.join(DIR, 'fixtures', name);

@@ -1,5 +1,6 @@
 import Papa from 'papaparse';
-import { loadCsvText, saveCsvText } from './csvStorage';
+import { loadCsvText, saveCsvText, deleteCsvText } from './csvStorage';
+import { lsSet, lsRemove } from './store';
 
 export interface CsvRunMeta {
   fields: string[];
@@ -19,7 +20,8 @@ export interface LoadedCsvRun {
 
 /**
  * Neuen Datensatz anlegen (Scrape-Ergebnis oder Import): CSV-Text nach
- * IndexedDB, Meta nach localStorage. Liefert die Run-ID für /csv/<id>.
+ * IndexedDB, Meta nach localStorage — beides in den gemeinsamen Speicher
+ * gespiegelt. Liefert die Run-ID für /csv/<id>.
  */
 export async function createCsvRun(input: {
   filename: string;
@@ -37,7 +39,7 @@ export async function createCsvRun(input: {
     rowCount: input.rowCount,
     ...(input.scrapeConfig && { scrapeConfig: input.scrapeConfig }),
   };
-  localStorage.setItem(`csv_run_${id}`, JSON.stringify(meta));
+  lsSet(`csv_run_${id}`, JSON.stringify(meta));
   return id;
 }
 
@@ -92,7 +94,15 @@ export async function saveCsvRunColumns(
     delete m.data; delete m.csv;
     const fields = [...m.fields];
     for (const n of Object.keys(cols)) if (!fields.includes(n)) fields.push(n);
-    localStorage.setItem(`csv_run_${id}`, JSON.stringify({ ...m, fields, rowCount: merged.length }));
+    lsSet(`csv_run_${id}`, JSON.stringify({ ...m, fields, rowCount: merged.length }));
   }
   return merged;
+}
+
+/** Datensatz komplett löschen (Meta, CSV-Text, KI-Configs, Cache) — lokal und im gemeinsamen Speicher */
+export async function deleteCsvRun(id: string): Promise<void> {
+  lsRemove(`csv_run_${id}`);
+  lsRemove(`analysis_configs_${id}`);
+  lsRemove(`analysis_hashes_${id}`);
+  await deleteCsvText(id);
 }

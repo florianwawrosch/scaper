@@ -24,6 +24,7 @@ definiert alle akzeptierten Namen). Aktuell verwendete Namen:
 | FindyMail | `FINDYMAIL_API_KEY` |
 | Hunter.io | `HUNTER_IO_API_KEY` |
 | App-Login | `APP_USER` + `APP_PASSWORD` — **Pflicht**, ohne beide ist die App gesperrt (siehe unten) |
+| Gemeinsamer Speicher | `DATABASE_URL` (Postgres, z.B. Neon über Vercel → Storage) — ohne sie sieht jeder Browser nur seine eigenen Daten (siehe unten) |
 | Login-Alarm per Mail | `LOGIN_ALERT_TO` + `RESEND_API_KEY` (optional `LOGIN_ALERT_FROM`) — oder `LOGIN_ALERT_WEBHOOK` |
 
 Nach dem Anlegen/Ändern einer Variable: einmal **Redeploy** — Vercel übernimmt
@@ -75,6 +76,31 @@ Logik: `frontend/lib/loginNotify.ts`.
 
 Lokal (`npm run dev`) gilt dasselbe über `frontend/.env.local`.
 
+## Gemeinsamer Speicher — ein Stand für alle Kollegen
+
+Datensätze (Meta + CSV-Text), KI-Spalten-Konfigurationen und -Caches,
+gespeicherte KI-Spalten, gespeicherte Suchen und die Blockliste liegen in
+einem Key-Value-Store auf dem Server (`frontend/lib/serverStore.ts`,
+Route `/api/store`). Jeder Browser hält nur eine Kopie als Cache
+(localStorage + IndexedDB): beim Öffnen der App und beim Zurückkehren in den
+Tab wird der Serverstand eingespielt, jede Änderung sofort hochgeladen
+(`frontend/lib/store.ts`). Bei Konflikten gewinnt der Server; Löschungen
+bleiben als Tombstone stehen, damit ein Gerät mit altem Stand sie nicht wieder
+hochlädt. CSV-Texte werden gzip-komprimiert übertragen und nur beim Öffnen
+eines Datensatzes geladen. **API-Keys und Anzeige-Einstellungen bleiben immer
+nur im Browser.** Die Kopfzeile zeigt den Zustand: «☁ geteilt», «☁ sync…»,
+«☁ nur lokal» (keine Datenbank) oder «☁ Fehler».
+
+Einrichten (einmalig): Vercel → Projekt → **Storage** → **Create Database** →
+**Neon (Postgres)** → mit dem Projekt verbinden. Das setzt `DATABASE_URL`
+automatisch; danach einmal **Redeploy**. Die Tabelle `lp_store` legt die App
+beim ersten Zugriff selbst an; beim ersten Laden lädt jeder Browser seine
+bisherigen lokalen Daten hoch (Migration). Ohne `DATABASE_URL` läuft die App
+weiter wie bisher, nur lokal — Einstellungen → Daten zeigt die Anleitung.
+Lokal (`npm run dev`) dient ein Datei-Store unter `frontend/.data/store/`
+als Ersatz; E2E-Tests bekommen über das Cookie `lp_ns` jeweils einen
+eigenen Namensraum.
+
 ## Architektur
 
 ```
@@ -85,27 +111,30 @@ frontend/                    Next.js-App (deployt auf Vercel)
   app/api/keys/              Keys für eingeloggte Browser (nur mit APP_PASSWORD)
   app/api/keys/available/    Welche Keys der Server hat (Booleans)
   app/api/enrich/account/    Guthaben + Abrechnungsregel je Enrichment-Anbieter
+  app/api/store/             Gemeinsamer Speicher (Manifest, get/put/delete, wipe)
   app/hooks/                 Seiten-Logik als Hooks: useScrapeForm, useCsvImport,
                              useAiColumns (csv/[id]), useEnrichmentRun, useTableState
   app/components/            DataTable, FilterDropdown, EnrichmentPanel (+ enrichment/),
-                             PresetMenu, TemplateSaveForm, AiColumnEditor, …
-  app/settings/              page.tsx (Sidebar) + IntegrationsTab, TemplatesTab
+                             AiColumnMenu, TemplateSaveForm, AiColumnEditor, StoreGate, …
+  app/settings/              page.tsx (Sidebar) + IntegrationsTab, AiColumnsTab
                              (+ templates/), BlocklistTab, DataTab, DesignTab
   app/theme.ts               Design-Tokens (CSS-Variablen) + Monospace-Style
   lib/serverKeys.ts          Env-Variablen-Namen ↔ Provider-Zuordnung
   lib/blocklist.ts           Blockliste (immer ausgeschlossene Seiten)
-  lib/csvStorage.ts          IndexedDB-Speicher für Scrape-/CSV-Daten
-  lib/csvRuns.ts             Laden/Speichern eines Datensatzes (CSV + Meta)
+  lib/store.ts               Sync-Schicht: lokaler Cache ↔ gemeinsamer Speicher (pur getestet)
+  lib/serverStore.ts         Server-Treiber: Postgres (Neon) oder Dateien (Entwicklung)
+  lib/csvStorage.ts          IndexedDB-Cache für CSV-Texte (+ Abgleich mit dem Server)
+  lib/csvRuns.ts             Laden/Speichern/Löschen eines Datensatzes (CSV + Meta)
   lib/ai.ts                  KI-Pipeline: Prompts, Chunks, Multi-Output-Split,
                              Enum-Validierung, Regel-Spalten, feld_hash-Cache
-  lib/aiTemplates.ts         KI-Spalten-Vorlagen (eingebaut + eigene), Instant Load, Overrides
+  lib/aiTemplates.ts         Gespeicherte KI-Spalten (eingebaut + eigene), Lade-Schalter, Overrides
   lib/analysisConfigs.ts     KI-Spalten-Konfiguration pro Datensatz
   lib/tableQuery.ts          Filtern/Sortieren/Link-Erkennung der Tabelle (pur, getestet)
   lib/tableExport.ts         CSV/XLSX-Download (xlsx wird erst beim Klick geladen)
   lib/enrichMapping.ts       Spalten-Vorschläge fürs Enrichment (pur, getestet)
   lib/outreachExport.ts      Outreach-CSV-Mapping (pur, getestet)
   lib/savedSearches.ts       Gespeicherte Suchen der Scrape-Maske
-  lib/backup.ts              Backup/Restore/Wipe aller lokalen Daten
+  lib/backup.ts              Backup/Restore/Wipe aller Daten (lokal + gemeinsamer Speicher)
   lib/leadKeys.ts            Lead-Identität (Schlüssel) + Abgleich (pur, getestet)
   lib/leadIndex.ts           Index bekannter Leads aus allen anderen Datensätzen
 
@@ -159,41 +188,35 @@ wenn Chunks in anderer Reihenfolge fertig werden.
 Die Blockliste (Einstellungen → Blockliste, 🚫 in der Tabelle) filtert
 unerwünschte Seiten aus allen künftigen Scrapes.
 
-## LinkedIn-Klassifizierung (Uriels Sheet-System in der App)
+## LinkedIn-Klassifizierung
 
-Das System aus dem Google Sheet `ki_linkedin_klassifizierung` ist komplett in
-die App überführt. Beim Upload einer LinkedIn-CSV (erkannt an Spalten wie
-`voller_name`, `jobtitel`, `headline`, `linkedin_url`) bietet ein Dialog die
-Vorlage **LinkedIn-Klassifizierung (v5)** an:
+Beim Upload einer LinkedIn-CSV (erkannt an Spalten wie `voller_name`,
+`jobtitel`, `headline`, `linkedin_url`) bietet ein Dialog die eingebaute
+KI-Spalte **LinkedIn-Klassifizierung** an — sofern sie nicht ohnehin per
+Lade-Schalter automatisch angehängt wird:
 
-- **1 KI-Aufruf pro Zeile → 8 Spalten**: Der v5-Prompt liefert sieben
-  pipe-getrennte Werte (`ki_haupttyp`, `ki_bietet_coaching`,
-  `ki_marketing_agentur`, `ki_themenfeld`, `ki_anbieterstatus`,
-  `ki_rollenbezug`, `ki_sicherheit`), die automatisch in Einzelspalten
-  gesplittet werden. `ki_zielgruppe` (ja/nein) ist eine **deterministische
-  Regel** über diese Werte — kein eigener KI-Aufruf: Coaching = ja/wahrscheinlich
-  UND keine Marketing-Agentur UND selbstständig/Unternehmen.
-- **Enum-Validierung**: Nur die im Sheet definierten Werte sind erlaubt.
-  Falsche Schreibweise wird korrigiert („coach" → „Coach"), ungültige
-  Antworten werden rot als `Fehler: …` markiert und beim nächsten ▶
-  automatisch erneut versucht.
+- **Eine Spalte, eine Antwort**: `ki_zielgruppe` = ja/nein. Der Prompt
+  (Uriels Regeln: was die Person ANBIETET vs. wen sie anspricht; Coach/Trainer
+  vs. Agentur; selbstständig vs. angestellt) entscheidet in einem Aufruf pro
+  Zeile. Keine Sub-Spalten, keine Regel-Spalten.
 - **feld_hash-Cache**: Erneutes ▶ klassifiziert nur Zeilen, die neu sind,
   deren Eingabewerte sich geändert haben oder die fehlgeschlagen waren —
   unveränderte Zeilen kosten keine API-Credits. Prompt-/Modell-Änderung
   invalidiert alles.
-- **Prompt zentral pflegen**: Einstellungen → **KI-Vorlagen**. Dort den
-  Prompt editieren (z.B. wenn eine v6 existiert), Version benennen,
-  „↺ Standard" setzt zurück. Neue Importe nutzen automatisch die
-  angepasste Version; das Spalten-Label zeigt Provider · Modell · Version.
-- **Auswertung**: Chips über der Tabelle zeigen Fortschritt und
-  Zielgruppen-Quote — Klick auf einen Chip filtert die Tabelle (und damit
-  auch den Export). „⌗ Statistik nach quelle_person" zeigt die Quote pro
-  Big Player, sortiert nach Trefferquote.
-- **Gezieltes Enrichment**: Die Enrichment-Seite enricht standardmäßig nur
-  Zeilen mit `ki_zielgruppe = ja` — spart Hunter.io/FindyMail-Credits.
+- **Prompt zentral pflegen**: Einstellungen → **KI-Spalten** → ✎ Bearbeiten.
+  Titel, KI-Modell, KI-Version und Prompt sind auch bei eingebauten Spalten
+  änderbar („↺ Standard" setzt zurück); neue Importe nutzen die Anpassung.
+- **Auswertung**: Chips über der Tabelle zeigen Fortschritt und die
+  Verteilung der Antworten (ja/nein, KEEP/DROP) — Klick auf einen Chip
+  filtert die Tabelle (und damit auch den Export). „⌗ Statistik nach
+  quelle_person" zeigt die Zielgruppen-Quote pro Big Player.
+- **Gezieltes Enrichment / Outreach**: Enrichment-Seite und Outreach-CSV
+  nehmen standardmäßig nur Zeilen mit `ki_zielgruppe = ja` — spart Credits.
 
-Der eingebaute v5-Prompt, die Eingabespalten, die erlaubten Werte und die
-Zielgruppen-Regel stehen in `frontend/lib/aiTemplates.ts`.
+Ältere Datensätze mit der früheren Multi-Output-Variante (sieben
+pipe-getrennte Werte + Regel-Spalte) laufen weiter: die Regel-Spalte bleibt
+sichtbar, die Einzelwerte sind in der Tabelle ausgeblendet (im Export
+enthalten). Prompt und Eingabespalten stehen in `frontend/lib/aiTemplates.ts`.
 
 ## Lead-Gedächtnis: Duplikate und bereits Angeschriebene
 
@@ -214,51 +237,52 @@ Ohne zweiten Datensatz werden keine Spalten angelegt.
 
 ## Daten: Backup, Wiederherstellung, Löschen
 
-Alles liegt im Browser des jeweiligen Geräts (localStorage + IndexedDB). Unter
-Einstellungen → **Daten** gibt es den Bestand (Datensätze, Zeilen, Vorlagen,
-Suchen, Speicherbelegung), **Backup herunterladen** (eine JSON-Datei mit allen
-Datensätzen inkl. CSV-Text, KI-Spalten-Konfigurationen und -Caches, Vorlagen,
-gespeicherten Suchen, Blockliste; API-Keys nur mit Häkchen, da Klartext),
-**Backup wiederherstellen** (Vorschau, dann zusammenführen oder vorhandene
-Datensätze überschreiben) und **Alle lokalen Daten löschen** — z.B. bevor ein
-Gerät weitergegeben wird. Logik in `frontend/lib/backup.ts`.
+Unter Einstellungen → **Daten** stehen der Zustand des gemeinsamen Speichers
+(mit Einrichtungs-Anleitung, falls keine Datenbank verbunden ist), der Bestand
+(Datensätze, Zeilen, KI-Spalten, Suchen, Speicherbelegung), **Backup
+herunterladen** (eine JSON-Datei mit allen Datensätzen inkl. CSV-Text,
+KI-Spalten-Konfigurationen und -Caches, gespeicherten KI-Spalten, Suchen,
+Blockliste — nie API-Keys), **Backup wiederherstellen** (Vorschau, dann
+zusammenführen oder vorhandene Datensätze überschreiben; wiederhergestellte
+Daten landen auch im gemeinsamen Speicher) und **Alle Daten löschen** — in
+diesem Browser und im gemeinsamen Speicher, also für alle. Logik in
+`frontend/lib/backup.ts`.
 
-## KI-Spalten-Vorlagen & Instant Load
+## Gespeicherte KI-Spalten & automatisches Laden
 
-KI-Spalten müssen nicht bei jedem Datensatz neu konfiguriert werden — sie
-lassen sich als **Vorlage** speichern, laden und automatisch anhängen:
+Eine gespeicherte KI-Spalte hat genau: **Titel** (Spaltenname), **KI-Modell**
+(Claude / GPT / Gemini), **KI-Version** (z.B. `claude-sonnet-5`), **Prompt**
+und drei Lade-Schalter: **bei CSV**, **bei Meta**, **▶ direkt**. Sie ist
+immer genau eine Spalte in der Tabelle.
 
-- **Speichern (in der Tabelle)**: ⚙ an einer KI-Spalte → «☆ Als Vorlage
-  speichern» sichert diese Spalte (Name, Prompt, Splits, Regeln). Über den
-  Toolbar-Button **☆ Vorlage** → «Aktuelle KI-Spalten als Vorlage speichern»
-  werden alle KI-Spalten des Datensatzes als eine Vorlage gesichert.
-  Provider/Modell werden nicht mitgespeichert; beim Laden wird der erste
-  verfügbare Provider gewählt (Claude bevorzugt).
-- **Laden (in der Tabelle)**: **☆ Vorlage** → «Laden» hängt die Spalten an
-  (bereits vorhandene Spaltennamen werden übersprungen), **▶** hängt an und
-  füllt sofort aus. Kein Dialog, kein Neuanlegen.
-- **⚡ Instant Load**: Pro Vorlage lässt sich in Einstellungen → **KI-Vorlagen**
-  (oder direkt beim Speichern) festlegen, dass sie bei **CSV/Excel-Upload**
-  und/oder **Meta-Scrape** automatisch angehängt wird — ohne Auswahl-Dialog.
-  Mit **▶ direkt ausfüllen lassen** startet die KI dazu sofort nach dem Import
-  (kostet Credits). Der LinkedIn-Dialog erscheint nur noch, wenn die erkannte
-  Vorlage nicht ohnehin schon per Instant Load geladen wurde.
-- **Verwalten**: Einstellungen → **KI-Vorlagen** — eigene Vorlagen anlegen
-  («+ Neue Vorlage»), Name/Beschreibung/Spalten/Prompts bearbeiten, Spalten
-  hinzufügen oder entfernen, löschen; eingebaute Vorlagen (LinkedIn v5,
-  KEEP/DROP) behalten die Prompt-Override-Logik («↺ Standard»). Die
-  Instant-Load-Schalter gelten für eingebaute und eigene Vorlagen.
+- **In der Tabelle**: der eine Button **+ KI-Spalte** öffnet ein Menü —
+  «Neue KI-Spalte» (leer, eigener Prompt, ⚙ geht auf) oder eine gespeicherte
+  laden. Jede gespeicherte KI-Spalte ist pro Datensatz nur einmal ladbar
+  (bereits geladene stehen als «✓ in Tabelle»); mit ▶ direkt füllt sie sich
+  beim Laden sofort aus (kostet Credits). Fehlen Eingabespalten (LinkedIn auf
+  Meta-Daten), ist die Zeile ausgegraut.
+- **Speichern**: ⚙ an einer KI-Spalte → «☆ In Einstellungen speichern»
+  (Titel = Spaltenname, nur die Schalter werden abgefragt). Die Spalte merkt
+  sich ihre Herkunft, damit sie nicht doppelt geladen wird.
+- **Automatisch laden**: Mit **bei CSV** / **bei Meta** wird die KI-Spalte
+  beim Import ohne Dialog angehängt, mit **▶ direkt** sofort ausgefüllt.
+- **Verwalten**: Einstellungen → **KI-Spalten** — eine Tabellenzeile je
+  KI-Spalte, Schalter direkt in der Zeile, ✎ Bearbeiten öffnet den
+  Inline-Editor, ⧉ kopiert eine eingebaute als eigene, 🗑 löscht (zweistufig),
+  «+ Neue KI-Spalte» legt eine leere an (▶ direkt vorbelegt).
 
-Ablage im Browser (localStorage): eigene Vorlagen in `user_presets`,
-Instant-Load-Schalter in `preset_flags`, Prompt-Overrides eingebauter Vorlagen
-in `preset_overrides`. Die Logik (`applyPresets`, `presetsForSource`,
-`presetFromConfigs`) liegt in `frontend/lib/aiTemplates.ts`.
+Ablage im gemeinsamen Speicher: eigene KI-Spalten in `user_presets`,
+Lade-Schalter in `preset_flags`, Anpassungen eingebauter in
+`preset_overrides`. Ältere «Vorlagen» mit mehreren Spalten werden beim ersten
+Laden in einzelne KI-Spalten zerlegt. Die Logik (`applyPresets`,
+`presetsForSource`, `presetFromConfigs`, `isPresetLoaded`) liegt in
+`frontend/lib/aiTemplates.ts`.
 
 ## Tests
 
 ```bash
 cd frontend
-npm run test:unit   # Bibliotheks-Tests (Vorlagen, Login-Token, Retry, Outreach-Mapping) — ohne Server
+npm run test:unit   # Bibliotheks-Tests (KI-Spalten, Sync-Logik, Store-Treiber, Login-Token, Retry, Outreach-Mapping) — ohne Server
 npm run dev         # in einem zweiten Terminal
 npm run e2e         # Playwright-Durchläufe gegen http://localhost:3000 (Login per APP_USER/APP_PASSWORD)
 npm run e2e -- templates   # nur Tests, deren Dateiname "templates" enthält
@@ -283,3 +307,5 @@ npm run dev    # http://localhost:3000
 ```
 
 Keys lokal: `frontend/.env.local` mit denselben Variablennamen wie oben.
+Ohne `DATABASE_URL` nutzt die Entwicklung den Datei-Store `frontend/.data/store/`
+(gitignored) als gemeinsamen Speicher.

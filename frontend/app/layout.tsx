@@ -4,6 +4,7 @@ import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { KeySync } from "./components/KeySync";
+import { StoreGate } from "./components/StoreGate";
 
 export const metadata: Metadata = {
   title: "Lead Pipeline",
@@ -18,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <KeySync />
         <ToastProvider>
           <Header />
-          <main className="flex-1">{children}</main>
+          <main className="flex-1"><StoreGate>{children}</StoreGate></main>
         </ToastProvider>
       </body>
     </html>

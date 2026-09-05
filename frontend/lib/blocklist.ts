@@ -9,6 +9,8 @@ export interface BlockEntry {
   addedAt: string;
 }
 
+import { lsSet } from './store';
+
 const KEY = 'blocklist';
 
 export function loadBlocklist(): BlockEntry[] {
@@ -20,7 +22,7 @@ export function loadBlocklist(): BlockEntry[] {
 }
 
 function saveBlocklist(list: BlockEntry[]): void {
-  try { localStorage.setItem(KEY, JSON.stringify(list)); } catch {}
+  lsSet(KEY, JSON.stringify(list));
 }
 
 /** Fanpage-Adresse zu einem Eintrag (ID-Form funktioniert immer, auch bei Umbenennung) */

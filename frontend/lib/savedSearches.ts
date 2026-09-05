@@ -5,6 +5,8 @@ export interface SavedSearch {
   dateMin?: string; dateMax?: string; limit?: number; bylines?: string; savedAt?: string;
 }
 
+import { lsSet } from './store';
+
 const KEY = 'presets';
 
 export function loadSavedSearches(): Record<string, SavedSearch> {
@@ -15,7 +17,7 @@ export function loadSavedSearches(): Record<string, SavedSearch> {
 }
 
 function write(all: Record<string, SavedSearch>): Record<string, SavedSearch> {
-  try { localStorage.setItem(KEY, JSON.stringify(all)); } catch {}
+  lsSet(KEY, JSON.stringify(all));
   return all;
 }
 
