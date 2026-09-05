@@ -228,6 +228,13 @@ export function useAiColumns(id: string) {
   const runColumn = async (cfg: AnalysisConfig) => {
     if (!run || colRunning[cfg.id]) return;
     if (!cfg.prompt.trim()) { setEditingId(cfg.id); return showToast('Erst einen Prompt eingeben (⚙)', 'warning'); }
+    // Nie auf einem veralteten Stand klassifizieren: der Lauf schreibt die ganze CSV zurück
+    // und würde die Ergebnisse eines Kollegen überschreiben
+    const csvKey = `csv_text_${id}`;
+    if (remoteChanged || (remoteStamp(csvKey) && remoteStamp(csvKey) !== localStamp(csvKey) && !hasPending(csvKey))) {
+      setRemoteChanged(true);
+      return showToast('Dieser Datensatz wurde inzwischen geändert — erst «↻ Neu laden», dann analysieren', 'warning', 7000);
+    }
     setColRunning(p => ({ ...p, [cfg.id]: true }));
 
     // Declared outside the try so a mid-run failure (e.g. chunk 3 of 5 hits a

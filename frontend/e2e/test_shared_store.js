@@ -16,6 +16,7 @@ const settled = (p) => p.waitForFunction(() => Object.keys(JSON.parse(localStora
   // Kollege A: Datensatz (Meta + CSV-Text) anlegen, KI-Spalte und Blocklisten-Eintrag speichern
   const id = 'csv_shared_' + Date.now();
   await a.evaluate(async (id) => {
+    localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: 'k', hunter_io: '', findymail: '' }, theme: 'noir' }));
     localStorage.setItem(`csv_run_${id}`, JSON.stringify({ fields: ['page_name', 'ad_text'], filename: 'Meta: kollege-a', createdAt: new Date().toISOString(), rowCount: 2 }));
     const req = indexedDB.open('scaper_csv', 1);
     await new Promise((res, rej) => { req.onupgradeneeded = () => req.result.createObjectStore('files'); req.onsuccess = res; req.onerror = () => rej(req.error); });
@@ -53,9 +54,13 @@ const settled = (p) => p.waitForFunction(() => Object.keys(JSON.parse(localStora
   await b.goto(`${BASE_URL}/settings?tab=blocklist`, { waitUntil: 'networkidle' });
   ok((await b.textContent('body')).includes('4242424242') || (await b.locator('a[href*="4242424242"]').count()) > 0, 'B sieht den Blocklisten-Eintrag von A');
 
-  // A hat den Datensatz offen, B ändert ihn → A bekommt den Hinweis und lädt neu
+  // A hat den Datensatz offen (mit einer KI-Spalte), B ändert ihn → A bekommt den Hinweis und lädt neu
   await a.goto(`${BASE_URL}/csv/${id}`, { waitUntil: 'networkidle' });
   await a.waitForSelector('text=Anna Coach');
+  await a.click('[data-testid="ai-column-menu-btn"]');
+  await a.click('[data-testid="preset-load-keep_drop"]');
+  await a.waitForSelector('th:has-text("ki_bewertung")');
+  await settled(a);
   await b.evaluate((id) => {
     const m = JSON.parse(localStorage.getItem(`csv_run_${id}`));
     m.filename = 'Meta: kollege-a (von B umbenannt)';
@@ -70,6 +75,12 @@ const settled = (p) => p.waitForFunction(() => Object.keys(JSON.parse(localStora
   await a.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); // Zurück-in-den-Tab simulieren
   await a.waitForSelector('[data-testid="dataset-changed"]');
   ok(!(await a.textContent('h1')).includes('von B umbenannt'), 'Änderung wird nicht still übernommen');
+  // ▶ auf veraltetem Stand wird verweigert (würde B's Stand überschreiben)
+  const th = a.locator('th:has-text("ki_bewertung")').first();
+  await th.hover();
+  await th.locator('button[title*="nalys"], button:has-text("▶")').first().click();
+  await a.waitForSelector('text=erst «↻ Neu laden»');
+  ok(true, 'KI-Lauf auf veraltetem Stand verweigert');
   await a.click('[data-testid="dataset-reload"]');
   await a.waitForSelector('h1:has-text("von B umbenannt")');
   ok(true, 'A: Hinweis → Neu laden → Änderung von B da');
