@@ -38,7 +38,7 @@ export default function CsvViewer() {
   const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
 
   const {
-    run, error, providers,
+    run, error, providers, remoteChanged, reloadFromServer,
     aiConfigs, aiOwnedNames, displayAiColumns,
     colRunning, colProgress, scrollSignal,
     setEditingId, editingCfg,
@@ -176,6 +176,14 @@ export default function CsvViewer() {
   return (
     <div style={{ minHeight: '100vh' }}>
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '20px 24px 64px' }}>
+
+        {remoteChanged && (
+          <div data-testid="dataset-changed" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', marginBottom: 14, borderRadius: 7, border: '1px solid rgba(232,176,75,.4)', background: 'rgba(232,176,75,.08)' }}>
+            <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.gold, flex: 1 }}>Dieser Datensatz wurde inzwischen von einem anderen Gerät oder Kollegen geändert.</span>
+            <button onClick={reloadFromServer} data-testid="dataset-reload"
+              style={{ fontFamily: T.ffMono, fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 5, border: 'none', background: T.gold, color: '#07070a', cursor: 'pointer' }}>↻ Neu laden</button>
+          </div>
+        )}
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { loadCsvRun, saveCsvRunColumns } from '@/lib/csvRuns';
-import { lsSet, ensureLocalKey } from '@/lib/store';
+import { lsSet, ensureLocalKey, STORE_EVENT, hasPending, remoteStamp, localStamp } from '@/lib/store';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
@@ -49,7 +49,7 @@ export function useAiColumns(id: string) {
   const [providers,    setProviders]    = useState<string[]>([]);
   const [scrollSignal, setScrollSignal] = useState(0);
 
-  useEffect(() => {
+  const loadDataset = useCallback(() => {
     loadCsvRun(id)
       .then(({ meta, rows }) => {
         const next: CsvRun = {
@@ -64,6 +64,38 @@ export function useAiColumns(id: string) {
       })
       .catch(e => setError(e instanceof Error ? e.message : 'Fehler beim Laden der Datei.'));
   }, [id]);
+
+  useEffect(() => { loadDataset(); }, [loadDataset]);
+
+  // Ein Kollege (anderes Gerät) hat diesen Datensatz inzwischen geändert:
+  // erkennbar am neueren Serverstand des CSV-Texts oder an anderen KI-Configs.
+  // Nicht still überschreiben — Hinweis mit «Neu laden» (siehe remoteChanged).
+  const [remoteChanged, setRemoteChanged] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      const cur = runRef.current;
+      if (!cur || Object.values(colRunning).some(Boolean) || hasPending(`csv_text_${id}`)) return;
+      const csvKey = `csv_text_${id}`;
+      const textChanged = !!remoteStamp(csvKey) && remoteStamp(csvKey) !== localStamp(csvKey);
+      let metaChanged = false;
+      try {
+        const m = JSON.parse(localStorage.getItem(`csv_run_${id}`) ?? 'null');
+        metaChanged = !!m && (m.filename !== cur.filename || JSON.stringify(m.fields) !== JSON.stringify(cur.fields));
+      } catch {}
+      const configsChanged = JSON.stringify(loadAiConfigs(id)) !== JSON.stringify(aiConfigs);
+      if (textChanged || metaChanged || configsChanged) setRemoteChanged(true);
+    };
+    window.addEventListener(STORE_EVENT, check);
+    return () => window.removeEventListener(STORE_EVENT, check);
+  }, [id, aiConfigs, colRunning]);
+
+  /** «↻ Neu laden»: Serverstand dieses Datensatzes übernehmen (CSV, Meta, KI-Configs) */
+  const reloadFromServer = useCallback(() => {
+    setRemoteChanged(false);
+    setAiColumns([]);
+    setAiConfigs(loadAiConfigs(id));
+    loadDataset();
+  }, [id, loadDataset]);
 
   useEffect(() => {
     fetchKeyAvailability().then(server => {
@@ -426,7 +458,7 @@ export function useAiColumns(id: string) {
 
   return {
     matching, runMatch, markExported,
-    run, error, providers,
+    run, error, providers, remoteChanged, reloadFromServer,
     aiConfigs, aiOwnedNames, displayAiColumns,
     colRunning, colProgress, scrollSignal,
     editingId, setEditingId, editingCfg,

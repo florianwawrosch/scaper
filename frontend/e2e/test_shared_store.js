@@ -53,7 +53,9 @@ const settled = (p) => p.waitForFunction(() => Object.keys(JSON.parse(localStora
   await b.goto(`${BASE_URL}/settings?tab=blocklist`, { waitUntil: 'networkidle' });
   ok((await b.textContent('body')).includes('4242424242') || (await b.locator('a[href*="4242424242"]').count()) > 0, 'B sieht den Blocklisten-Eintrag von A');
 
-  // B ergänzt KI-Werte → A sieht sie nach dem Öffnen
+  // A hat den Datensatz offen, B ändert ihn → A bekommt den Hinweis und lädt neu
+  await a.goto(`${BASE_URL}/csv/${id}`, { waitUntil: 'networkidle' });
+  await a.waitForSelector('text=Anna Coach');
   await b.evaluate((id) => {
     const m = JSON.parse(localStorage.getItem(`csv_run_${id}`));
     m.filename = 'Meta: kollege-a (von B umbenannt)';
@@ -64,9 +66,16 @@ const settled = (p) => p.waitForFunction(() => Object.keys(JSON.parse(localStora
     const value = localStorage.getItem(`csv_run_${id}`);
     await fetch('/api/store', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: `csv_run_${id}`, value }) });
   }, id);
+  ok((await a.locator('[data-testid="dataset-changed"]').count()) === 0, 'vor dem Abgleich kein Hinweis');
+  await a.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); // Zurück-in-den-Tab simulieren
+  await a.waitForSelector('[data-testid="dataset-changed"]');
+  ok(!(await a.textContent('h1')).includes('von B umbenannt'), 'Änderung wird nicht still übernommen');
+  await a.click('[data-testid="dataset-reload"]');
+  await a.waitForSelector('h1:has-text("von B umbenannt")');
+  ok(true, 'A: Hinweis → Neu laden → Änderung von B da');
   await a.goto(`${BASE_URL}/runs`, { waitUntil: 'networkidle' });
   await a.waitForSelector('text=von B umbenannt');
-  ok(true, 'A sieht die Änderung von B (Server gewinnt)');
+  ok(true, 'A sieht die Änderung von B im Verlauf');
 
   // A löscht den Datensatz → bei B weg
   await a.locator('button[title="Eintrag löschen"]').first().click();
