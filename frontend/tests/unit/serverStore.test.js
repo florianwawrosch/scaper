@@ -27,7 +27,8 @@ const S = lib('serverStore');
   await d.set('csv_run_a', '{"f":2}');
   ok((await d.get('csv_run_a')).value === '{"f":2}' && !(await d.manifest()).tombstones.some(t => t.key === 'csv_run_a'), 'erneutes set hebt Tombstone auf');
   await d.wipe();
-  ok((await d.manifest()).items.length === 0 && (await d.manifest()).tombstones.length === 0, 'wipe leert alles');
+  m = await d.manifest();
+  ok(m.items.length === 0 && m.large.length === 0 && m.tombstones.length >= 3, 'wipe: alles weg, Tombstones bleiben (kein Wieder-Hochladen alter Geräte)');
   ok(S.isValidKey('csv_run_csv_123') && S.isValidKey('user_presets') && !S.isValidKey('a/b') && !S.isValidKey('') && !S.isValidKey('x'.repeat(201)), 'Key-Prüfung');
   // Treiberwahl
   delete process.env.DATABASE_URL; delete process.env.POSTGRES_URL;
@@ -35,6 +36,8 @@ const S = lib('serverStore');
   ok(S.getStoreDriver().name === 'file' && S.getStoreDriver('abc').name === 'file', 'ohne DATABASE_URL: Datei-Treiber (mit Namensraum)');
   process.env.DATABASE_URL = 'postgres://x';
   ok(S.getStoreDriver().name === 'postgres', 'mit DATABASE_URL: Postgres');
+  ok(S.postgresUrlFromEnv({ STORAGE_URL: 'postgresql://a', STORAGE_URL_UNPOOLED: 'postgresql://b', OTHER_URL: 'https://x' }) === 'postgresql://a', 'beliebiges Vercel-Präfix (STORAGE_URL) erkannt, unpooled/https ignoriert');
+  ok(S.postgresUrlFromEnv({ FOO: 'bar' }) === undefined, 'ohne Postgres-URL nichts');
   delete process.env.DATABASE_URL; delete process.env.LP_STORE_DIR;
   const prevEnv = process.env.NODE_ENV; process.env.NODE_ENV = 'production';
   ok(S.getStoreDriver() === null, 'Produktion ohne Datenbank: kein Treiber (App bleibt lokal)');

@@ -6,7 +6,7 @@ import { lsSet, ensureLocalKey } from '@/lib/store';
 import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
-import { applyPresets, presetFromConfigs, saveUserPreset, readAutorunIds, AUTORUN_KEY, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
+import { applyPresets, presetFromConfigs, saveUserPreset, getEffectivePresets, readAutorunIds, AUTORUN_KEY, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
 import { runAiColumn, defaultModel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, isAiError, normalizeMultiOutput, PENDING, type AnalysisConfig } from '@/lib/ai';
 import { useToast } from '@/app/components/Toast';
 import { buildKnownIndex } from '@/lib/leadIndex';
@@ -351,7 +351,11 @@ export function useAiColumns(id: string) {
   /** ⚙-Panel: diese KI-Spalte in den Einstellungen speichern — die Config merkt sich die Herkunft */
   const saveTemplate = (cfg: AnalysisConfig, flags: PresetFlags) => {
     if (!cfg.prompt.trim()) return showToast('Erst einen Prompt eingeben', 'warning');
-    const preset = saveUserPreset(presetFromConfigs(cfg.name, [cfg], flags));
+    // Gleicher Titel = dieselbe gespeicherte KI-Spalte (aktualisieren), außer sie ist eingebaut
+    const existing = getEffectivePresets().find(p => p.columns[0]?.name === cfg.name);
+    if (existing && !existing.userDefined) return showToast(`«${cfg.name}» ist eine eingebaute KI-Spalte — Spalte erst umbenennen`, 'warning');
+    const ownId = cfg.presetId ?? existing?.id;
+    const preset = saveUserPreset({ ...presetFromConfigs(cfg.name, [cfg], flags), ...(ownId ? { id: ownId } : {}) });
     persistConfigs(aiConfigs.map(c => (c.id === cfg.id ? { ...c, presetId: preset.id } : c)));
     const auto = Object.values(flags.autoAdd ?? {}).some(Boolean);
     showToast(

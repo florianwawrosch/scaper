@@ -30,6 +30,7 @@ let status: StoreStatus = 'init';
 let lastError = '';
 const listeners = new Set<(s: StoreStatus) => void>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let flushAt = 0;
 let flushing: Promise<void> | null = null;
 let retryDelay = 3000;
 
@@ -78,6 +79,8 @@ export function lsRemove(key: string): void {
 
 /** CSV-Text (IndexedDB) als geändert/gelöscht vormerken — ruft csvStorage auf */
 export const markCsvText = (id: string, op: 'set' | 'del') => markPending(`csv_text_${id}`, op);
+/** Hat dieses Gerät für den Key eine noch nicht hochgeladene Änderung? */
+export const hasPending = (key: string): boolean => !!pending()[key];
 
 export const remoteStamp = (key: string): string | undefined => readJson<Record<string, string>>(REMOTE_KEY, {})[key];
 export const localStamp  = (key: string): string | undefined => readJson<Record<string, string>>(LOCAL_KEY, {})[key];
@@ -111,13 +114,9 @@ export async function fetchValue(key: string): Promise<{ value: string; updatedA
   if (!head) return null;
   const n = partsCount(head.value);
   if (!n) return head;
-  const parts: string[] = [];
-  for (let i = 0; i < n; i++) {
-    const part = await getJson<{ value: string }>(`/api/store?key=${encodeURIComponent(`${key}.p${i}`)}`);
-    if (!part) return null;
-    parts.push(part.value);
-  }
-  return { value: parts.join(''), updatedAt: head.updatedAt };
+  const parts = await Promise.all(Array.from({ length: n }, (_, i) => getJson<{ value: string }>(`/api/store?key=${encodeURIComponent(`${key}.p${i}`)}`)));
+  if (parts.some(p => !p)) return null;
+  return { value: parts.map(p => p!.value).join(''), updatedAt: head.updatedAt };
 }
 
 async function putValue(key: string, value: string): Promise<Response> {
@@ -127,37 +126,37 @@ async function putValue(key: string, value: string): Promise<Response> {
 /** Teile-Keys, die der Server (laut letztem Stand) für diesen Key hat */
 const knownParts = (key: string): string[] => Object.keys(readJson<Record<string, string>>(REMOTE_KEY, {})).filter(k => k.startsWith(`${key}.p`));
 
+const deleteKey = (key: string) => fetch(`/api/store?key=${encodeURIComponent(key)}`, { method: 'DELETE', signal: AbortSignal.timeout(30000) });
+/** Teil löschen — Fehler sind hier nicht kritisch (verwaister Teil), Stempel trotzdem weg */
+const deletePart = async (key: string) => { await deleteKey(key).catch(() => {}); setStamps(key, null); };
+
 /**
- * Hochladen — große Werte zuerst in Teilen, dann der Kopf-Eintrag (macht die
- * Teile gültig). Teile merken wir uns, damit Löschen und ein späterer kleinerer
- * Upload keine verwaisten Teile zurücklassen.
+ * Hochladen — nur große Keys (CSV-Text) werden in Teile geschnitten, denn nur
+ * die liest fetchValue() wieder zusammen; alles andere geht in einem Stück.
+ * Teile merken wir uns, damit Löschen und ein späterer kleinerer Upload keine
+ * verwaisten Teile zurücklassen.
  */
 async function uploadValue(key: string, value: string): Promise<Response> {
-  const split = splitParts(value);
+  const split = isLargeKey(key) ? splitParts(value) : null;
   const before = knownParts(key);
   if (!split) {
     const r = await putValue(key, value);
-    if (r.ok) for (const k of before) { await fetch(`/api/store?key=${encodeURIComponent(k)}`, { method: 'DELETE' }).catch(() => {}); setStamps(k, null); }
+    if (r.ok) for (const k of before) await deletePart(k);
     return r;
   }
   const now = new Date().toISOString();
-  for (let i = 0; i < split.parts.length; i++) {
-    const partKey = `${key}.p${i}`;
-    const r = await putValue(partKey, split.parts[i]);
-    if (!r.ok) return r;
-    setStamps(partKey, now);
-  }
-  for (const k of before) {
-    const idx = Number(k.slice(`${key}.p`.length));
-    if (idx >= split.parts.length) { await fetch(`/api/store?key=${encodeURIComponent(k)}`, { method: 'DELETE' }).catch(() => {}); setStamps(k, null); }
-  }
+  const results = await Promise.all(split.parts.map((part, i) => putValue(`${key}.p${i}`, part)));
+  const bad = results.find(r => !r.ok);
+  if (bad) return bad;
+  split.parts.forEach((_, i) => setStamps(`${key}.p${i}`, now));
+  for (const k of before) if (Number(k.slice(`${key}.p`.length)) >= split.parts.length) await deletePart(k);
   return putValue(key, split.header);
 }
 
 /** Löschen — inkl. aller Teile, die der Server für diesen Key kennt */
 async function deleteValue(key: string): Promise<Response> {
-  for (const k of knownParts(key)) { await fetch(`/api/store?key=${encodeURIComponent(k)}`, { method: 'DELETE' }).catch(() => {}); setStamps(k, null); }
-  return fetch(`/api/store?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
+  for (const k of knownParts(key)) await deletePart(k);
+  return deleteKey(key);
 }
 
 /**
@@ -197,10 +196,15 @@ export async function unpackText(packed: string): Promise<string> {
 }
 
 // ── Hochladen (Queue) ──
+/** Upload planen — ein späterer Wunsch verschiebt einen schon geplanten früheren nie nach hinten */
 function scheduleFlush(delay = 400) {
   if (!inBrowser() || status === 'local') return;
+  if (status === 'error') delay = Math.max(delay, retryDelay); // Server-Probleme: Backoff einhalten
+  const at = Date.now() + delay;
+  if (flushTimer && at >= flushAt) return;
   if (flushTimer) clearTimeout(flushTimer);
-  flushTimer = setTimeout(() => { flushTimer = null; void flush(); }, delay);
+  flushAt = at;
+  flushTimer = setTimeout(() => { flushTimer = null; flushAt = 0; void flush(); }, delay);
 }
 
 async function valueFor(key: string): Promise<string | null> {
@@ -278,14 +282,15 @@ export interface HydratePlan {
  * Server gewinnt, nur-lokale hochladen, Tombstones lokal entfernen. Große Keys
  * (Hashes, CSV-Texte) werden nur nach Stand verglichen und bei Bedarf einzeln geladen.
  */
-export function planHydrate(local: Record<string, string>, m: StoreManifest, localCsvIds: string[]): HydratePlan {
+export function planHydrate(local: Record<string, string>, m: StoreManifest, localCsvIds: string[], pendingKeys: Set<string> = new Set()): HydratePlan {
   const tomb = new Set(m.tombstones.map(t => t.key));
   const server = new Map(m.items.map(i => [i.key, i.value] as const));
   const plan: HydratePlan = { setLocal: [], removeLocal: [], upload: [], csvUpload: [], remote: {} };
   for (const d of m.large) plan.remote[d.key] = d.updatedAt;
-  for (const [key, value] of server) if (local[key] !== value) plan.setLocal.push({ key, value });
+  // Eigene, noch nicht hochgeladene Änderungen haben Vorrang vor dem Serverstand
+  for (const [key, value] of server) if (local[key] !== value && !pendingKeys.has(key)) plan.setLocal.push({ key, value });
   for (const key of Object.keys(local)) {
-    if (server.has(key) || (isLargeKey(key) && plan.remote[key])) continue;
+    if (server.has(key) || (isLargeKey(key) && plan.remote[key]) || pendingKeys.has(key)) continue;
     if (tomb.has(key)) plan.removeLocal.push(key); else plan.upload.push(key);
   }
   const removed = new Set(plan.removeLocal);
@@ -323,7 +328,7 @@ export async function hydrate(): Promise<StoreStatus> {
     const m = await res.json() as StoreManifest & { configured: boolean };
     if (!m.configured) { setStatus('local'); hydratedOnce = true; return status; }
     const { localCsvIds } = await import('./csvStorage');
-    const plan = planHydrate(localShared(), m, await localCsvIds());
+    const plan = planHydrate(localShared(), m, await localCsvIds(), new Set(Object.keys(pending())));
     for (const { key, value } of plan.setLocal) { try { localStorage.setItem(key, value); } catch {} }
     for (const key of plan.removeLocal) {
       try { localStorage.removeItem(key); } catch {}
@@ -348,7 +353,9 @@ export async function hydrate(): Promise<StoreStatus> {
     lastError = e instanceof Error ? e.message : 'Fehler';
     hydratedOnce = true;
     setStatus('error');
-    scheduleFlush(retryDelay);
+    // Serverstand später erneut holen (Backoff), eigene Änderungen bleiben vorgemerkt
+    setTimeout(() => { if (status === 'error') void hydrate(); }, retryDelay);
+    retryDelay = Math.min(retryDelay * 2, 60000);
   }
   return status;
 }

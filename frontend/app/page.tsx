@@ -461,7 +461,7 @@ export default function Home() {
               if (preset) {
                 // Spalte anhängen (Instant-Load-KI-Spalten sind evtl. schon drin);
                 // bei autoRun merkt applyPresets die Configs für den Viewer vor
-                const { added, autoRun: toRun } = applyPresets(id, [preset], pickPresetProvider(backendKeys), { forceAutoRun: autoRun || undefined, providers: availableProviders(backendKeys) });
+                const { added, autoRun: toRun } = applyPresets(id, [preset], pickPresetProvider(backendKeys), { forceAutoRun: !!autoRun, providers: availableProviders(backendKeys) });
                 if (added.length > 0 && toRun.length === 0) {
                   showToast(`KI-Spalte «${preset.name}» geladen — mit ▶ ausfüllen`, 'success');
                 }

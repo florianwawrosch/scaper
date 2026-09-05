@@ -40,3 +40,6 @@ ok(p2.upload.length === 2 && p2.csvUpload.join() === 'x' && p2.removeLocal.lengt
 // Leerer Browser, voller Server: alles übernehmen
 const p3 = S.planHydrate({}, manifest, []);
 ok(p3.setLocal.length === 3 && p3.upload.length === 0 && p3.csvUpload.length === 0, 'leerer Browser → alles vom Server');
+// Eigene, noch nicht hochgeladene Änderung gewinnt gegen den Server
+const p4 = S.planHydrate({ user_presets: '[mine]', csv_run_deleted: '{}' }, manifest, [], new Set(['user_presets', 'csv_run_deleted']));
+ok(!p4.setLocal.some(x => x.key === 'user_presets') && p4.removeLocal.length === 0, 'pending Keys werden weder überschrieben noch entfernt');

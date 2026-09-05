@@ -73,7 +73,9 @@ export function AiColumnsTab({ onCountChange }: Props) {
 
   /** Neue KI-Spalte: eigene, leere Spalte mit dem ersten Anbieter mit Key — «direkt ausfüllen» standardmäßig an */
   const createColumn = () => {
-    const n = loadUserPresets().length + 1;
+    const taken = new Set(getEffectivePresets().map(p => p.columns[0]?.name));
+    let n = loadUserPresets().length + 1;
+    while (taken.has(`ki_spalte_${n}`)) n++;
     const id = newPresetId();
     const provider = pickPresetProvider(serverKeys);
     saveUserPreset({ id, name: `ki_spalte_${n}`, columns: [{ name: `ki_spalte_${n}`, prompt: '', provider, model: defaultModel(provider) }], userDefined: true, autoRun: true });

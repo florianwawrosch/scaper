@@ -1,7 +1,7 @@
 // CSV-Text je Datensatz: lokal in IndexedDB (schnell, groß), gespiegelt in den
 // gemeinsamen Speicher (lib/store). Lesen holt den Serverstand, wenn er neuer
 // ist als das, was dieses Gerät hat; Schreiben merkt den Upload vor.
-import { markCsvText, remoteStamp, localStamp, setStamps, fetchValue, unpackText, getStoreStatus } from './store';
+import { markCsvText, hasPending, remoteStamp, localStamp, setStamps, fetchValue, unpackText, getStoreStatus } from './store';
 
 const DB_NAME = 'scaper_csv';
 const STORE   = 'files';
@@ -75,7 +75,7 @@ export async function loadCsvText(id: string): Promise<string | null> {
   const key = `csv_text_${id}`;
   const local = await loadCsvTextLocal(id).catch(() => null);
   const remote = remoteStamp(key);
-  if (!remote || getStoreStatus() === 'local' || (local !== null && localStamp(key) === remote)) return local;
+  if (!remote || getStoreStatus() === 'local' || (local !== null && localStamp(key) === remote) || hasPending(key)) return local;
   try {
     const got = await fetchValue(key);
     if (!got) return local;

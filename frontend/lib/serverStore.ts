@@ -79,7 +79,11 @@ export function fileDriver(dir: string): StoreDriver {
       await write(key, { value: '', updatedAt, deleted: true });
       return updatedAt;
     },
-    async wipe() { await fs.rm(dir, { recursive: true, force: true }); },
+    async wipe() {
+      // Tombstones statt Kahlschlag: Geräte mit altem Stand laden sonst alles wieder hoch
+      const updatedAt = new Date().toISOString();
+      for (const [key, r] of await readAll()) if (!r.deleted) await write(key, { value: '', updatedAt, deleted: true });
+    },
   };
 }
 
@@ -140,18 +144,26 @@ function postgresDriver(url: string): StoreDriver {
     },
     async wipe() {
       const sql = await pgSql(url);
-      await sql`DELETE FROM lp_store`;
+      await sql`UPDATE lp_store SET value = '', deleted = true, updated_at = now() WHERE NOT deleted`;
     },
   };
 }
 
+/** Postgres-Verbindungs-URL aus der Umgebung — DATABASE_URL, POSTGRES_URL oder jede *_URL mit beliebigem Vercel-Präfix */
+export function postgresUrlFromEnv(env: Record<string, string | undefined> = process.env): string | undefined {
+  const isPg = (v?: string) => !!v && /^postgres(ql)?:\/\//i.test(v);
+  for (const k of ['DATABASE_URL', 'POSTGRES_URL']) if (isPg(env[k])) return env[k];
+  const keys = Object.keys(env).filter(k => /_URL$/.test(k) && !/UNPOOLED|NO_SSL|NON_POOLING/.test(k) && isPg(env[k])).sort();
+  return keys.length ? env[keys[0]] : undefined;
+}
+
 /**
- * Treiber nach Umgebung: Postgres, wenn DATABASE_URL/POSTGRES_URL gesetzt ist
+ * Treiber nach Umgebung: Postgres, wenn eine Postgres-URL gesetzt ist
  * (Vercel → Storage → Neon), sonst Dateien (Entwicklung; `ns` trennt
  * Testläufe), in Produktion ohne Datenbank: null = nur lokal.
  */
 export function getStoreDriver(ns?: string): StoreDriver | null {
-  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  const url = postgresUrlFromEnv();
   if (url) return postgresDriver(url);
   const dir = process.env.LP_STORE_DIR || (process.env.NODE_ENV !== 'production' ? path.join(process.cwd(), '.data', 'store') : '');
   if (!dir) return null;
