@@ -12,7 +12,7 @@ const dir = __dirname;
 const args = process.argv.slice(2);
 const jIdx = args.indexOf('-j');
 const parallel = jIdx >= 0 ? Math.max(1, Number(args[jIdx + 1]) || 1) : Number(process.env.E2E_PARALLEL) || 3;
-const only = args.filter((a, i) => a !== '-j' && i !== jIdx + 1);
+const only = args.filter((a, i) => a !== '-j' && (jIdx < 0 || i !== jIdx + 1));
 const tests = fs.readdirSync(dir).filter(f => /^test_.*\.js$/.test(f) && (only.length === 0 || only.some(o => f.includes(o)))).sort();
 
 function runOne(t) {
