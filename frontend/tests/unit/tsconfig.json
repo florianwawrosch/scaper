@@ -25,7 +25,8 @@
     "../../lib/leadKeys.ts",
     "../../lib/blocklist.ts",
     "../../lib/store.ts",
-    "../../lib/serverStore.ts"
+    "../../lib/serverStore.ts",
+    "../../lib/aiCache.ts"
   ],
   "include": []
 }

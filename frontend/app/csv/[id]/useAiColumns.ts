@@ -7,7 +7,8 @@ import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { applyPresets, presetFromConfigs, saveUserPreset, getEffectivePresets, readAutorunIds, AUTORUN_KEY, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
-import { runAiColumn, defaultModel, splitMultiOutput, applyDerivedRules, shortHash, rowFingerprint, isUsableAiValue, isAiError, normalizeMultiOutput, PENDING, type AnalysisConfig } from '@/lib/ai';
+import { runAiColumn, defaultModel, splitMultiOutput, applyDerivedRules, isAiError, normalizeMultiOutput, PENDING, type AnalysisConfig } from '@/lib/ai';
+import { planRun, readHashStore, type HashStore } from '@/lib/aiCache';
 import { useToast } from '@/app/components/Toast';
 import { buildKnownIndex } from '@/lib/leadIndex';
 import { matchKnown, KNOWN_COL, EXPORTED_COL, EMAIL_COL, PHONE_COL } from '@/lib/leadKeys';
@@ -244,12 +245,13 @@ export function useAiColumns(id: string) {
     // would silently discard and re-bill them.
     let merged: string[] | null = null;
     let lastSplit: Record<string, string[]> | null = null;
-    const promptHash = shortHash([cfg.provider, cfg.model, cfg.prompt, ...(cfg.inputColumns ?? [])].join('\x1f'));
-    const rowHashes = run.data.map(r => rowFingerprint(r, cfg.inputColumns));
     const hashKey = `analysis_hashes_${id}`;
     await ensureLocalKey(hashKey); // Cache eines Kollegen/anderen Geräts übernehmen — sonst würde alles neu klassifiziert
-    let allHashes: Record<string, { promptHash: string; rowHashes: string[] }> = {};
-    try { allHashes = JSON.parse(localStorage.getItem(hashKey) ?? '{}'); } catch {}
+    const allHashes: HashStore = readHashStore(localStorage.getItem(hashKey));
+    // feld_hash-Caching (wie im Sheet): unveränderte, schon klassifizierte Zeilen kosten nichts
+    const existing = displayAiColumns.find(c => c.name === cfg.name)?.values ?? run.data.map(r => r[cfg.name] ?? '');
+    const plan = planRun(run.data, cfg, existing, allHashes[cfg.id]);
+    const { todo, skipped, promptHash, rowHashes } = plan;
 
     const persistProgress = async () => {
       if (!merged || !merged.some(v => v !== PENDING)) return;
@@ -264,25 +266,10 @@ export function useAiColumns(id: string) {
     try {
       const apiKey = (loadSettings().apiKeys as Record<string, string>)[cfg.provider] || undefined;
       const multi = !!cfg.outputFields?.length;
-
-      // feld_hash-Caching (wie im Sheet): Zeilen mit unverändertem Prompt und
-      // unveränderten Eingabewerten, die schon ein brauchbares Ergebnis haben,
-      // werden nicht erneut klassifiziert. Fehler-Zeilen laufen automatisch neu.
-      const prev = allHashes[cfg.id];
-      const existing = displayAiColumns.find(c => c.name === cfg.name)?.values
-        ?? run.data.map(r => r[cfg.name] ?? '');
-      const todo: number[] = [];
-      for (let i = 0; i < run.data.length; i++) {
-        const cached = prev?.promptHash === promptHash
-          && prev.rowHashes[i] === rowHashes[i]
-          && isUsableAiValue(existing[i]);
-        if (!cached) todo.push(i);
-      }
       if (todo.length === 0) {
         showToast('Alle Zeilen bereits klassifiziert — nichts zu tun', 'info');
         return;
       }
-      const skipped = run.data.length - todo.length;
       const todoSet = new Set(todo);
       // Persistenter Mal-Puffer: fertige Werte werden genau EINMAL normalisiert
       // (statt bei jedem Progress-Tick die ganze Liste erneut) und dann nur noch

@@ -4,11 +4,16 @@ import { useState, useRef, useEffect } from 'react';
 import { isPendingAiValue, isAiError } from '@/lib/ai';
 import { Glyph } from './Glyph';
 import { FilterDropdown } from './FilterDropdown';
-import { useTableState, PAGE_SIZES } from '@/app/hooks/useTableState';
-import { pageNumbers } from '@/lib/tableQuery';
-import { linkTarget } from '@/lib/tableQuery';
+import { useTableState } from '@/app/hooks/useTableState';
 import { downloadCsv, downloadXlsx } from '@/lib/tableExport';
 import { mono } from '@/app/theme';
+import { StatChips, type StatChip } from './table/StatChips';
+import { ColumnMenu } from './table/ColumnMenu';
+import { TablePagination } from './table/TablePagination';
+import { CellValue } from './table/CellValue';
+import { toolbarBtn, filterBtn } from './table/styles';
+
+export type { StatChip };
 
 interface AiColumn {
   name: string;
@@ -16,13 +21,6 @@ interface AiColumn {
   label?: string;
   /** In der Tabelle ausblenden — bleibt in Suche, Filter und Export enthalten */
   hidden?: boolean;
-}
-
-/** Auswertungs-Chip über der Tabelle; mit filter wird er zum Ein-Klick-Filter */
-export interface StatChip {
-  text: string;
-  tone: 'gold' | 'teal';
-  filter?: { column: string; value: string };
 }
 
 /**
@@ -79,8 +77,7 @@ export function DataTable({
   // Angezeigte KI-Spalten; ausgeblendete (z.B. Einzelspalten einer Multi-Output-Antwort)
   // stecken weiterhin in extended/allColumns und damit in Suche und Export
   const shownAi = aiColumns.filter(c => !c.hidden);
-  const [openFilter,  setOpenFilter]  = useState<{ col: string; rect: DOMRect } | null>(null);
-  const [colMenuOpen, setColMenuOpen] = useState(false);
+  const [openFilter, setOpenFilter] = useState<{ col: string; rect: DOMRect } | null>(null);
 
   // When the parent creates an AI column it bumps scrollSignal — the new column
   // appears at the right end, so scroll there (otherwise "+ KI-Spalte" feels
@@ -152,53 +149,10 @@ export function DataTable({
     setOpenFilter(prev => prev?.col === col ? null : { col, rect });
   };
 
-  // URLs and bare domains (e.g. "app.quiz-akademie.de") become clickable links
-  const renderCell = (val: string) => {
-    const href = linkTarget(val);
-    // Reine ganze Zahlen ab 4 Stellen (z.B. reach, spend) mit Tausenderpunkt — die
-    // Größenordnung ist so auf einen Blick klar; sortiert wird weiter numerisch
-    if (!href && /^\d{4,}$/.test(val.trim())) return Number(val).toLocaleString('de-DE');
-    if (!href) return val || '—';
-    return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={e => e.stopPropagation()}
-        style={{ color: '#8ab4f8', textDecoration: 'none' }}
-        onMouseEnter={e => ((e.currentTarget as HTMLElement).style.textDecoration = 'underline')}
-        onMouseLeave={e => ((e.currentTarget as HTMLElement).style.textDecoration = 'none')}
-      >{val.trim()}</a>
-    );
-  };
-
   return (
     <div style={{ border: '1px solid rgba(255,255,255,.07)', borderRadius: 10, overflow: 'hidden', fontSize: 11 }}>
 
-      {/* Auswertungs-Chips: Klick filtert die Tabelle */}
-      {stats && stats.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,.05)', background: 'rgba(255,255,255,.015)' }}>
-          {stats.map((c, i) => {
-            const active = c.filter ? chipFilterActive(c.filter) : false;
-            const color = c.tone === 'teal' ? '#4fd1c5' : '#e8b04b';
-            const rgb   = c.tone === 'teal' ? '79,209,197' : '232,176,75';
-            return (
-              <button
-                key={i}
-                onClick={c.filter ? () => toggleChipFilter(c.filter!) : undefined}
-                title={c.filter ? (active ? 'Filter aufheben' : `Tabelle auf ${c.filter.column} = ${c.filter.value} filtern`) : undefined}
-                style={{
-                  ...mono, fontSize: 10, padding: '3px 10px', borderRadius: 12, letterSpacing: '.03em',
-                  border: `1px solid rgba(${rgb},${active ? '.7' : '.3'})`,
-                  background: active ? `rgba(${rgb},.22)` : `rgba(${rgb},.06)`,
-                  color,
-                  cursor: c.filter ? 'pointer' : 'default',
-                }}
-              >{c.text}{active ? ' ×' : ''}</button>
-            );
-          })}
-        </div>
-      )}
+      {stats && <StatChips chips={stats} isActive={chipFilterActive} onToggle={toggleChipFilter} />}
 
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'rgba(255,255,255,.03)', borderBottom: '1px solid rgba(255,255,255,.07)' }}>
@@ -210,12 +164,7 @@ export function DataTable({
           style={{ ...mono, fontSize: 11, flex: 1, maxWidth: 240, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 5, padding: '3px 8px', color: '#f4efe4', outline: 'none' }}
         />
         {activeFilters > 0 && (
-          <button
-            onClick={() => setColFilters({})}
-            style={{ ...mono, fontSize: 10, color: '#e8736b', background: 'rgba(232,115,107,.08)', border: '1px solid rgba(232,115,107,.2)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}
-          >
-            {activeFilters} Filter ×
-          </button>
+          <button onClick={() => setColFilters({})} style={toolbarBtn('rose')}>{activeFilters} Filter ×</button>
         )}
         {onBlockPages && excludedRows.size > 0 && (() => {
           const deselected = extended.filter(r => excludedRows.has(r._idx));
@@ -225,11 +174,7 @@ export function DataTable({
               onClick={() => onBlockPages(deselected)}
               disabled={pageCount === 0}
               title="Die Seitennamen der abgewählten Zeilen dauerhaft zur Blockliste hinzufügen — künftige Scrapes schließen sie aus"
-              style={{
-                ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer',
-                border: '1px solid rgba(232,115,107,.35)', background: 'rgba(232,115,107,.08)', color: '#e8736b',
-                opacity: pageCount === 0 ? 0.4 : 1,
-              }}
+              style={toolbarBtn('rose', { disabled: pageCount === 0 })}
             ><Glyph>🚫</Glyph>{pageCount} {pageCount === 1 ? 'Seite' : 'Seiten'} blocken</button>
           );
         })()}
@@ -243,69 +188,23 @@ export function DataTable({
           onClick={() => setViewMode(expanded ? 'compact' : 'expanded')}
           title={expanded ? 'Kompakt: eine Zeile pro Datensatz' : 'Erweitert: lange Texte (z.B. Werbetext) komplett anzeigen'}
           data-testid="view-toggle"
-          style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(255,255,255,.08)', background: expanded ? 'rgba(255,255,255,.08)' : 'transparent', color: '#9aa7bd', whiteSpace: 'nowrap' }}
+          style={toolbarBtn('plain', { active: expanded })}
         ><Glyph>{expanded ? '☰' : '≡'}</Glyph>{expanded ? 'Erweitert' : 'Kompakt'}</button>
 
-        {/* Column visibility menu */}
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setColMenuOpen(o => !o)}
-            title="Spalten ein-/ausblenden"
-            style={{
-              ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
-              border: hiddenCols.size > 0 ? '1px solid rgba(232,176,75,.4)' : '1px solid rgba(255,255,255,.12)',
-              background: hiddenCols.size > 0 ? 'rgba(232,176,75,.08)' : 'transparent',
-              color: hiddenCols.size > 0 ? '#e8b04b' : '#9aa7bd',
-            }}
-          ><Glyph>⊞</Glyph>Spalten{hiddenCols.size > 0 ? ` (${visibleRawColumns.length}/${rawColumns.length})` : ''}</button>
-          {colMenuOpen && (
-            <>
-              <div onClick={() => setColMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
-              <div style={{
-                position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 9999, width: 200,
-                maxHeight: 320, overflowY: 'auto', background: '#10111a',
-                border: '1px solid rgba(255,255,255,.12)', borderRadius: 8, boxShadow: '0 8px 28px rgba(0,0,0,.5)',
-              }}>
-                <div style={{ padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ ...mono, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: '#5f6e87' }}>Spalten</span>
-                  {hiddenCols.size > 0 && (
-                    <button onClick={() => setHiddenCols(new Set())} style={{ ...mono, fontSize: 10, color: '#4fd1c5', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Alle zeigen</button>
-                  )}
-                </div>
-                {rawColumns.map(col => {
-                  const visible = !hiddenCols.has(col);
-                  return (
-                    <label key={col} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px', cursor: 'pointer' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.04)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <input type="checkbox" checked={visible}
-                        onChange={() => setHiddenCols(prev => {
-                          const next = new Set(prev);
-                          if (next.has(col)) next.delete(col); else next.add(col);
-                          return next;
-                        })}
-                        style={{ width: 12, height: 12, cursor: 'pointer', accentColor: '#4fd1c5', flexShrink: 0 }} />
-                      <span style={{ ...mono, fontSize: 11, color: visible ? '#c4cdd8' : '#5f6e87', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
+        <ColumnMenu columns={rawColumns} hidden={hiddenCols} onChange={setHiddenCols} />
 
         {toolbarExtra}
         <button
           onClick={exportCsv}
           disabled={sorted.length === 0}
           title="Als CSV exportieren"
-          style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(79,209,197,.3)', background: 'rgba(79,209,197,.06)', color: '#4fd1c5', opacity: sorted.length === 0 ? 0.4 : 1 }}
+          style={toolbarBtn('teal', { disabled: sorted.length === 0 })}
         ><Glyph>↓</Glyph>CSV</button>
         <button
           onClick={exportXlsx}
           disabled={sorted.length === 0}
           title="Als Excel exportieren"
-          style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(79,209,197,.3)', background: 'rgba(79,209,197,.06)', color: '#4fd1c5', opacity: sorted.length === 0 ? 0.4 : 1 }}
+          style={toolbarBtn('teal', { disabled: sorted.length === 0 })}
         ><Glyph>↓</Glyph>XLSX</button>
         {exportPresets.map(p => (
           <button
@@ -313,7 +212,7 @@ export function DataTable({
             onClick={() => exportPreset(p)}
             disabled={sorted.length === 0}
             title={p.title}
-            style={{ ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', border: '1px solid rgba(232,176,75,.35)', background: 'rgba(232,176,75,.08)', color: '#e8b04b', whiteSpace: 'nowrap', opacity: sorted.length === 0 ? 0.4 : 1 }}
+            style={toolbarBtn('gold', { disabled: sorted.length === 0 })}
           >{p.icon && <Glyph>{p.icon}</Glyph>}{p.label}</button>
         ))}
       </div>
@@ -337,17 +236,7 @@ export function DataTable({
                       <span style={{ cursor: 'pointer' }} onClick={() => { sort(col); }}>
                         {col}{sortCol === col ? (sortAsc ? ' ↑' : ' ↓') : ''}
                       </span>
-                      <button
-                        onClick={e => openFilterFor(col, e)}
-                        title="Filter"
-                        style={{
-                          ...mono, fontSize: 9, padding: '1px 4px', borderRadius: 3, cursor: 'pointer',
-                          background: hasFilter ? 'rgba(79,209,197,.2)' : 'rgba(255,255,255,.06)',
-                          border: hasFilter ? '1px solid rgba(79,209,197,.4)' : '1px solid rgba(255,255,255,.1)',
-                          color: hasFilter ? '#4fd1c5' : '#5f6e87',
-                          lineHeight: 1,
-                        }}
-                      >▼</button>
+                      <button onClick={e => openFilterFor(col, e)} title="Filter" style={filterBtn(!!hasFilter)}>▼</button>
                     </div>
                   </th>
                 );
@@ -380,16 +269,7 @@ export function DataTable({
                           style={{ fontSize: 14, padding: '4px 9px', borderRadius: 5, background: 'rgba(79,209,197,.12)', border: '1px solid rgba(79,209,197,.35)', cursor: 'pointer', color: '#4fd1c5', lineHeight: 1 }}
                         >▶</button>
                       )}
-                      <button
-                        onClick={e => openFilterFor(col.name, e)}
-                        style={{
-                          ...mono, fontSize: 9, padding: '1px 4px', borderRadius: 3, cursor: 'pointer',
-                          background: hasFilter ? 'rgba(79,209,197,.2)' : 'rgba(255,255,255,.06)',
-                          border: hasFilter ? '1px solid rgba(79,209,197,.4)' : '1px solid rgba(255,255,255,.1)',
-                          color: hasFilter ? '#4fd1c5' : '#5f6e87',
-                          lineHeight: 1,
-                        }}
-                      >▼</button>
+                      <button onClick={e => openFilterFor(col.name, e)} title="Filter" style={filterBtn(!!hasFilter)}>▼</button>
                     </div>
                   </th>
                 );
@@ -413,7 +293,7 @@ export function DataTable({
                   <td style={{ ...tdStyle, color: '#5f6e87', fontSize: 10, whiteSpace: 'nowrap' }}>{pageStart + i + 1}</td>
                   {visibleRawColumns.map(col => (
                     <td key={col} title={String(row[col] ?? '')} style={tdStyle}>
-                      {renderCell(String(row[col] ?? ''))}
+                      <CellValue value={String(row[col] ?? '')} />
                     </td>
                   ))}
                   {shownAi.map(col => {
@@ -450,46 +330,10 @@ export function DataTable({
         </table>
       </div>
 
-      {/* Paginierung — immer sichtbar: Info links, Seitenzahlen in der Mitte, Zeilen pro Seite ganz am Ende */}
-      <div data-testid="pagination" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '5px 10px', borderTop: '1px solid rgba(255,255,255,.07)', background: 'rgba(255,255,255,.02)' }}>
-        <span style={{ ...mono, fontSize: 10, color: '#5f6e87', whiteSpace: 'nowrap' }}>
-          {sorted.length === 0 ? 'Keine Zeilen' : `Seite ${page} / ${totalPages} · ${pageStart + 1}–${Math.min(pageStart + paginated.length, sorted.length)} von ${sorted.length}`}
-        </span>
-        <div style={{ display: 'flex', gap: 3, alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
-          {([['«', 1], ['‹', page - 1]] as const).map(([lbl, target]) => (
-            <button key={lbl} onClick={() => setPage(Math.max(1, target))} disabled={page === 1} title={lbl === '«' ? 'Erste Seite' : 'Vorherige Seite'}
-              style={{ ...mono, fontSize: 11, padding: '2px 7px', border: '1px solid rgba(255,255,255,.1)', borderRadius: 4, background: 'none', color: '#9aa7bd', cursor: page === 1 ? 'default' : 'pointer', opacity: page === 1 ? .35 : 1 }}
-            >{lbl}</button>
-          ))}
-          {pageNumbers(page, totalPages).map((n, i) => n === '…' ? (
-            <span key={`gap${i}`} style={{ ...mono, fontSize: 10, color: '#5f6e87', padding: '0 2px' }}>…</span>
-          ) : (
-            <button
-              key={n}
-              onClick={() => setPage(n)}
-              aria-current={n === page ? 'page' : undefined}
-              data-testid={`page-btn-${n}`}
-              style={{ ...mono, fontSize: 11, minWidth: 26, padding: '2px 6px', borderRadius: 4, cursor: n === page ? 'default' : 'pointer', border: n === page ? '1px solid rgba(232,176,75,.5)' : '1px solid rgba(255,255,255,.08)', background: n === page ? 'rgba(232,176,75,.14)' : 'none', color: n === page ? '#f5cc77' : '#9aa7bd', fontWeight: n === page ? 700 : 400 }}
-            >{n}</button>
-          ))}
-          {([['›', page + 1], ['»', totalPages]] as const).map(([lbl, target]) => (
-            <button key={lbl} onClick={() => setPage(Math.min(totalPages, target))} disabled={page >= totalPages} title={lbl === '»' ? 'Letzte Seite' : 'Nächste Seite'}
-              style={{ ...mono, fontSize: 11, padding: '2px 7px', border: '1px solid rgba(255,255,255,.1)', borderRadius: 4, background: 'none', color: '#9aa7bd', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? .35 : 1 }}
-            >{lbl}</button>
-          ))}
-        </div>
-        <label style={{ ...mono, fontSize: 10, color: '#5f6e87', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', paddingLeft: 8, borderLeft: '1px solid rgba(255,255,255,.08)' }}>
-          Zeilen pro Seite
-          <select
-            value={pageSize}
-            onChange={e => setPageSize(Number(e.target.value))}
-            data-testid="page-size"
-            style={{ ...mono, fontSize: 10, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 4, color: '#9aa7bd', padding: '2px 6px', outline: 'none', cursor: 'pointer' }}
-          >
-            {PAGE_SIZES.map(n => <option key={n} value={n}>{n === 0 ? 'Alle' : n}</option>)}
-          </select>
-        </label>
-      </div>
+      <TablePagination
+        page={page} totalPages={totalPages} pageStart={pageStart} pageCount={paginated.length} total={sorted.length}
+        pageSize={pageSize} onPage={setPage} onPageSize={setPageSize}
+      />
 
       {/* Filter dropdown portal */}
       {openFilter && (
