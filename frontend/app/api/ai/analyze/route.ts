@@ -95,7 +95,7 @@ function friendlyAiError(msg: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  let body: Partial<Record<'provider' | 'model' | 'prompts' | 'apiKey', unknown>> = {};
+  let body: Partial<Record<'provider' | 'model' | 'prompts', unknown>> = {};
   try { body = await req.json(); } catch {}
 
   const provider = String(body.provider ?? '').toLowerCase();
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
   if (prompts.length === 0) return NextResponse.json({ values: [] });
   if (prompts.length > 25)  return NextResponse.json({ detail: 'Max. 25 Prompts pro Aufruf' }, { status: 400 });
 
-  const key = (typeof body.apiKey === 'string' && body.apiKey) || envKey(provider);
+  const key = envKey(provider);
   if (!key) {
     return NextResponse.json(
       { detail: `Kein API-Key für ${provider} — als Umgebungsvariable in Vercel setzen (z.B. OPENAI_API_KEY).` },

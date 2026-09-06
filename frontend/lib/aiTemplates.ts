@@ -8,7 +8,6 @@ import type { AnalysisConfig } from '@/lib/ai';
 import { defaultModel, modelsFor } from '@/lib/ai';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { AI_PROVIDERS } from '@/lib/ai';
-import { loadSettings } from '@/lib/settings';
 import { lsSet } from '@/lib/store';
 
 /** Import-Quelle, bei der eine KI-Spalte automatisch geladen werden kann */
@@ -327,18 +326,16 @@ export function detectPreset(fields: string[]): ImportPreset | null {
 
 /**
  * Fallback-Anbieter beim Laden: anthropic bevorzugt (der LinkedIn-Prompt ist
- * auf Claude abgestimmt), sonst der erste Provider mit Key (Browser oder Server).
+ * auf Claude abgestimmt), sonst der erste Provider mit Key auf dem Server.
  */
 export function pickPresetProvider(serverKeys: Record<string, boolean> = {}): string {
-  const local = loadSettings().apiKeys as Record<string, string>;
   const ids = AI_PROVIDERS.map(p => p.id);
-  return ['anthropic', ...ids].find(p => local[p] || serverKeys[p]) ?? ids[0];
+  return ['anthropic', ...ids].find(p => serverKeys[p]) ?? ids[0];
 }
 
-/** Provider mit Key (Browser oder Server) — für die Modellwahl gespeicherter KI-Spalten */
+/** Provider mit Key auf dem Server — für die Modellwahl gespeicherter KI-Spalten */
 export function availableProviders(serverKeys: Record<string, boolean> = {}): string[] {
-  const local = loadSettings().apiKeys as Record<string, string>;
-  return AI_PROVIDERS.map(p => p.id).filter(p => local[p] || serverKeys[p]);
+  return AI_PROVIDERS.map(p => p.id).filter(p => serverKeys[p]);
 }
 
 /**

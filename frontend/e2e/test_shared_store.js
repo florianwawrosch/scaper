@@ -1,6 +1,6 @@
 // Gemeinsamer Speicher: zwei Browser (Kollegen) mit demselben Login sehen dieselben
 // Datensätze, KI-Spalten und Blockliste; Löschen auf dem einen verschwindet beim anderen
-const { playwright, login, ok, BASE_URL } = require('./helpers');
+const { playwright, login, mockKeys, ok, BASE_URL } = require('./helpers');
 const { chromium } = playwright();
 /** Warten, bis alle vorgemerkten Änderungen dieses Browsers auf dem Server sind */
 const settled = (p) => p.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('lp_sync_pending') || '{}')).length === 0);
@@ -9,6 +9,7 @@ const settled = (p) => p.waitForFunction(() => Object.keys(JSON.parse(localStora
   const ctxA = await browser.newContext({ viewport: { width: 1400, height: 900 } });
   const a = await ctxA.newPage();
   const ns = await login(a);
+  await mockKeys(a, ['anthropic']);
   await a.goto(BASE_URL, { waitUntil: 'networkidle' });
   await settled(a);
   ok((await a.locator('[data-testid="store-banner"]').count()) === 0, 'keine Hinweisleiste — Server verbunden, nichts zu sehen');
@@ -16,7 +17,7 @@ const settled = (p) => p.waitForFunction(() => Object.keys(JSON.parse(localStora
   // Kollege A: Datensatz (Meta + CSV-Text) anlegen, KI-Spalte und Blocklisten-Eintrag speichern
   const id = 'csv_shared_' + Date.now();
   await a.evaluate(async (id) => {
-    localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: 'k', hunter_io: '', findymail: '' }, theme: 'noir' }));
+    localStorage.setItem('appSettings', JSON.stringify({ theme: 'noir' }));
     localStorage.setItem(`csv_run_${id}`, JSON.stringify({ fields: ['page_name', 'ad_text'], filename: 'Meta: kollege-a', createdAt: new Date().toISOString(), rowCount: 2 }));
     const req = indexedDB.open('scaper_csv', 1);
     await new Promise((res, rej) => { req.onupgradeneeded = () => req.result.createObjectStore('files'); req.onsuccess = res; req.onerror = () => rej(req.error); });

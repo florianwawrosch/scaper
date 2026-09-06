@@ -50,7 +50,6 @@ interface MetaPage {
 
 /** Request body from the search form (all optional — defaults below). */
 interface ScrapeConfig {
-  meta_ads_token?: string;
   keywords?: string | string[];
   countries?: string[];
   platforms?: string[];
@@ -93,7 +92,7 @@ export async function POST(req: NextRequest) {
   let cfg: ScrapeConfig = {};
   try { cfg = await req.json(); } catch {}
 
-  const token = cfg.meta_ads_token || envKey('meta_ads');
+  const token = envKey('meta_ads');
   if (!token) {
     return NextResponse.json(
       { detail: 'Meta API Key fehlt — META_API_KEY als Umgebungsvariable in Vercel setzen.' },

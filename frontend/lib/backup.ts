@@ -72,10 +72,11 @@ export async function storageStats(): Promise<Summary & { usedBytes?: number; qu
 export async function buildBackup(): Promise<BackupFile> {
   const ls: Record<string, string> = {};
   for (const k of ownKeys()) { const v = localStorage.getItem(k); if (v !== null) ls[k] = v; }
-  // Einstellungen ohne API-Keys (Backup-Datei ist Klartext)
+  // Einstellungen ohne API-Keys (ältere Versionen hatten welche im Browser; Backup-Datei ist Klartext)
   try {
-    const settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
-    ls[SETTINGS_KEY] = JSON.stringify({ ...settings, apiKeys: {} });
+    const { apiKeys: _keys, ...settings } = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
+    void _keys;
+    ls[SETTINGS_KEY] = JSON.stringify(settings);
   } catch {}
   const csv: Record<string, string> = {};
   for (const id of datasetIds()) {
@@ -105,8 +106,8 @@ export interface RestoreResult { datasets: number; skipped: number; entries: num
 
 /**
  * Backup einspielen. overwrite=false: vorhandene Datensätze/Einträge bleiben
- * (nur Neues kommt dazu), overwrite=true: Backup gewinnt. Die API-Keys des
- * Browsers bleiben immer unangetastet — auch wenn eine (alte) Datei welche enthält.
+ * (nur Neues kommt dazu), overwrite=true: Backup gewinnt. API-Keys aus einer
+ * (alten) Datei werden nie übernommen — Keys liegen nur auf dem Server.
  */
 export async function restoreBackup(b: BackupFile, opts: { overwrite: boolean }): Promise<RestoreResult> {
   let datasets = 0, skipped = 0, entries = 0;
@@ -114,9 +115,10 @@ export async function restoreBackup(b: BackupFile, opts: { overwrite: boolean })
     const isDataset = k.startsWith(DATASET_PREFIX);
     if (k === SETTINGS_KEY) {
       try {
-        const incoming = JSON.parse(v);
+        const { apiKeys: _keys, ...incoming } = JSON.parse(v);
+        void _keys;
         const current = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...current, ...incoming, apiKeys: current.apiKeys ?? {} }));
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...current, ...incoming }));
         entries++;
       } catch {}
       continue;

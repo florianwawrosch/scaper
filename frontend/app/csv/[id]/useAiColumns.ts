@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { loadCsvRun, saveCsvRunColumns } from '@/lib/csvRuns';
 import { lsSet, ensureLocalKey, STORE_EVENT, hasPending, remoteStamp, localStamp } from '@/lib/store';
-import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { applyPresets, presetFromConfigs, saveUserPreset, getEffectivePresets, readAutorunIds, AUTORUN_KEY, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
@@ -100,8 +99,7 @@ export function useAiColumns(id: string) {
 
   useEffect(() => {
     fetchKeyAvailability().then(server => {
-      const local = loadSettings().apiKeys as Record<string, string>;
-      setProviders(['gemini', 'anthropic', 'openai'].filter(p => local[p] || server[p]));
+      setProviders(['gemini', 'anthropic', 'openai'].filter(p => server[p]));
     });
   }, []);
 
@@ -286,7 +284,6 @@ export function useAiColumns(id: string) {
     };
 
     try {
-      const apiKey = (loadSettings().apiKeys as Record<string, string>)[cfg.provider] || undefined;
       const multi = !!cfg.outputFields?.length;
       if (todo.length === 0) {
         showToast('Alle Zeilen bereits klassifiziert — nichts zu tun', 'info');
@@ -320,7 +317,6 @@ export function useAiColumns(id: string) {
         provider: cfg.provider,
         model: cfg.model,
         prompt: cfg.prompt,
-        apiKey,
         inputColumns: cfg.inputColumns,
         multiOutput: multi,
         onProgress: (partial) => {

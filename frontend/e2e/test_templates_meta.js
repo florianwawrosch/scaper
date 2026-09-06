@@ -1,6 +1,6 @@
 // Instant Load bei Meta-Scrape: Vorlage (KEEP/DROP) mit autoAdd.meta + autoRun,
 // /api/scrape gemockt → Viewer zeigt ki_bewertung automatisch und füllt aus.
-const { playwright, login, shot, ok, BASE_URL, DIR } = require('./helpers');
+const { playwright, login, mockKeys, shot, ok, BASE_URL, DIR } = require('./helpers');
 const { chromium } = playwright();
 const BASE = BASE_URL;
 const S = DIR;
@@ -8,6 +8,7 @@ const S = DIR;
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   await login(page);
+  await mockKeys(page, ['meta_ads','gemini']);
   const errors = [];
   page.on('pageerror', e => errors.push('PAGEERROR ' + e.message));
   let scrapeCalls = 0, aiCalls = 0;
@@ -27,7 +28,7 @@ const S = DIR;
   await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.evaluate(() => {
     localStorage.clear();
-    localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { meta_ads: 'tok', openai: '', gemini: 'g-key', anthropic: '', hunter_io: '', findymail: '' }, theme: 'noir' }));
+    localStorage.setItem('appSettings', JSON.stringify({ theme: 'noir' }));
     // Instant Load für Meta an der eingebauten KEEP/DROP-Vorlage (wie in Einstellungen gesetzt)
     localStorage.setItem('preset_flags', JSON.stringify({ keep_drop: { autoAdd: { meta: true }, autoRun: true } }));
   });

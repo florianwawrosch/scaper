@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist } from '@/lib/blocklist';
 import { getEffectivePresets } from '@/lib/aiTemplates';
@@ -31,8 +30,7 @@ export default function Settings() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTplCount(getEffectivePresets().length);
     setBlockCount(loadBlocklist().length);
-    const local = loadSettings().apiKeys as Record<string, string>;
-    fetchKeyAvailability().then(server => setKeyCount(SERVICE_KEYS.filter(k => local[k] || server[k]).length));
+    fetchKeyAvailability().then(server => setKeyCount(SERVICE_KEYS.filter(k => server[k]).length));
     // Deep link: /settings?tab=blocklist
     try {
       const tab = new URLSearchParams(window.location.search).get('tab');

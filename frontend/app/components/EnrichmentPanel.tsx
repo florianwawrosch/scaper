@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getApiKey, loadSettings } from '@/lib/settings';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { pickColumn, sampleValue, NAME_CANDIDATES, COMPANY_CANDIDATES, LINKEDIN_CANDIDATES } from '@/lib/enrichMapping';
 import { useToast } from './Toast';
@@ -69,9 +68,8 @@ export function EnrichmentPanel({ leadsCount, onEnrichmentComplete, availableCol
 
   useEffect(() => {
     fetchKeyAvailability().then(server => {
-      const local = loadSettings().apiKeys as Record<string, string>;
       const merged: Record<string, boolean> = {};
-      for (const p of ALL_PROVIDERS) merged[p.id] = !!local[p.id] || !!server[p.id];
+      for (const p of ALL_PROVIDERS) merged[p.id] = !!server[p.id];
       setAvailable(merged);
       setKeysReady(true);
       // Preselect the first configured provider
@@ -122,11 +120,10 @@ export function EnrichmentPanel({ leadsCount, onEnrichmentComplete, availableCol
     setConfirming(true);
     // Guthaben + Abrechnungsregel des Anbieters für die Zusammenfassung holen
     setAccount('loading');
-    const apiKey = getApiKey(selected);
     fetch('/api/enrich/account', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: selected, ...(apiKey && { apiKey }) }),
+      body: JSON.stringify({ provider: selected }),
     })
       .then(r => r.json())
       .then((a: EnrichAccount) => setAccount(a))
@@ -140,8 +137,6 @@ export function EnrichmentPanel({ leadsCount, onEnrichmentComplete, availableCol
     const wanted: EnrichField[] = [...(wantEmail ? ['email' as const] : []), ...(wantPhone ? ['phone' as const] : [])];
     run.start({
       provider: selected,
-      // Key from browser settings if present — otherwise the server reads it from its env vars
-      apiKey: getApiKey(selected) || undefined,
       rows,
       fields: wanted,
       mapping: { nameColumn: effNameCol, companyColumn: effCompanyCol, linkedinColumn: effLinkedinCol },
@@ -171,7 +166,7 @@ export function EnrichmentPanel({ leadsCount, onEnrichmentComplete, availableCol
         {/* No provider configured */}
         {keysReady && PROVIDERS.length === 0 && (
           <div style={{ padding: '14px 16px', border: '1px dashed rgba(255,255,255,.09)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <p style={{ ...mono, fontSize: 11, color: T.inkF }}>Kein Enrichment-Provider konfiguriert. Hunter.io- oder FindyMail-Key in den Einstellungen bzw. in Vercel hinterlegen.</p>
+            <p style={{ ...mono, fontSize: 11, color: T.inkF }}>Kein Enrichment-Provider konfiguriert. Hunter.io- oder FindyMail-Key als Umgebungsvariable setzen — wie, steht unter Einstellungen → Integrationen.</p>
             <button
               onClick={() => router.push('/settings')}
               style={{ ...mono, fontSize: 10, alignSelf: 'flex-start', padding: '3px 10px', borderRadius: 4, border: '1px solid rgba(99,129,255,.3)', background: 'rgba(99,129,255,.08)', color: '#6381ff', cursor: 'pointer' }}

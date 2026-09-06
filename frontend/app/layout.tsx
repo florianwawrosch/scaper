@@ -3,7 +3,6 @@ import "./globals.css";
 import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
 import { ThemeProvider } from "./components/ThemeProvider";
-import { KeySync } from "./components/KeySync";
 import { StoreGate } from "./components/StoreGate";
 
 export const metadata: Metadata = {
@@ -16,7 +15,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="de" className="h-full">
       <body className="h-full antialiased flex flex-col">
         <ThemeProvider />
-        <KeySync />
         <ToastProvider>
           <Header />
           <main className="flex-1"><StoreGate>{children}</StoreGate></main>

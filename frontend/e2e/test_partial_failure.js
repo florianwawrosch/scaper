@@ -1,10 +1,11 @@
-const { playwright, login, shot, BASE_URL } = require('./helpers');
+const { playwright, login, mockKeys, shot, BASE_URL } = require('./helpers');
 const { chromium } = playwright();
 
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   await login(page);
+  await mockKeys(page, ['anthropic']);
 
   const id = 'csv_partial_' + Date.now();
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
@@ -12,7 +13,6 @@ const { chromium } = playwright();
   // Set a fake local Anthropic key so runColumn doesn't bail early
   await page.evaluate(() => {
     localStorage.setItem('appSettings', JSON.stringify({
-      apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: 'fake-key', hunter_io: '', findymail: '' },
       theme: 'noir',
     }));
   });

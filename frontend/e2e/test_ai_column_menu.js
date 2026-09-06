@@ -1,12 +1,13 @@
 // «+ KI-Spalte»-Menü: LinkedIn-Spalte auf Meta-Daten ausgegraut (Eingabespalten fehlen),
 // gespeicherte KI-Spalte lädt EINE Tabellenspalte und ist danach gesperrt (✓ in Tabelle),
 // «Neue KI-Spalte» legt eine leere Spalte an und öffnet ⚙, «direkt ausfüllen» startet die KI
-const { playwright, login, ok, BASE_URL } = require('./helpers');
+const { playwright, login, mockKeys, ok, BASE_URL } = require('./helpers');
 const { chromium } = playwright();
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   await login(page);
+  await mockKeys(page, ['anthropic']);
   let aiCalls = 0;
   await page.route('**/api/ai/analyze', async route => {
     aiCalls++;
@@ -17,7 +18,7 @@ const { chromium } = playwright();
   const id = 'csv_menu_' + Date.now();
   await page.evaluate((id) => {
     localStorage.clear();
-    localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: 'k', hunter_io: '', findymail: '' }, theme: 'noir' }));
+    localStorage.setItem('appSettings', JSON.stringify({ theme: 'noir' }));
     localStorage.setItem('user_presets', JSON.stringify([
       { id: 'user_a', name: 'ki_a', columns: [{ name: 'ki_a', prompt: 'A?', provider: 'anthropic', model: 'claude-sonnet-5' }], userDefined: true },
       { id: 'user_b', name: 'ki_b', columns: [{ name: 'ki_b', prompt: 'B?' }], userDefined: true },

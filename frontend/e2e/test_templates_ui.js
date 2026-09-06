@@ -2,7 +2,7 @@
 // Settings-Tabelle zeigt die eigene KI-Spalte, neuer CSV-Upload hängt sie
 // automatisch an und (autoRun) füllt sie per (gemocktem) /api/ai/analyze aus.
 // Danach: «+ KI-Spalte»-Menü lädt eine eingebaute; Settings löscht die eigene.
-const { playwright, login, fixture, shot, ok, BASE_URL, DIR } = require('./helpers');
+const { playwright, login, mockKeys, fixture, shot, ok, BASE_URL, DIR } = require('./helpers');
 const { chromium } = playwright();
 const BASE = BASE_URL;
 const S = DIR;
@@ -15,6 +15,7 @@ fs.writeFileSync(PLAIN_CSV, 'page_name,ad_text,email\nCoach Anna,Ich helfe dir b
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   await login(page);
+  await mockKeys(page, ['anthropic']);
   const errors = [];
   page.on('pageerror', e => errors.push('PAGEERROR ' + e.message));
   page.on('console', m => { if (m.type() === 'error' && !/502/.test(m.text())) errors.push('CONSOLE ' + m.text().slice(0, 160)); });
@@ -34,7 +35,6 @@ fs.writeFileSync(PLAIN_CSV, 'page_name,ad_text,email\nCoach Anna,Ich helfe dir b
   await page.evaluate(() => {
     localStorage.clear();
     localStorage.setItem('appSettings', JSON.stringify({
-      apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: 'fake-key', hunter_io: '', findymail: '' },
       theme: 'noir',
     }));
   });

@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
 import { createCsvRun } from '@/lib/csvRuns';
 import { applyBlocklist } from '@/lib/blocklist';
-import { loadSettings } from '@/lib/settings';
 import type { SavedSearch } from '@/lib/savedSearches';
 import type { PresetSource } from '@/lib/aiTemplates';
 import { useToast } from '@/app/components/Toast';
@@ -83,9 +82,7 @@ export function useScrapeForm({ autoApplyPresets }: Options) {
     setFormError('');
     const { tags, country, platforms, adStatus, mediaType, searchType, languages, dateMin, dateMax, limit, bylines } = values;
     if (tags.length === 0) { setFormError('Mindestens einen Suchbegriff eingeben'); return; }
-    // Token from browser settings if present — otherwise the Vercel server
-    // reads it from its env vars (META_API_KEY etc., see lib/serverKeys.ts).
-    const token = loadSettings().apiKeys.meta_ads;
+    // Der Meta-Token liegt auf dem Server (META_API_KEY, siehe lib/serverKeys.ts)
     setCreating(true);
     try {
       const res = await fetch('/api/scrape', {
@@ -103,7 +100,6 @@ export function useScrapeForm({ autoApplyPresets }: Options) {
           ...(dateMax && { ad_delivery_date_max: dateMax }),
           limit,
           ...(bylines && { bylines: bylines.split(',').map(s => s.trim()).filter(Boolean) }),
-          ...(token && { meta_ads_token: token }),
         }),
       });
       if (!res.ok) {

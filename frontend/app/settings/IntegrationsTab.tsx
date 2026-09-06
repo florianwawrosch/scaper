@@ -1,269 +1,130 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { loadSettings, saveSettings, type AppSettings } from '@/lib/settings';
-import { fetchKeyAvailability } from '@/lib/keyAvailability';
-import { ConfirmDelete } from '@/app/components/ConfirmDelete';
+import { fetchKeySetup } from '@/lib/keyAvailability';
+import type { KeySetup } from '@/lib/serverKeys';
 import { T } from '@/app/theme';
 
-interface Service { key: string; label: string; hint: string; desc: string }
-interface Group   { key: string; label: string; desc: string; services: Service[] }
+interface Service { key: string; label: string; group: string; where: string }
 
-const GROUPS: Group[] = [
-  {
-    key: 'ai',
-    label: 'KI-Modelle',
-    desc: 'Für KI-Analyse und Lead-Bewertung',
-    services: [
-      { key: 'gemini',    label: 'Google Gemini',   hint: 'AIzaSy…',        desc: 'Key unter aistudio.google.com' },
-      { key: 'anthropic', label: 'Anthropic Claude', hint: 'sk-ant-api03-…', desc: 'Key unter console.anthropic.com' },
-      { key: 'openai',    label: 'OpenAI',           hint: 'sk-proj-…',      desc: 'Key unter platform.openai.com/api-keys' },
-    ],
-  },
-  {
-    key: 'enrichment',
-    label: 'Data Enrichment',
-    desc: 'E-Mail-Adressen und Kontaktdaten anreichern',
-    services: [
-      { key: 'hunter_io', label: 'Hunter.io',  hint: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', desc: 'Key unter hunter.io/api-keys' },
-      { key: 'findymail', label: 'FindyMail',  hint: 'Bearer eyJ…',                     desc: 'Bearer Token unter app.findymail.com/settings' },
-    ],
-  },
-  {
-    key: 'scraping',
-    label: 'Scraping',
-    desc: 'Zugangsdaten für externe Datenquellen',
-    services: [
-      { key: 'meta_ads', label: 'Meta Ads Library', hint: 'EAAxx…', desc: 'User-Access-Token mit ads_read. Erstellen unter developers.facebook.com/tools/explorer' },
-    ],
-  },
+const SERVICES: Service[] = [
+  { key: 'gemini',    label: 'Google Gemini',    group: 'KI-Modelle', where: 'aistudio.google.com' },
+  { key: 'anthropic', label: 'Anthropic Claude', group: 'KI-Modelle', where: 'console.anthropic.com' },
+  { key: 'openai',    label: 'OpenAI',           group: 'KI-Modelle', where: 'platform.openai.com/api-keys' },
+  { key: 'hunter_io', label: 'Hunter.io',        group: 'Enrichment', where: 'hunter.io/api-keys' },
+  { key: 'findymail', label: 'FindyMail',        group: 'Enrichment', where: 'app.findymail.com/settings (Bearer-Token)' },
+  { key: 'meta_ads',  label: 'Meta Ads Library', group: 'Scraping',   where: 'developers.facebook.com/tools/explorer (User-Token mit ads_read)' },
 ];
 
 /** Alle bekannten Service-Keys (für das Badge beim ersten Laden) */
-export const SERVICE_KEYS = GROUPS.flatMap(g => g.services.map(s => s.key));
+export const SERVICE_KEYS = SERVICES.map(s => s.key);
 
-function maskKey(key: string): string {
-  if (key.length <= 8) return '••••••••';
-  return key.slice(0, 4) + '••••••••' + key.slice(-4);
-}
+const th: React.CSSProperties = { fontFamily: T.mono, fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: T.inkF, textAlign: 'left', padding: '8px 12px', fontWeight: 500, borderBottom: `1px solid ${T.line}`, whiteSpace: 'nowrap' };
+const td: React.CSSProperties = { fontFamily: T.mono, fontSize: 11, color: T.inkD, padding: '9px 12px', borderBottom: `1px solid ${T.lineS}`, verticalAlign: 'middle' };
 
 interface Props {
   /** Anzahl aktiver Integrationen (Badge in der Navigation) */
   onCountChange?: (n: number) => void;
 }
 
-/** Einstellungen → Integrationen: API-Keys im Browser, Server-Keys (Vercel) als Badge. Keys verlassen den Browser nie (kein Export/Import). */
+/**
+ * Einstellungen → Integrationen: API-Keys liegen NUR auf dem Server
+ * (Umgebungsvariablen). Hier steht, welcher Dienst einen Key hat, wie die
+ * Variable heißt und wo man sie setzt — die Keys selbst sieht der Browser nie.
+ */
 export function IntegrationsTab({ onCountChange }: Props) {
-  const [keys,       setKeys]       = useState<Record<string, string>>({});
-  const [localKeys,  setLocalKeys]  = useState<Record<string, string>>({});
-  const [connecting, setConnecting] = useState<string | null>(null);
-  const [input,      setInput]      = useState('');
-  const [show,       setShow]       = useState<Record<string, boolean>>({});
-  const [serverKeys, setServerKeys] = useState<Record<string, boolean>>({});
+  const [setup, setSetup] = useState<KeySetup | null | 'loading'>('loading');
 
-  useEffect(() => {
-    // localStorage gibt es erst im Browser: ein lazy useState würde beim
-    // SSR-Prerender leer rendern und beim Hydrate springen — daher Effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setKeys(loadSettings().apiKeys as Record<string, string>);
-    // Track what's actually in localStorage (vs. env var fallbacks)
-    try {
-      const raw = localStorage.getItem('appSettings');
-      if (raw) setLocalKeys((JSON.parse(raw) as { apiKeys?: Record<string, string> }).apiKeys ?? {});
-    } catch {}
-    // Which keys exist server-side (Vercel env vars) — booleans only
-    fetchKeyAvailability().then(setServerKeys);
-  }, []);
+  useEffect(() => { fetchKeySetup().then(s => setSetup(s)); }, []);
 
-  const isActive = (svc: Service) => !!keys[svc.key] || !!serverKeys[svc.key];
-  const activeServices = GROUPS.flatMap(g => g.services).filter(isActive);
-  const groupName = (svcKey: string) => GROUPS.find(g => g.services.some(s => s.key === svcKey))?.label ?? '';
+  const providers = setup && setup !== 'loading' ? setup.providers : {};
+  const activeCount = SERVICES.filter(s => providers[s.key]).length;
+  useEffect(() => { onCountChange?.(activeCount); }, [activeCount, onCountChange]);
 
-  useEffect(() => { onCountChange?.(activeServices.length); }, [activeServices.length, onCountChange]);
-
-  const persist = (nextKeys: Record<string, string>) => {
-    setKeys(nextKeys);
-    // Was der Nutzer selbst eingetragen hat, ist ab jetzt ein Browser-Key (kein Env-Fallback)
-    setLocalKeys(nextKeys);
-    saveSettings({ ...loadSettings(), apiKeys: nextKeys as AppSettings['apiKeys'] });
-  };
-
-  const connect = (serviceKey: string) => {
-    if (!input.trim()) return;
-    persist({ ...keys, [serviceKey]: input.trim() });
-    setInput('');
-    setConnecting(null);
-  };
-
-  const disconnect = (k: string) => persist({ ...keys, [k]: '' });
-
-
-  // One service row — used both in the "Aktiv" section and the catalog below.
-  const renderServiceCard = (svc: Service, opts?: { showGroup?: boolean }) => {
-    const connected    = !!keys[svc.key];
-    const isConnecting = connecting === svc.key;
-    const fromEnv      = connected && !localKeys[svc.key];
-    const onServer     = !connected && !!serverKeys[svc.key];
-    const active       = connected || onServer;
-
-    return (
-      <div key={svc.key} style={{
-        background: active ? ((fromEnv || onServer) ? 'rgba(99,129,255,.05)' : 'rgba(79,209,197,.05)') : T.panel2,
-        border: `1px solid ${active ? ((fromEnv || onServer) ? 'rgba(99,129,255,.25)' : 'rgba(79,209,197,.22)') : 'rgba(255,255,255,.06)'}`,
-        borderRadius: 7, overflow: 'hidden',
-        transition: 'background .2s, border-color .2s',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: connected ? (fromEnv ? '#6381ff' : T.teal) : onServer ? '#6381ff' : 'rgba(255,255,255,.15)', transition: 'background .2s' }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 500, color: active ? T.ink : T.inkD }}>{svc.label}</p>
-              {opts?.showGroup && (
-                <span style={{ fontFamily: T.mono, fontSize: 8, letterSpacing: '.08em', textTransform: 'uppercase', color: T.inkF, background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 3, padding: '1px 5px' }}>
-                  {groupName(svc.key)}
-                </span>
-              )}
-            </div>
-            <p style={{ fontFamily: T.body, fontSize: 11, color: T.inkF, marginTop: 1 }}>{svc.desc}</p>
-          </div>
-
-          {connected ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              {fromEnv ? (
-                <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', color: '#6381ff', background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', borderRadius: 4, padding: '2px 7px' }}>
-                  via Vercel Env
-                </span>
-              ) : (
-                <>
-                  <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal, letterSpacing: '.04em' }}>
-                    {show[svc.key] ? keys[svc.key] : maskKey(keys[svc.key])}
-                  </span>
-                  <button type="button" onClick={() => setShow(p => ({ ...p, [svc.key]: !p[svc.key] }))}
-                    style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6, lineHeight: 1 }}>
-                    {show[svc.key] ? '◉' : '○'}
-                  </button>
-                  <ConfirmDelete title="Key entfernen" question="Key entfernen?" onConfirm={() => disconnect(svc.key)} style={{ display: 'inline-flex', alignItems: 'center' }} />
-                </>
-              )}
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              {onServer && !isConnecting && (
-                <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', color: '#6381ff', background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', borderRadius: 4, padding: '2px 7px' }}>
-                  ✓ Server-Key aktiv
-                </span>
-              )}
-              {isConnecting && (
-                <button type="button" onClick={() => { setConnecting(null); setInput(''); }}
-                  style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF, background: 'none', border: 'none', cursor: 'pointer', opacity: .6 }}>
-                  Abbrechen
-                </button>
-              )}
-              {!isConnecting && (
-                <button type="button" onClick={() => { setConnecting(svc.key); setInput(''); }}
-                  style={{
-                    fontFamily: T.mono, fontSize: 10, padding: '3px 9px', borderRadius: 4,
-                    background: onServer ? 'transparent' : 'rgba(232,176,75,.08)',
-                    border: `1px solid ${onServer ? 'rgba(255,255,255,.1)' : 'rgba(232,176,75,.3)'}`,
-                    color: onServer ? T.inkD : T.gold, cursor: 'pointer',
-                  }}>
-                  {onServer ? '+ eigener Key' : '+ Key'}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {isConnecting && (
-          <div style={{ display: 'flex', gap: 6, padding: '0 14px 10px', alignItems: 'center' }}>
-            <input autoFocus type="text" value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && connect(svc.key)}
-              placeholder={svc.hint}
-              style={{
-                flex: 1, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 5,
-                padding: '5px 9px', fontFamily: T.mono, fontSize: 11, color: T.ink, outline: 'none',
-              }}
-            />
-            <button type="button" onClick={() => connect(svc.key)} disabled={!input.trim()}
-              style={{
-                fontFamily: T.mono, fontSize: 10, padding: '5px 12px', borderRadius: 5,
-                background: input.trim() ? 'rgba(232,176,75,.12)' : 'transparent',
-                border: `1px solid ${input.trim() ? T.gold : 'rgba(255,255,255,.1)'}`,
-                color: input.trim() ? T.gold : T.inkF,
-                cursor: input.trim() ? 'pointer' : 'default',
-                transition: 'all .12s', flexShrink: 0,
-              }}>
-              Speichern
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
+  const info = setup !== 'loading' ? setup : null;
+  const onVercel = info?.hosted === 'vercel';
+  const directLink = !!info && info.settingsUrl !== 'https://vercel.com/dashboard';
 
   return (
     <>
-      <div style={{ marginBottom: 28, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontFamily: T.disp, fontSize: 22, fontWeight: 700, color: T.ink }}>
-            API <em style={{ color: T.gold }}>Integrationen</em>
-          </h1>
-          <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
-            Keys aus deinem Browser oder aus den Vercel-Umgebungsvariablen (blaues Badge = auf dem Server hinterlegt).
-          </p>
-        </div>
+      <div style={{ marginBottom: 22 }}>
+        <h1 style={{ fontFamily: T.disp, fontSize: 22, fontWeight: 700, color: T.ink }}>
+          API <em style={{ color: T.gold }}>Integrationen</em>
+        </h1>
+        <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
+          Welche Dienste angebunden sind und wo die Keys gesetzt werden.
+        </p>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-
-        {/* ── Aktiv: connected integrations, pulled to the top ── */}
-        {activeServices.length > 0 && (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: T.teal, flexShrink: 0 }} />
-              <p style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: T.teal }}>
-                Aktiv
-              </p>
-              <span style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF }}>{activeServices.length} verbunden</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {activeServices.map(svc => renderServiceCard(svc, { showGroup: true }))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Katalog: available integrations grouped, active ones removed ── */}
-        {(() => {
-          const catalogGroups = GROUPS
-            .map(g => ({ ...g, services: g.services.filter(s => !isActive(s)) }))
-            .filter(g => g.services.length > 0);
-          if (catalogGroups.length === 0) return null;
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
-              {activeServices.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ flex: 1, height: 1, background: T.lineS }} />
-                  <span style={{ fontFamily: T.mono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF }}>Verfügbar</span>
-                  <div style={{ flex: 1, height: 1, background: T.lineS }} />
-                </div>
+      {/* Wo die Keys liegen — mit Link und Klickpfad */}
+      <div data-testid="keys-info" style={{ background: 'rgba(99,129,255,.06)', border: '1px solid rgba(99,129,255,.25)', borderRadius: 8, padding: '14px 16px', marginBottom: 22 }}>
+        <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: '#8fa3ff', marginBottom: 6 }}>
+          API-Keys liegen auf dem Server, nicht im Browser
+        </p>
+        <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkD, lineHeight: 1.6, marginBottom: 10 }}>
+          Keys werden als Umgebungsvariablen gesetzt. So nutzen alle Kollegen dieselben Dienste,
+          und auf keinem Rechner bleibt ein Key zurück. In der App selbst wird nichts eingetragen.
+        </p>
+        {setup === 'loading' ? (
+          <p style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF }}>Serverstatus wird geladen…</p>
+        ) : !info ? (
+          <p style={{ fontFamily: T.mono, fontSize: 11, color: '#e8b04b' }}>Serverstatus nicht abrufbar — Seite neu laden.</p>
+        ) : onVercel ? (
+          <ol style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkD, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
+            <li>
+              <a data-testid="keys-env-link" href={info.settingsUrl} target="_blank" rel="noreferrer"
+                style={{ fontFamily: T.mono, fontSize: 11, color: '#8fa3ff', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                {directLink ? 'Umgebungsvariablen öffnen ↗' : 'Vercel-Dashboard öffnen ↗'}
+              </a>
+              {!directLink && (
+                <span> → Projekt <strong style={{ color: T.ink }}>{info.project || 'auswählen'}</strong> → <strong style={{ color: T.ink }}>Settings</strong> → <strong style={{ color: T.ink }}>Environment Variables</strong></span>
               )}
-              {catalogGroups.map(group => (
-                <div key={group.key}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                    <p style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: T.inkD }}>
-                      {group.label}
-                    </p>
-                    <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, opacity: .6 }}>{group.desc}</p>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                    {group.services.map(svc => renderServiceCard(svc))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          );
-        })()}
+            </li>
+            <li>Variable mit dem Namen aus der Tabelle anlegen, Wert = der Key, für alle Environments.</li>
+            <li><strong style={{ color: T.ink }}>Deployments</strong> → neuestes Deployment → ⋯ → <strong style={{ color: T.ink }}>Redeploy</strong>. Erst danach ist der Key aktiv.</li>
+          </ol>
+        ) : (
+          <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkD, lineHeight: 1.6 }}>
+            Lokaler Dev-Server: Variablen aus der Tabelle in <code style={{ fontFamily: T.mono, color: T.ink }}>frontend/.env.local</code> eintragen und den Dev-Server neu starten.
+            Auf Vercel gehören sie in die Projekt-Einstellungen unter Environment Variables.
+          </p>
+        )}
+      </div>
+
+      <div style={{ border: `1px solid ${T.line}`, borderRadius: 8, overflow: 'hidden', background: T.panel }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={th}>Dienst</th>
+              <th style={th}>Bereich</th>
+              <th style={th}>Variable</th>
+              <th style={th}>Status</th>
+              <th style={th}>Key holen bei</th>
+            </tr>
+          </thead>
+          <tbody>
+            {SERVICES.map(s => {
+              const active = !!providers[s.key];
+              const envName = info?.envNames[s.key] ?? '';
+              return (
+                <tr key={s.key} data-testid={`integration-${s.key}`}>
+                  <td style={{ ...td, color: T.ink, fontWeight: 500 }}>{s.label}</td>
+                  <td style={{ ...td, color: T.inkF }}>{s.group}</td>
+                  <td style={td}><code style={{ fontFamily: T.mono, fontSize: 11, color: T.ink, background: 'rgba(255,255,255,.04)', border: `1px solid ${T.lineS}`, borderRadius: 4, padding: '2px 6px' }}>{envName || '…'}</code></td>
+                  <td style={td}>
+                    <span data-testid={`integration-status-${s.key}`} style={{
+                      fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 4,
+                      color: active ? T.teal : '#e8b04b',
+                      background: active ? 'rgba(79,209,197,.08)' : 'rgba(232,176,75,.08)',
+                      border: `1px solid ${active ? 'rgba(79,209,197,.25)' : 'rgba(232,176,75,.3)'}`,
+                    }}>{setup === 'loading' ? '…' : active ? '✓ gesetzt' : 'fehlt'}</span>
+                  </td>
+                  <td style={{ ...td, color: T.inkF, fontSize: 10 }}>{s.where}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </>
   );

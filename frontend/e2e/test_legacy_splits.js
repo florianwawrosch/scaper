@@ -1,6 +1,6 @@
 // Ältere Multi-Output-Configs (LinkedIn v5 mit 7 Einzelwerten + Regel): die Tabelle zeigt
 // nur Antwort- und Regel-Spalte, die Einzelwerte bleiben versteckt — im CSV-Export sind sie drin
-const { playwright, login, ok, BASE_URL } = require('./helpers');
+const { playwright, login, mockKeys, ok, BASE_URL } = require('./helpers');
 const { chromium } = playwright();
 const fs = require('fs');
 (async () => {
@@ -8,11 +8,12 @@ const fs = require('fs');
   const ctx = await browser.newContext({ acceptDownloads: true, viewport: { width: 1500, height: 900 } });
   const page = await ctx.newPage();
   await login(page);
+  await mockKeys(page, ['anthropic']);
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
   const id = 'csv_legacy_' + Date.now();
   await page.evaluate((id) => {
     localStorage.clear();
-    localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: 'k', hunter_io: '', findymail: '' }, theme: 'noir' }));
+    localStorage.setItem('appSettings', JSON.stringify({ theme: 'noir' }));
     localStorage.setItem(`csv_run_${id}`, JSON.stringify({
       fields: ['voller_name', 'ki_klassifizierung', 'ki_a', 'ki_b', 'ki_zielgruppe'], filename: 'legacy.csv', createdAt: new Date().toISOString(), rowCount: 2,
       data: [

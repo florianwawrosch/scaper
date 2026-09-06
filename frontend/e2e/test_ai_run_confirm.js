@@ -1,11 +1,12 @@
 // Credit-Schutz: manueller ▶ mit > 100 zu klassifizierenden Zeilen fragt nach (Abbrechen = kein Aufruf),
 // Autorun («direkt ausfüllen») läuft ohne Nachfrage
-const { playwright, login, ok, BASE_URL } = require('./helpers');
+const { playwright, login, mockKeys, ok, BASE_URL } = require('./helpers');
 const { chromium } = playwright();
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   await login(page);
+  await mockKeys(page, ['anthropic']);
   let aiCalls = 0;
   await page.route('**/api/ai/analyze', async route => {
     aiCalls++;
@@ -16,7 +17,7 @@ const { chromium } = playwright();
   const id = 'csv_big_' + Date.now();
   await page.evaluate((id) => {
     localStorage.clear();
-    localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: 'k', hunter_io: '', findymail: '' }, theme: 'noir' }));
+    localStorage.setItem('appSettings', JSON.stringify({ theme: 'noir' }));
     const data = Array.from({ length: 150 }, (_, i) => ({ page_name: `Seite ${i + 1}`, ad_text: `Text ${i + 1}` }));
     localStorage.setItem(`csv_run_${id}`, JSON.stringify({ fields: ['page_name', 'ad_text'], filename: 'big.csv', createdAt: new Date().toISOString(), rowCount: 150, data }));
     localStorage.setItem(`analysis_configs_${id}`, JSON.stringify([{ id: 'cfg_big', provider: 'anthropic', model: 'claude-sonnet-5', name: 'ki_x', prompt: 'Coach?' }]));

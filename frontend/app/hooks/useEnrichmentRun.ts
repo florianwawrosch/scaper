@@ -12,7 +12,6 @@ export const ENRICH_BATCH = 50;
 
 export interface EnrichRunOptions {
   provider: string;
-  apiKey?: string;
   rows: Record<string, string>[];
   fields: EnrichField[];
   mapping: { nameColumn: string; companyColumn: string; linkedinColumn: string };
@@ -34,7 +33,7 @@ export function useEnrichmentRun() {
   const stopRef  = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  const start = async ({ provider, apiKey, rows, fields, mapping, onResults, onComplete }: EnrichRunOptions) => {
+  const start = async ({ provider, rows, fields, mapping, onResults, onComplete }: EnrichRunOptions) => {
     const wantEmail = fields.includes('email');
     const wantPhone = fields.includes('phone');
     setRunning(true);
@@ -55,7 +54,7 @@ export function useEnrichmentRun() {
         const res = await fetch('/api/enrich', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider, rows: batch, ...mapping, fields, ...(apiKey && { apiKey }) }),
+          body: JSON.stringify({ provider, rows: batch, ...mapping, fields }),
           signal: ctrl.signal,
         });
         if (!res.ok) {

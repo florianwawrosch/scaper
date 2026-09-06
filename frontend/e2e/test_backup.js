@@ -14,7 +14,8 @@ const fs = require('fs');
   const id = 'csv_bak_' + Date.now();
   await page.evaluate(async (id) => {
     localStorage.clear();
-    localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: 'sk-secret', hunter_io: '', findymail: '' }, theme: 'noir' }));
+    // Alte Version mit Browser-Keys: darf weder im Backup landen noch überleben
+    localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { anthropic: 'sk-secret' }, theme: 'noir' }));
     localStorage.setItem(`csv_run_${id}`, JSON.stringify({ fields: ['name', 'ki_x'], filename: 'backup_test.csv', createdAt: new Date().toISOString(), rowCount: 2 }));
     localStorage.setItem(`analysis_configs_${id}`, JSON.stringify([{ id: 'c1', name: 'ki_x', provider: 'anthropic', model: 'm', prompt: 'p' }]));
     localStorage.setItem('user_presets', JSON.stringify([{ id: 'u1', name: 'Meine', columns: [{ name: 'ki_a', prompt: 'a' }], userDefined: true }]));
@@ -42,7 +43,7 @@ const fs = require('fs');
   ok(backup.localStorage[`analysis_configs_${id}`] && backup.localStorage.user_presets && backup.localStorage.presets && backup.localStorage.blocklist, 'Backup enthält Configs, Vorlagen, Suchen, Blockliste');
   ok(!JSON.stringify(backup.localStorage.appSettings).includes('sk-secret'), 'API-Keys NIE im Backup');
   ok((await page.locator('[data-testid="backup-keys"]').count()) === 0, 'kein Schalter für Keys im Backup');
-  // Alte Datei mit Keys darf die Browser-Keys beim Einspielen nicht anfassen
+  // Alte Datei mit Keys: beim Einspielen werden sie verworfen
   const backup2 = JSON.parse(JSON.stringify(backup));
   backup2.localStorage.appSettings = JSON.stringify({ ...JSON.parse(backup.localStorage.appSettings), apiKeys: { anthropic: 'from-file' } });
 
@@ -63,9 +64,9 @@ const fs = require('fs');
   await page.waitForFunction(() => /Datensätze\s*1/i.test(document.querySelector('[data-testid="data-stats"]')?.innerText ?? ''));
   const restored = await page.evaluate((id) => ({
     meta: localStorage.getItem(`csv_run_${id}`), presets: localStorage.getItem('user_presets'),
-    keys: JSON.parse(localStorage.getItem('appSettings')).apiKeys.anthropic,
+    keys: JSON.parse(localStorage.getItem('appSettings')).apiKeys,
   }), id);
-  ok(!!restored.meta && !!restored.presets && !restored.keys, 'Meta + Vorlagen wiederhergestellt, Keys aus der Datei ignoriert');
+  ok(!!restored.meta && !!restored.presets && restored.keys === undefined, 'Meta + Vorlagen wiederhergestellt, Keys aus der Datei verworfen');
   await page.goto(`${BASE_URL}/csv/${id}`, { waitUntil: 'networkidle' });
   await page.waitForSelector('text=Anna');
   ok((await page.textContent('body')).includes('Bob'), 'Datensatz nach Restore im Viewer ladbar (CSV aus IndexedDB)');

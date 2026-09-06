@@ -184,7 +184,6 @@ export async function runAiColumn(opts: {
   provider: string;
   model: string;
   prompt: string;
-  apiKey?: string;
   chunkSize?: number;
   /** Gleichzeitige Chunks (Standard: je Provider, siehe PARALLEL_CHUNKS) */
   parallel?: number;
@@ -192,7 +191,7 @@ export async function runAiColumn(opts: {
   multiOutput?: boolean;
   onProgress?: (partial: string[]) => void;
 }): Promise<string[]> {
-  const { rows, provider, model, prompt, apiKey, chunkSize = 20, inputColumns, multiOutput, onProgress } = opts;
+  const { rows, provider, model, prompt, chunkSize = 20, inputColumns, multiOutput, onProgress } = opts;
   const parallel = Math.max(1, opts.parallel ?? PARALLEL_CHUNKS[provider] ?? 2);
   const values: string[] = Array(rows.length).fill(PENDING);
   const starts: number[] = [];
@@ -203,7 +202,7 @@ export async function runAiColumn(opts: {
     const res = await fetch('/api/ai/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider, model, prompts, ...(apiKey && { apiKey }) }),
+      body: JSON.stringify({ provider, model, prompts }),
     });
     if (!res.ok) {
       let msg = `Analyse fehlgeschlagen (HTTP ${res.status})`;

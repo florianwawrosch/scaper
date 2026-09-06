@@ -33,8 +33,20 @@ async function login(page, ns = 't' + Date.now().toString(36) + Math.random().to
   return ns;
 }
 
+/**
+ * API-Keys liegen nur auf dem Server: der Test tut so, als hätten die genannten
+ * Anbieter dort einen Key (Antwort von /api/keys/available).
+ */
+const ALL_PROVIDERS = ['meta_ads', 'openai', 'gemini', 'anthropic', 'hunter_io', 'findymail'];
+const ENV_NAMES = { meta_ads: 'META_API_KEY', openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', hunter_io: 'HUNTER_IO_KEY', findymail: 'FINDYMAIL_API_KEY' };
+async function mockKeys(page, providers = [], extra = {}) {
+  const providersMap = Object.fromEntries(ALL_PROVIDERS.map(p => [p, providers.includes(p)]));
+  const setup = { providers: providersMap, envNames: ENV_NAMES, hosted: 'vercel', settingsUrl: 'https://vercel.com/dashboard', project: 'scaper', ...extra };
+  await page.route('**/api/keys/available', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(setup) }));
+}
+
 const fixture = (name) => path.join(DIR, 'fixtures', name);
 const shot = (name) => path.join(SHOTS, name);
 const ok = (c, m) => { console.log(c ? '✅' : '❌', m); if (!c) process.exitCode = 1; };
 
-module.exports = { BASE_URL, DIR, SHOTS, playwright, login, fixture, shot, ok };
+module.exports = { BASE_URL, DIR, SHOTS, playwright, login, mockKeys, fixture, shot, ok };

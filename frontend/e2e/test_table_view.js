@@ -1,15 +1,16 @@
 // Tabelle: Zeilen pro Seite wählbar (25/50/100/250/alle), Kompakt/Erweitert, beides bleibt nach Reload
-const { playwright, login, ok, BASE_URL } = require('./helpers');
+const { playwright, login, mockKeys, ok, BASE_URL } = require('./helpers');
 const { chromium } = playwright();
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
   await login(page);
+  await mockKeys(page, []);
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
   const id = 'csv_view_' + Date.now();
   await page.evaluate((id) => {
     localStorage.clear();
-    localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: '', hunter_io: '', findymail: '' }, theme: 'noir' }));
+    localStorage.setItem('appSettings', JSON.stringify({ theme: 'noir' }));
     const long = 'Dies ist ein sehr langer Werbetext, der in der kompakten Ansicht abgeschnitten wird und in der erweiterten Ansicht komplett lesbar sein muss. '.repeat(4);
     const data = Array.from({ length: 60 }, (_, i) => ({ page_name: `Seite ${i + 1}`, ad_text: i === 0 ? long : `Text ${i + 1}` }));
     localStorage.setItem(`csv_run_${id}`, JSON.stringify({ fields: ['page_name', 'ad_text'], filename: 'view.csv', createdAt: new Date().toISOString(), rowCount: 60, data }));

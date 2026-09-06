@@ -30,10 +30,13 @@ definiert alle akzeptierten Namen). Aktuell verwendete Namen:
 Nach dem Anlegen/Ändern einer Variable: einmal **Redeploy** — Vercel übernimmt
 Variablen erst beim nächsten Deploy. Kontrolle im Browser:
 `/api/keys/available` zeigt als JSON, welche Keys der Server sieht (nur
-Booleans, nie die Werte). In den App-Einstellungen erscheint für serverseitige
-Keys das blaue Badge „✓ Server-Key aktiv". Keys, die man in den
-App-Einstellungen einträgt, liegen nur im jeweiligen Browser (localStorage)
-und haben Vorrang vor den Server-Keys.
+Booleans, nie die Werte). Unter Einstellungen → **Integrationen** zeigt die
+App je Dienst, ob der Server einen Key hat, wie die Variable heißt und wo man
+sie setzt (mit Link). **In der App selbst lassen sich keine Keys eintragen** —
+sie liegen ausschließlich auf dem Server, damit alle Kollegen dieselben Dienste
+nutzen und auf keinem Rechner ein Key zurückbleibt. Optional `ENV_SETTINGS_URL`
+setzen (Direktlink zur Seite mit den Umgebungsvariablen), dann verlinken die
+Einstellungen direkt dorthin statt auf das Vercel-Dashboard.
 
 ## Login — die App ist ohne Zugangsdaten gesperrt
 
@@ -87,9 +90,9 @@ Tab wird der Serverstand eingespielt, jede Änderung sofort hochgeladen
 (`frontend/lib/store.ts`). Bei Konflikten gewinnt der Server; Löschungen
 bleiben als Tombstone stehen, damit ein Gerät mit altem Stand sie nicht wieder
 hochlädt. CSV-Texte werden gzip-komprimiert übertragen und nur beim Öffnen
-eines Datensatzes geladen. **API-Keys und Anzeige-Einstellungen bleiben immer
-nur im Browser.** Die Kopfzeile zeigt den Zustand: «☁ geteilt», «☁ sync…»,
-«☁ nur lokal» (keine Datenbank) oder «☁ Fehler».
+eines Datensatzes geladen. **Anzeige-Einstellungen bleiben im Browser, API-Keys
+liegen nur auf dem Server.** Ohne Datenbank oder bei Fehlern erscheint ein
+Hinweisbanner; sonst bleibt der Speicher unsichtbar.
 
 Einrichten (einmalig): Vercel → Projekt → **Storage** → **Create Database** →
 **Neon (Postgres)** → mit dem Projekt verbinden. Das setzt `DATABASE_URL`

@@ -1,4 +1,4 @@
-const { playwright, login, fixture, BASE_URL } = require('./helpers');
+const { playwright, login, mockKeys, fixture, BASE_URL } = require('./helpers');
 const { chromium } = playwright();
 const TEST_CSV = fixture('test_linkedin.csv');
 
@@ -6,13 +6,13 @@ const TEST_CSV = fixture('test_linkedin.csv');
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   await login(page);
+  await mockKeys(page, ['anthropic']);
   const consoleErrors = [];
   page.on('pageerror', err => consoleErrors.push('PAGEERROR: ' + err.message));
 
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
   await page.evaluate(() => {
     localStorage.setItem('appSettings', JSON.stringify({
-      apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: 'fake-key', hunter_io: '', findymail: '' },
       theme: 'noir',
     }));
   });

@@ -74,7 +74,7 @@ async function enrichFindymailPhone(linkedinUrl: string, key: string): Promise<s
 }
 
 export async function POST(req: NextRequest) {
-  let body: Partial<Record<'provider' | 'rows' | 'nameColumn' | 'companyColumn' | 'linkedinColumn' | 'fields' | 'apiKey', unknown>> = {};
+  let body: Partial<Record<'provider' | 'rows' | 'nameColumn' | 'companyColumn' | 'linkedinColumn' | 'fields', unknown>> = {};
   try { body = await req.json(); } catch {}
 
   const provider = String(body.provider ?? '');
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
   }
   if (!wantEmail && !wantPhone) return NextResponse.json({ detail: 'Nichts ausgewählt (E-Mail und/oder Telefon)' }, { status: 400 });
 
-  const key = (typeof body.apiKey === 'string' && body.apiKey) || envKey(provider);
+  const key = envKey(provider);
   if (!key) {
     return NextResponse.json(
       { detail: `Kein API-Key für ${provider} — als Umgebungsvariable in Vercel setzen (z.B. FINDYMAIL_API_KEY).` },

@@ -1,11 +1,12 @@
 // Enrichment über mehrere Chargen: 120 Zeilen → 3 Aufrufe (50/50/20), Fortschritt,
 // Zwischenspeicherung nach jeder Charge, nach Reload alles als enricht markiert
-const { playwright, login, ok, BASE_URL } = require('./helpers');
+const { playwright, login, mockKeys, ok, BASE_URL } = require('./helpers');
 const { chromium } = playwright();
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   await login(page);
+  await mockKeys(page, ['hunter_io']);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   const calls = [];
@@ -23,7 +24,7 @@ const { chromium } = playwright();
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
   const id = 'csv_batches_' + Date.now();
   await page.evaluate((id) => {
-    localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: '', hunter_io: 'fake', findymail: '' }, theme: 'noir' }));
+    localStorage.setItem('appSettings', JSON.stringify({ theme: 'noir' }));
     const data = Array.from({ length: 120 }, (_, i) => ({ voller_name: `Person ${i}`, firma: `Firma ${i}` }));
     localStorage.setItem(`csv_run_${id}`, JSON.stringify({ fields: ['voller_name', 'firma'], filename: 'batches.csv', createdAt: new Date().toISOString(), rowCount: 120, data }));
   }, id);

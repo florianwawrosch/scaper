@@ -79,11 +79,11 @@ async function findymailAccount(key: string) {
 }
 
 export async function POST(req: NextRequest) {
-  let body: Partial<Record<'provider' | 'apiKey', unknown>> = {};
+  let body: Partial<Record<'provider', unknown>> = {};
   try { body = await req.json(); } catch {}
   const provider = String(body.provider ?? '') as Provider;
   if (!(provider in RULES)) return NextResponse.json({ detail: `Unbekannter Provider: ${provider}` }, { status: 400 });
-  const key = (typeof body.apiKey === 'string' && body.apiKey) || envKey(provider);
+  const key = envKey(provider);
   const base: EnrichAccount = { provider, ...RULES[provider], available: null };
   if (!key) return NextResponse.json({ ...base, error: 'Kein API-Key hinterlegt' });
   try {

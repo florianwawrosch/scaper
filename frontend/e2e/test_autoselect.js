@@ -1,4 +1,4 @@
-const { playwright, login, fixture, shot, BASE_URL } = require('./helpers');
+const { playwright, login, mockKeys, fixture, shot, BASE_URL } = require('./helpers');
 const { chromium } = playwright();
 const TEST_CSV = fixture('test_linkedin.csv');
 
@@ -6,12 +6,12 @@ const TEST_CSV = fixture('test_linkedin.csv');
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   await login(page);
+  await mockKeys(page, ['hunter_io']);
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
 
   // Fake a local Hunter.io key so the provider/mapping UI renders
   await page.evaluate(() => {
     localStorage.setItem('appSettings', JSON.stringify({
-      apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: '', hunter_io: 'fake-test-key', findymail: '' },
       theme: 'noir',
     }));
   });

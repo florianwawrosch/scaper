@@ -1,11 +1,12 @@
 'use client';
 import { useEffect } from 'react';
+import { loadSettings } from '@/lib/settings';
 
 export function ThemeProvider() {
   useEffect(() => {
     try {
-      const s = localStorage.getItem('appSettings');
-      const theme = s ? JSON.parse(s).theme : undefined;
+      // loadSettings räumt dabei Keys weg, die ältere Versionen im Browser abgelegt haben
+      const theme = loadSettings().theme;
       if (theme === 'classic') {
         document.documentElement.dataset.theme = 'classic';
       } else {

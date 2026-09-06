@@ -1,7 +1,7 @@
 // Lead-Gedächtnis: neuer Datensatz wird gegen ältere abgeglichen (bekannt_aus, exportiert_am),
 // Outreach-Export lässt bereits Exportierte weg und markiert die exportierten Zeilen;
 // der Abgleich im alten Datensatz übernimmt das Export-Datum zurück.
-const { playwright, login, ok, BASE_URL } = require('./helpers');
+const { playwright, login, mockKeys, ok, BASE_URL } = require('./helpers');
 const { chromium } = playwright();
 const fs = require('fs');
 (async () => {
@@ -9,13 +9,14 @@ const fs = require('fs');
   const ctx = await browser.newContext({ acceptDownloads: true, viewport: { width: 1500, height: 900 } });
   const page = await ctx.newPage();
   await login(page);
+  await mockKeys(page, []);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
   const A = 'csv_old_' + Date.now(), B = 'csv_new_' + (Date.now() + 1);
   await page.evaluate(({ A, B }) => {
     localStorage.clear();
-    localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { meta_ads: '', openai: '', gemini: '', anthropic: '', hunter_io: '', findymail: '' }, theme: 'noir' }));
+    localStorage.setItem('appSettings', JSON.stringify({ theme: 'noir' }));
     const meta = (filename, createdAt, fields, data) => JSON.stringify({ fields, filename, createdAt, rowCount: data.length, data });
     localStorage.setItem(`csv_run_${A}`, meta('Meta: alt', '2026-08-01T10:00:00Z', ['page_id', 'page_name', 'email', 'exportiert_am', 'email_enriched'], [
       { page_id: '1', page_name: 'Coach Anna', email: 'a@x.de', exportiert_am: '2026-08-02', email_enriched: '' },
