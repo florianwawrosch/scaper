@@ -1,11 +1,14 @@
 import Papa from 'papaparse';
 import { loadCsvText, saveCsvText, deleteCsvText } from './csvStorage';
 import { lsSet, lsRemove } from './store';
+import { fetchOrigin } from './origin';
 
 export interface CsvRunMeta {
   fields: string[];
   filename: string;
   createdAt: string;
+  /** Standort aus der IP beim Anlegen («Wien, AT») — statt einer Nutzerverwaltung */
+  origin?: string;
   rowCount?: number;
   scrapeConfig?: Record<string, unknown>;
   // legacy formats stored data/csv inline in localStorage
@@ -31,11 +34,12 @@ export async function createCsvRun(input: {
   scrapeConfig?: Record<string, unknown>;
 }): Promise<string> {
   const id = `csv_${Date.now()}`;
-  await saveCsvText(id, input.csvText);
+  const [origin] = await Promise.all([fetchOrigin(), saveCsvText(id, input.csvText)]);
   const meta: CsvRunMeta = {
     fields: input.fields,
     filename: input.filename,
     createdAt: new Date().toISOString(),
+    ...(origin && { origin }),
     rowCount: input.rowCount,
     ...(input.scrapeConfig && { scrapeConfig: input.scrapeConfig }),
   };
@@ -112,6 +116,7 @@ export interface CsvRunSummary {
   id: string;
   filename: string;
   createdAt: string;
+  origin?: string;
   rowCount: number;
   /** Meta-Scrape (Dateiname «Meta: …») oder CSV-Import */
   isScrape: boolean;
@@ -128,7 +133,7 @@ export function listCsvRuns(): CsvRunSummary[] {
       const m: CsvRunMeta = JSON.parse(localStorage.getItem(key)!);
       const filename = String(m.filename ?? '?');
       items.push({
-        id: key.slice('csv_run_'.length), filename, createdAt: String(m.createdAt ?? ''),
+        id: key.slice('csv_run_'.length), filename, createdAt: String(m.createdAt ?? ''), ...(m.origin && { origin: String(m.origin) }),
         rowCount: m.rowCount ?? m.data?.length ?? 0, isScrape: filename.startsWith('Meta:'), scrapeConfig: m.scrapeConfig,
       });
     } catch {}

@@ -38,7 +38,7 @@ export function HistoryPanel({ runs, onOpen, onDelete, onAll, limit = 12 }: Prop
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{run.filename}</p>
-                <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(run.createdAt)}</p>
+                <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(run.createdAt)}{run.origin && <span data-testid="history-origin" title="Standort beim Anlegen (aus der IP)"> · {run.origin}</span>}</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
                 <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF }}>{run.rowCount.toLocaleString('de')} Z</span>

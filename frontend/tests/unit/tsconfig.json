@@ -28,7 +28,8 @@
     "../../lib/serverStore.ts",
     "../../lib/aiCache.ts",
     "../../lib/rateLimit.ts",
-    "../../lib/tableExport.ts"
+    "../../lib/tableExport.ts",
+    "../../lib/origin.ts"
   ],
   "include": []
 }

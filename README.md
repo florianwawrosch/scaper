@@ -94,6 +94,11 @@ eines Datensatzes geladen. **Anzeige-Einstellungen bleiben im Browser, API-Keys
 liegen nur auf dem Server.** Ohne Datenbank oder bei Fehlern erscheint ein
 Hinweisbanner; sonst bleibt der Speicher unsichtbar.
 
+Statt einer Nutzerverwaltung trägt jeder neue Datensatz den **Standort beim
+Anlegen** («Wien, AT» — aus der IP über die Vercel-Geo-Header, Route
+`/api/whoami`, Logik in `frontend/lib/origin.ts`). Er steht im Verlauf und in
+der Datensatz-Liste; lokal (localhost) bleibt das Feld leer.
+
 Einrichten (einmalig): Vercel → Projekt → **Storage** → **Create Database** →
 **Neon (Postgres)** → mit dem Projekt verbinden. Das setzt `DATABASE_URL`
 automatisch; danach einmal **Redeploy**. Die Tabelle `lp_store` legt die App

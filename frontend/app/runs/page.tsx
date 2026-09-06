@@ -123,7 +123,7 @@ export default function RunsList() {
         ) : filtered.length === 0 ? (
           <div style={{ padding: '48px 24px', textAlign: 'center', border: `1px solid ${T.lineS}`, borderRadius: 10 }}>
             <p style={{ fontFamily: T.disp, fontSize: 18, color: T.inkF, marginBottom: 6 }}>Keine Datensätze</p>
-            <p style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF, opacity: .6 }}>Scrape starten oder CSV importieren — Datensätze liegen im Browser-Speicher dieses Geräts.</p>
+            <p style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF, opacity: .6 }}>Scrape starten oder CSV importieren — Datensätze sind danach für alle Kollegen sichtbar.</p>
           </div>
         ) : (
           <div style={{ border: `1px solid ${T.lineS}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -161,7 +161,10 @@ export default function RunsList() {
                     <div style={{ fontSize: 9, color: T.inkF, opacity: .7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{r.configSummary}</div>
                   )}
                 </div>
-                <div style={{ ...cellStyle, color: T.inkF }}>{r.createdAt ? fmt(r.createdAt) : '—'}</div>
+                <div style={{ ...cellStyle, color: T.inkF }}>
+                  {r.createdAt ? fmt(r.createdAt) : '—'}
+                  {r.origin && <div title="Standort beim Anlegen (aus der IP)" style={{ fontSize: 9, opacity: .7, marginTop: 1 }}>{r.origin}</div>}
+                </div>
                 <div style={{ ...cellStyle, color: '#4fd1c5', fontWeight: 600, fontSize: 13, textAlign: 'right' }}>{r.rowCount.toLocaleString('de')}</div>
                 <div style={{ ...cellStyle, display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
                   <ConfirmDelete onConfirm={() => deleteLocal(r.id)} title="Eintrag löschen" />
