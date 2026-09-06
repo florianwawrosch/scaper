@@ -293,7 +293,7 @@ export function DataTable({
                   <td style={{ ...tdStyle, color: '#5f6e87', fontSize: 10, whiteSpace: 'nowrap' }}>{pageStart + i + 1}</td>
                   {visibleRawColumns.map(col => (
                     <td key={col} title={String(row[col] ?? '')} style={tdStyle}>
-                      <CellValue value={String(row[col] ?? '')} />
+                      <CellValue value={String(row[col] ?? '')} column={col} />
                     </td>
                   ))}
                   {shownAi.map(col => {

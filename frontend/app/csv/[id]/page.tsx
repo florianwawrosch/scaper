@@ -22,7 +22,9 @@ function valueChips(column: string, values: string[]): StatChip[] {
   for (const v of values) if (isUsableAiValue(v)) counts.set(v, (counts.get(v) ?? 0) + 1);
   if (counts.size === 0 || counts.size > 3) return [];
   const total = [...counts.values()].reduce((a, b) => a + b, 0);
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([v, n], i) => ({
+  // «ja» (Zielgruppe/Treffer) zuerst, sonst nach Häufigkeit
+  const rank = (v: string) => (v.toLowerCase() === 'ja' ? -1 : 0);
+  return [...counts.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || b[1] - a[1]).map(([v, n], i) => ({
     text: i === 0 ? `${column}: ${n} ${v} (${Math.round((n / total) * 100)}%)` : `${n} ${v}`,
     tone: 'gold' as const,
     filter: { column, value: v },

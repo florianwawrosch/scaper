@@ -27,6 +27,9 @@ async function login(page, ns = 't' + Date.now().toString(36) + Math.random().to
   });
   if (!r.ok()) throw new Error(`login failed HTTP ${r.status()}: ${await r.text()} — APP_USER/APP_PASSWORD passend zu .env.local setzen`);
   await page.context().addCookies([{ name: 'lp_ns', value: ns, url: BASE_URL }]);
+  // Unter paralleler Testlast braucht «networkidle» länger — großzügige Timeouts statt Flakes
+  page.setDefaultNavigationTimeout(60000);
+  page.setDefaultTimeout(45000);
   return ns;
 }
 

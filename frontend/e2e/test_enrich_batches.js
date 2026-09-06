@@ -60,7 +60,7 @@ const { chromium } = playwright();
   // Persistenz: Meta-Felder + nach Reload alles übersprungen
   const meta = await page.evaluate((id) => JSON.parse(localStorage.getItem(`csv_run_${id}`)), id);
   ok(meta.fields.includes('email_enriched') && !meta.data, 'email_enriched in meta.fields, Inline-Daten nach IndexedDB verschoben');
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' }); // networkidle ist unter paralleler Testlast unzuverlässig — der folgende waitForSelector reicht
   await page.waitForSelector('text=120 Zeilen bereits enricht');
   ok((await page.textContent('body')).includes('0 Leads'), 'nach Reload: 0 offene Leads');
   ok(errors.length === 0, `keine Page-Errors${errors[0] ? ': ' + errors[0] : ''}`);

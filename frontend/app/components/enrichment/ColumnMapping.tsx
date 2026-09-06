@@ -22,6 +22,8 @@ interface Props {
 
 /** Tabelle «Feld | Spalte im Datensatz» — immer vorbelegt, mit Beispielwert */
 export function ColumnMapping({ rows, availableColumns, sample }: Props) {
+  // Meta-Seiten haben keinen Personennamen: landet dieselbe Spalte bei Name UND Firma, wird die Suche selten treffen
+  const sameColumn = rows.length > 1 && !!rows[0].value && rows.every(r => r.value === rows[0].value);
   return (
     <div>
       <p style={{ ...mono, fontSize: 9, letterSpacing: '.1em', color: T.inkF, textTransform: 'uppercase', marginBottom: 8 }}>Spalten-Zuordnung</p>
@@ -65,6 +67,12 @@ export function ColumnMapping({ rows, availableColumns, sample }: Props) {
           );
         })}
       </div>
+      {sameColumn && (
+        <p data-testid="map-same-warning" style={{ ...mono, fontSize: 10, color: '#e8b04b', marginTop: 8, lineHeight: 1.5 }}>
+          ⚠ Dieselbe Spalte für Name und Firma. Bei Meta-Seiten fehlt meist der Personenname — die Trefferquote wird niedrig sein.
+          Besser: einen Datensatz mit Personen (LinkedIn) oder eine Spalte mit Website/Domain wählen.
+        </p>
+      )}
     </div>
   );
 }

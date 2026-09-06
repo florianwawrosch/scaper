@@ -2,13 +2,16 @@
 
 import { linkTarget } from '@/lib/tableQuery';
 
+/** Spalten, deren Zahlen Mengen sind (Tausenderpunkte) — nie IDs, Telefonnummern, PLZ */
+const MEASURE_COLUMN = /reach|count|anzahl|spend|budget|impression|follower|likes|views|zeilen|rows|preis|price|umsatz|revenue|mitarbeiter|employees/i;
+
 /**
- * Zellinhalt: URLs und nackte Domains werden klickbar, reine ganze Zahlen ab
- * vier Stellen (reach, spend) bekommen Tausenderpunkte, leer wird «—».
+ * Zellinhalt: URLs und nackte Domains werden klickbar, Mengen-Spalten (reach,
+ * ads_count, …) bekommen Tausenderpunkte, leer wird «—».
  */
-export function CellValue({ value }: { value: string }) {
+export function CellValue({ value, column }: { value: string; column: string }) {
   const href = linkTarget(value);
-  if (!href && /^\d{4,}$/.test(value.trim())) return <>{Number(value).toLocaleString('de-DE')}</>;
+  if (!href && MEASURE_COLUMN.test(column) && /^\d{4,}$/.test(value.trim())) return <>{Number(value).toLocaleString('de-DE')}</>;
   if (!href) return <>{value || '—'}</>;
   return (
     <a
