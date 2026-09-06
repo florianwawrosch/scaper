@@ -26,7 +26,7 @@ const PARTS_HEADER = 'parts:';
 export const STORE_EVENT = 'lp-store-updated';
 /** Ein Kollege hat gleichzeitig geschrieben — detail: { key, merged } (merged=false: Server gewinnt) */
 export const CONFLICT_EVENT = 'lp-store-conflict';
-export interface ConflictDetail { key: string; merged: boolean }
+export interface ConflictDetail { key: string; merged: boolean; /** kein Kollegen-Konflikt, sondern unbekannter Ausgangsstand (z.B. Browser-Cache geleert) — kein Hinweis */ silent?: boolean }
 
 /** Nur im echten Browser synchronisieren (Unit-Tests haben ein window-Shim, aber kein document) */
 const inBrowser = () => typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -164,8 +164,8 @@ async function uploadValue(key: string, value: string): Promise<Response> {
   return putValue(key, split.header, ifMatch);
 }
 
-const notifyConflict = (key: string, merged: boolean) => {
-  window.dispatchEvent(new CustomEvent<ConflictDetail>(CONFLICT_EVENT, { detail: { key, merged } }));
+const notifyConflict = (key: string, merged: boolean, silent: boolean) => {
+  window.dispatchEvent(new CustomEvent<ConflictDetail>(CONFLICT_EVENT, { detail: { key, merged, silent } }));
   window.dispatchEvent(new Event(STORE_EVENT));
 };
 
@@ -176,6 +176,7 @@ const notifyConflict = (key: string, merged: boolean) => {
  * hochladen. Ist kein Zusammenführen möglich, gewinnt der Server.
  */
 async function resolveConflict(key: string, localValue: string): Promise<Response> {
+  const silent = remoteStamp(key) === undefined; // wir kannten gar keinen Stand — kein gleichzeitiges Arbeiten, nur fehlende Stempel
   const base = await fetchValue(key);
   if (!base) { setStamps(key, null); return putValue(key, localValue, null); } // inzwischen gelöscht → einfach anlegen
   let merged: boolean;
@@ -195,7 +196,7 @@ async function resolveConflict(key: string, localValue: string): Promise<Respons
     try { localStorage.setItem(key, next); } catch {}
   }
   setStamps(key, base.updatedAt);
-  notifyConflict(key, merged);
+  notifyConflict(key, merged, silent);
   if (!merged) return new Response(JSON.stringify({ updatedAt: base.updatedAt }), { status: 200 }); // Server gewinnt: nichts hochladen
   return uploadValue(key, next); // ifMatch ist jetzt der Serverstand
 }
@@ -393,6 +394,8 @@ export async function hydrate(): Promise<StoreStatus> {
     // ifMatch gemerkt, sonst überschriebe der Upload still, was ein Kollege inzwischen schrieb
     const seenBefore = readJson<Record<string, string>>(REMOTE_KEY, {});
     const remote = { ...plan.remote };
+    // Ein Upload, der während des Manifest-Abrufs fertig wurde, hat einen neueren Stempel als das Manifest — der bleibt
+    for (const [k, at] of Object.entries(remote)) if (seenBefore[k] && seenBefore[k] > at) remote[k] = seenBefore[k];
     for (const k of Object.keys(pending())) { if (seenBefore[k] !== undefined) remote[k] = seenBefore[k]; else delete remote[k]; }
     writeJson(REMOTE_KEY, remote);
     const p = pending();

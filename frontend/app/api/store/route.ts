@@ -51,7 +51,10 @@ export async function PUT(req: NextRequest) {
   const cond = ifMatch === undefined ? undefined : typeof ifMatch === 'string' ? ifMatch : null;
   try {
     const r = await driver.set(key, value, cond);
-    if (!r.ok) return NextResponse.json({ detail: 'Inzwischen von jemand anderem geändert', current: r.current }, { status: 409 });
+    if (!r.ok) {
+      console.warn(`[store] 409 ${key} — ifMatch ${cond ?? 'null'} ≠ ${r.current?.updatedAt ?? 'gelöscht'}`); // Diagnose: wie oft Kollegen gleichzeitig schreiben
+      return NextResponse.json({ detail: 'Inzwischen von jemand anderem geändert', current: r.current }, { status: 409 });
+    }
     return NextResponse.json({ key, updatedAt: r.updatedAt });
   } catch (e) {
     return dbError('Speichern fehlgeschlagen', e);

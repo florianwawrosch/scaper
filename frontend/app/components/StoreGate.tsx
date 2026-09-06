@@ -27,7 +27,8 @@ export function StoreGate({ children }: { children: React.ReactNode }) {
   // Gleichzeitige Änderung eines Kollegen: sagen, was passiert ist — nichts geht still verloren
   useEffect(() => {
     const onConflict = (e: Event) => {
-      const { key, merged } = (e as CustomEvent<ConflictDetail>).detail;
+      const { key, merged, silent } = (e as CustomEvent<ConflictDetail>).detail;
+      if (silent) return;
       showToast(merged
         ? `Ein Kollege hat gleichzeitig geändert: ${keyLabel(key)} — beide Änderungen zusammengeführt`
         : `Ein Kollege hat inzwischen geändert: ${keyLabel(key)} — Serverstand übernommen, eigene Änderung bitte prüfen`, merged ? 'info' : 'warning', 8000);
