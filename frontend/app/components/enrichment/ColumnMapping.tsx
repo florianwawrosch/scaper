@@ -1,6 +1,7 @@
 'use client';
 
 import { T, mono } from '@/app/theme';
+import { SectionLabel } from '@/app/components/SectionLabel';
 
 export interface MappingRow {
   key: string;
@@ -26,7 +27,7 @@ export function ColumnMapping({ rows, availableColumns, sample }: Props) {
   const sameColumn = rows.length > 1 && !!rows[0].value && rows.every(r => r.value === rows[0].value);
   return (
     <div>
-      <p style={{ ...mono, fontSize: 9, letterSpacing: '.1em', color: T.inkF, textTransform: 'uppercase', marginBottom: 8 }}>Spalten-Zuordnung</p>
+      <SectionLabel style={{ marginBottom: 8 }}>Spalten-Zuordnung</SectionLabel>
       <div style={{ border: `1px solid ${T.line}`, borderRadius: 7, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', background: 'rgba(255,255,255,.03)', borderBottom: `1px solid ${T.line}` }}>
           <span style={{ ...mono, fontSize: 9, letterSpacing: '.08em', textTransform: 'uppercase', color: T.inkF, padding: '6px 10px' }}>Feld</span>

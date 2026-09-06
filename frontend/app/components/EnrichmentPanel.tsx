@@ -7,6 +7,7 @@ import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { pickColumn, sampleValue, NAME_CANDIDATES, COMPANY_CANDIDATES, LINKEDIN_CANDIDATES } from '@/lib/enrichMapping';
 import { useToast } from './Toast';
 import { Glyph } from './Glyph';
+import { SectionLabel } from './SectionLabel';
 import { ColumnMapping, type MappingRow } from './enrichment/ColumnMapping';
 import { EnrichConfirm } from './enrichment/EnrichConfirm';
 import { useEnrichmentRun, ENRICH_BATCH, type EnrichField, type EnrichResult, type ProviderStatus } from '@/app/hooks/useEnrichmentRun';
@@ -181,7 +182,7 @@ export function EnrichmentPanel({ leadsCount, onEnrichmentComplete, availableCol
         {/* Provider selector — only configured providers are shown */}
         {PROVIDERS.length > 0 && (
           <div>
-            <p style={{ ...mono, fontSize: 9, letterSpacing: '.1em', color: T.inkF, textTransform: 'uppercase', marginBottom: 8 }}>Provider</p>
+            <SectionLabel style={{ marginBottom: 8 }}>Provider</SectionLabel>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {PROVIDERS.map(p => {
                 const s = run.status[p.id] ?? 'idle';
@@ -212,7 +213,7 @@ export function EnrichmentPanel({ leadsCount, onEnrichmentComplete, availableCol
         {/* Was holen? — nur, was der Anbieter kann */}
         {PROVIDERS.length > 0 && (
           <div>
-            <p style={{ ...mono, fontSize: 9, letterSpacing: '.1em', color: T.inkF, textTransform: 'uppercase', marginBottom: 8 }}>Was holen?</p>
+            <SectionLabel style={{ marginBottom: 8 }}>Was holen?</SectionLabel>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {fieldOptions.map(f => (
                 <label key={f.key} data-testid={`field-${f.key}`} style={{
@@ -265,7 +266,7 @@ export function EnrichmentPanel({ leadsCount, onEnrichmentComplete, availableCol
 
         {/* Was passiert — und wo das Ergebnis landet */}
         <div style={{ padding: '10px 12px', borderRadius: 7, border: `1px solid ${T.lineS}`, background: 'rgba(255,255,255,.02)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <p style={{ ...mono, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: T.inkF }}>Was passiert</p>
+          <SectionLabel style={{ marginBottom: 0 }}>Was passiert</SectionLabel>
           <p style={{ ...mono, fontSize: 11, color: T.inkD, lineHeight: 1.6 }}>
             {wantEmail && <>Zu <strong style={{ color: T.ink }}>Name + Firma/Domain</strong> wird die geschäftliche E-Mail gesucht → Spalte <code style={{ color: '#4fd1c5' }}>email_enriched</code>. </>}
             {wantPhone && <>Zur <strong style={{ color: T.ink }}>LinkedIn-URL</strong> wird die Mobilnummer gesucht → Spalte <code style={{ color: '#4fd1c5' }}>phone_enriched</code>. </>}
