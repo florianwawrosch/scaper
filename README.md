@@ -329,6 +329,12 @@ npm install
 npm run dev    # http://localhost:3000
 ```
 
+**CI:** `.github/workflows/ci.yml` läuft bei jedem Push und Pull Request —
+tsc, Lint, Unit-Tests, `next build`, dann die E2E-Tests gegen einen Dev-Server
+im Runner (Chromium über Playwright). Der grüne bzw. rote Haken am Commit in
+GitHub zeigt das Ergebnis; bei Fehlern hängen Dev-Server-Log und Screenshots
+als Artefakt am Lauf. Vercel deployt unabhängig davon.
+
 Keys lokal: `frontend/.env.local` mit denselben Variablennamen wie oben.
 Ohne `DATABASE_URL` nutzt die Entwicklung den Datei-Store `frontend/.data/store/`
 (gitignored) als gemeinsamen Speicher.

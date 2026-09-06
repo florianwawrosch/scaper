@@ -1,0 +1,77 @@
+name: CI
+
+# Bei jedem Push und Pull Request: Typen, Lint, Unit-Tests, Produktions-Build,
+# danach die Playwright-E2E-Tests gegen einen lokalen Dev-Server.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: tsc · lint · unit · build · e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      # Login der App (Dev-Server) und der E2E-Tests (e2e/helpers.js nimmt dieselben Variablen)
+      APP_USER: ci
+      APP_PASSWORD: ci-testpass-123
+      NEXT_TELEMETRY_DISABLED: '1'
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Abhängigkeiten
+        run: npm ci
+
+      - name: Typen (tsc)
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit-Tests
+        run: npm run test:unit
+
+      - name: Produktions-Build
+        run: npm run build
+
+      - name: Playwright (Chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Dev-Server starten
+        run: |
+          (nohup npx next dev -p 3000 > /tmp/dev.log 2>&1 &)
+          for i in $(seq 1 60); do
+            sleep 2
+            if curl -sf -o /dev/null http://localhost:3000/login; then echo "Dev-Server läuft"; exit 0; fi
+          done
+          echo "Dev-Server nicht erreichbar"; cat /tmp/dev.log; exit 1
+
+      - name: E2E-Tests
+        run: node e2e/run-all.js -j 2
+
+      - name: Dev-Server-Log (bei Fehler)
+        if: failure()
+        run: tail -n 150 /tmp/dev.log || true
+
+      - name: Screenshots (bei Fehler)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: frontend/e2e/.shots
+          if-no-files-found: ignore
