@@ -10,6 +10,13 @@ export const runtime = 'nodejs';
  * antwortet manifest mit configured=false und die App bleibt lokal.
  */
 const driverFor = (req: NextRequest) => getStoreDriver(req.cookies.get('lp_ns')?.value);
+/** Größer geht ohnehin nicht durch Vercel; schützt die Datenbank vor Unfug */
+const MAX_VALUE = 4_000_000;
+/** Datenbank-Fehler landen im Server-Log, der Client bekommt nur eine kurze Meldung */
+const dbError = (what: string, e: unknown) => {
+  console.error(`[store] ${what}:`, e instanceof Error ? e.message : e);
+  return NextResponse.json({ detail: `${what} — Datenbank nicht erreichbar` }, { status: 502 });
+};
 
 export async function GET(req: NextRequest) {
   const driver = driverFor(req);
@@ -24,7 +31,7 @@ export async function GET(req: NextRequest) {
     const m = await driver.manifest();
     return NextResponse.json({ configured: true, driver: driver.name, ...m });
   } catch (e) {
-    return NextResponse.json({ detail: `Speicher nicht erreichbar: ${e instanceof Error ? e.message : ''}` }, { status: 502 });
+    return dbError('Lesen fehlgeschlagen', e);
   }
 }
 
@@ -35,10 +42,11 @@ export async function PUT(req: NextRequest) {
   try { body = await req.json(); } catch { return NextResponse.json({ detail: 'Ungültiger Body' }, { status: 400 }); }
   const { key, value } = body;
   if (typeof key !== 'string' || !isValidKey(key) || typeof value !== 'string') return NextResponse.json({ detail: 'key/value fehlen' }, { status: 400 });
+  if (value.length > MAX_VALUE) return NextResponse.json({ detail: 'Wert zu groß' }, { status: 413 });
   try {
     return NextResponse.json({ key, updatedAt: await driver.set(key, value) });
   } catch (e) {
-    return NextResponse.json({ detail: `Speichern fehlgeschlagen: ${e instanceof Error ? e.message : ''}` }, { status: 502 });
+    return dbError('Speichern fehlgeschlagen', e);
   }
 }
 
@@ -51,6 +59,6 @@ export async function DELETE(req: NextRequest) {
     if (!key || !isValidKey(key)) return NextResponse.json({ detail: 'Ungültiger Key' }, { status: 400 });
     return NextResponse.json({ key, deletedAt: await driver.del(key) });
   } catch (e) {
-    return NextResponse.json({ detail: `Löschen fehlgeschlagen: ${e instanceof Error ? e.message : ''}` }, { status: 502 });
+    return dbError('Löschen fehlgeschlagen', e);
   }
 }

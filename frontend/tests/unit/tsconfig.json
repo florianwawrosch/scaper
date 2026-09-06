@@ -26,7 +26,8 @@
     "../../lib/blocklist.ts",
     "../../lib/store.ts",
     "../../lib/serverStore.ts",
-    "../../lib/aiCache.ts"
+    "../../lib/aiCache.ts",
+    "../../lib/rateLimit.ts"
   ],
   "include": []
 }

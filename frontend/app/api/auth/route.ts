@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { safeEqual, authToken, authEnv, AUTH_COOKIE, AUTH_COOKIE_MAX_AGE } from '@/lib/auth';
 import { loginContextFromRequest, notifyLogin } from '@/lib/loginNotify';
+import { clientIp, loginBlockedFor, recordLoginFailure, clearLoginFailures } from '@/lib/rateLimit';
 
 /** Lets the login page explain a locked deployment instead of a silent failure. */
 export async function GET() {
@@ -18,6 +19,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Brute-Force-Bremse: nach 10 Fehlversuchen 15 Minuten Pause für diese Adresse
+  const ip = clientIp(req.headers);
+  const blocked = loginBlockedFor(ip);
+  if (blocked > 0) {
+    return NextResponse.json({ error: `Zu viele Fehlversuche — bitte in ${Math.ceil(blocked / 60)} Minuten erneut versuchen` }, { status: 429, headers: { 'Retry-After': String(blocked) } });
+  }
+
   let body: { username?: unknown; password?: unknown } = {};
   try { body = await req.json(); } catch {}
   const u = typeof body.username === 'string' ? body.username.trim() : '';
@@ -26,8 +34,11 @@ export async function POST(req: NextRequest) {
   const userOk = safeEqual(u, user);
   const passOk = safeEqual(p, password);
   if (!userOk || !passOk) {
+    recordLoginFailure(ip);
+    await new Promise(r => setTimeout(r, 600)); // jeder Fehlversuch kostet Zeit
     return NextResponse.json({ error: 'Benutzername oder Passwort falsch' }, { status: 401 });
   }
+  clearLoginFailures(ip);
 
   const res = NextResponse.json({ ok: true });
   res.cookies.set(AUTH_COOKIE, await authToken(user, password), {
