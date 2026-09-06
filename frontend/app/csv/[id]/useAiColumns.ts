@@ -11,6 +11,7 @@ import { runAiColumn, defaultModel, splitMultiOutput, applyDerivedRules, isAiErr
 import { planRun, readHashStore, type HashStore } from '@/lib/aiCache';
 import { useToast } from '@/app/components/Toast';
 import { useLeadMemory } from './useLeadMemory';
+import { KNOWN_COL, EXPORTED_COL, EMAIL_COL, PHONE_COL } from '@/lib/leadKeys';
 
 export interface CsvRun {
   data: Record<string, string>[];
@@ -225,7 +226,15 @@ export function useAiColumns(id: string) {
     setEditingId(null);
   };
 
-  const runColumn = async (cfg: AnalysisConfig) => {
+  /** Ab so vielen zu klassifizierenden Zeilen fragt ein manueller ▶ vorher nach (Credits) */
+  const BIG_AI_RUN = 100;
+  const [pendingRun, setPendingRun] = useState<{ cfg: AnalysisConfig; todo: number; skipped: number } | null>(null);
+
+  /**
+   * KI-Spalte ausfüllen. `confirmed` überspringt die Nachfrage bei großen Läufen —
+   * gesetzt vom Bestätigungs-Dialog und vom Autorun («direkt ausfüllen» ist eine bewusste Einstellung).
+   */
+  const runColumn = async (cfg: AnalysisConfig, opts: { confirmed?: boolean } = {}) => {
     if (!run || colRunning[cfg.id]) return;
     if (!cfg.prompt.trim()) { setEditingId(cfg.id); return showToast('Erst einen Prompt eingeben (⚙)', 'warning'); }
     // Nie auf einem veralteten Stand klassifizieren: der Lauf schreibt die ganze CSV zurück
@@ -249,8 +258,21 @@ export function useAiColumns(id: string) {
     const allHashes: HashStore = readHashStore(localStorage.getItem(hashKey));
     // feld_hash-Caching (wie im Sheet): unveränderte, schon klassifizierte Zeilen kosten nichts
     const existing = displayAiColumns.find(c => c.name === cfg.name)?.values ?? run.data.map(r => r[cfg.name] ?? '');
-    const plan = planRun(run.data, cfg, existing, allHashes[cfg.id]);
+    // Ohne explizite Eingabespalten gehen alle Spalten in den Prompt — außer den
+    // KI-Antworten selbst und den Buchhaltungs-Spalten der App (Abgleich, Export,
+    // Enrichment): sonst würde jeder Lauf den Prompt ändern und der Cache nie greifen.
+    const excluded = new Set<string>([...aiOwnedNames, KNOWN_COL, EXPORTED_COL, EMAIL_COL, PHONE_COL]);
+    const inputRows = cfg.inputColumns?.length
+      ? run.data
+      : run.data.map(r => Object.fromEntries(Object.entries(r).filter(([k]) => !excluded.has(k))));
+    const plan = planRun(inputRows, cfg, existing, allHashes[cfg.id]);
     const { todo, skipped, promptHash, rowHashes } = plan;
+    if (!opts.confirmed && todo.length > BIG_AI_RUN) {
+      // Große Läufe kosten spürbar Credits — erst bestätigen lassen (Dialog auf der Seite)
+      setColRunning(p => ({ ...p, [cfg.id]: false }));
+      setPendingRun({ cfg, todo: todo.length, skipped });
+      return;
+    }
 
     const persistProgress = async () => {
       if (!merged || !merged.some(v => v !== PENDING)) return;
@@ -293,7 +315,7 @@ export function useAiColumns(id: string) {
       };
 
       const subValues = await runAiColumn({
-        rows: todo.map(i => run.data[i]),
+        rows: todo.map(i => inputRows[i]),
         provider: cfg.provider,
         model: cfg.model,
         prompt: cfg.prompt,
@@ -325,6 +347,10 @@ export function useAiColumns(id: string) {
     }
   };
 
+  /** Bestätigungs-Dialog: Lauf starten bzw. abbrechen */
+  const confirmRun = () => { const p = pendingRun; setPendingRun(null); if (p) void runColumn(p.cfg, { confirmed: true }); };
+  const cancelRun = () => setPendingRun(null);
+
   /** ▶ an einer Spalte (auch Split-/Regel-Spalte): zugehörige Config ausführen */
   const runColumnByName = (name: string) => {
     const cfg = findCfgForColumn(name);
@@ -350,7 +376,7 @@ export function useAiColumns(id: string) {
     // Nach dem Commit starten — kein synchrones setState im Effect
     queueMicrotask(async () => {
       showToast(list.length === 1 ? `Klassifizierung «${list[0].name}» startet…` : `${list.length} KI-Spalten werden ausgefüllt…`, 'info');
-      for (const cfg of list) await runColumn(cfg);
+      for (const cfg of list) await runColumn(cfg, { confirmed: true });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, aiConfigs, id]);
@@ -398,6 +424,7 @@ export function useAiColumns(id: string) {
     run, error, providers, remoteChanged, reloadFromServer,
     aiConfigs, aiOwnedNames, displayAiColumns,
     colRunning, colProgress, scrollSignal,
+    pendingRun, confirmRun, cancelRun,
     editingId, setEditingId, editingCfg,
     findCfgForColumn, addAiColumn, updateConfig, deleteConfig,
     runColumn, runColumnByName, loadPreset, saveTemplate,
