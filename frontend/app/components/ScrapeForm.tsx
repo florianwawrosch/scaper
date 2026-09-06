@@ -3,6 +3,7 @@
 import type { useScrapeForm } from '@/app/hooks/useScrapeForm';
 import { TagInput } from './TagInput';
 import { CountrySelect } from './CountrySelect';
+import { SectionLabel } from './SectionLabel';
 import { T } from '@/app/theme';
 
 const PLATFORM_OPTIONS = [
@@ -136,22 +137,20 @@ export function ScrapeForm({ form, savedCount, onOpenSaved, presetName, setPrese
 
               <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <label style={{ display: 'block', fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>
-                  Suchbegriffe
-                </label>
+                <SectionLabel>Suchbegriffe</SectionLabel>
                 <TagInput tags={tags} onChange={t => { setTags(t); setFormError(''); }} placeholder="Begriff eingeben, Enter drücken…" />
               </div>
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <div>
-                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Länder</p>
+                  <SectionLabel>Länder</SectionLabel>
                   <CountrySelect value={country} onChange={setCountry} />
                 </div>
                 <div>
-                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Plattformen</p>
+                  <SectionLabel>Plattformen</SectionLabel>
                   <ChipGroup options={PLATFORM_OPTIONS} value={platforms} onChange={setPlatforms} />
                 </div>
                 <div>
-                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Status</p>
+                  <SectionLabel>Status</SectionLabel>
                   <SingleChip options={AD_STATUS_OPTIONS} value={adStatus} onChange={setAdStatus} />
                 </div>
               </div>
@@ -159,15 +158,15 @@ export function ScrapeForm({ form, savedCount, onOpenSaved, presetName, setPrese
               {/* Row 2: Medientyp + Suchtyp + Sprachen */}
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <div>
-                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Medientyp</p>
+                  <SectionLabel>Medientyp</SectionLabel>
                   <SingleChip options={MEDIA_TYPE_OPTIONS} value={mediaType} onChange={setMediaType} />
                 </div>
                 <div>
-                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Suchtyp</p>
+                  <SectionLabel>Suchtyp</SectionLabel>
                   <SingleChip options={SEARCH_TYPE_OPTIONS} value={searchType} onChange={setSearchType} />
                 </div>
                 <div>
-                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Sprachen</p>
+                  <SectionLabel>Sprachen</SectionLabel>
                   <ChipGroup options={LANGUAGE_OPTIONS} value={languages} onChange={setLanguages} />
                 </div>
               </div>
@@ -175,7 +174,7 @@ export function ScrapeForm({ form, savedCount, onOpenSaved, presetName, setPrese
               {/* Row 3: Limit + Datum + Bylines */}
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 <div>
-                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Limit</p>
+                  <SectionLabel>Limit</SectionLabel>
                   <div style={{ display: 'flex', gap: 4 }}>
                     {LIMIT_OPTIONS.map(l => (
                       <button key={l} onClick={() => setLimit(l)} className={`chip ${limit === l ? 'active' : ''}`} style={{ minWidth: 40 }}>{l}</button>
@@ -183,21 +182,21 @@ export function ScrapeForm({ form, savedCount, onOpenSaved, presetName, setPrese
                   </div>
                 </div>
                 <div>
-                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Datum von</p>
+                  <SectionLabel>Datum von</SectionLabel>
                   <input
                     type="date" value={dateMin} onChange={e => setDateMin(e.target.value)}
                     style={{ padding: '4px 8px', fontSize: 11, fontFamily: T.ffMono, borderRadius: 5, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none', colorScheme: 'dark' }}
                   />
                 </div>
                 <div>
-                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Datum bis</p>
+                  <SectionLabel>Datum bis</SectionLabel>
                   <input
                     type="date" value={dateMax} onChange={e => setDateMax(e.target.value)}
                     style={{ padding: '4px 8px', fontSize: 11, fontFamily: T.ffMono, borderRadius: 5, border: `1px solid ${T.line}`, background: T.panel, color: T.ink, outline: 'none', colorScheme: 'dark' }}
                   />
                 </div>
                 <div style={{ flex: 1, minWidth: 160 }}>
-                  <p style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkF, marginBottom: 5 }}>Bylines (kommagetrennt)</p>
+                  <SectionLabel>Bylines (kommagetrennt)</SectionLabel>
                   <input
                     type="text" value={bylines} onChange={e => setBylines(e.target.value)}
                     placeholder="z.B. Axel Springer, DPK"

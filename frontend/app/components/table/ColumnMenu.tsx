@@ -14,7 +14,7 @@ interface Props {
 export function ColumnMenu({ columns, hidden, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const visibleCount = columns.length - hidden.size;
-  const any = hidden.size > 0;
+  const hasHidden = hidden.size > 0;
   return (
     <div style={{ position: 'relative' }}>
       <button
@@ -22,11 +22,11 @@ export function ColumnMenu({ columns, hidden, onChange }: Props) {
         title="Spalten ein-/ausblenden"
         style={{
           ...mono, fontSize: 10, padding: '2px 9px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
-          border: any ? '1px solid rgba(232,176,75,.4)' : '1px solid rgba(255,255,255,.12)',
-          background: any ? 'rgba(232,176,75,.08)' : 'transparent',
-          color: any ? '#e8b04b' : '#9aa7bd',
+          border: hasHidden ? '1px solid rgba(232,176,75,.4)' : '1px solid rgba(255,255,255,.12)',
+          background: hasHidden ? 'rgba(232,176,75,.08)' : 'transparent',
+          color: hasHidden ? '#e8b04b' : '#9aa7bd',
         }}
-      ><Glyph>⊞</Glyph>Spalten{any ? ` (${visibleCount}/${columns.length})` : ''}</button>
+      ><Glyph>⊞</Glyph>Spalten{hasHidden ? ` (${visibleCount}/${columns.length})` : ''}</button>
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
@@ -37,7 +37,7 @@ export function ColumnMenu({ columns, hidden, onChange }: Props) {
           }}>
             <div style={{ padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ ...mono, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: '#5f6e87' }}>Spalten</span>
-              {any && (
+              {hasHidden && (
                 <button onClick={() => onChange(new Set())} style={{ ...mono, fontSize: 10, color: '#4fd1c5', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Alle zeigen</button>
               )}
             </div>

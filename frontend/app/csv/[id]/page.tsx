@@ -12,6 +12,8 @@ import { DataTable, type StatChip, type ExportPreset } from '@/app/components/Da
 import { AiColumnEditor } from '@/app/components/AiColumnEditor';
 import { AiColumnMenu } from '@/app/components/AiColumnMenu';
 import { Glyph } from '@/app/components/Glyph';
+import { SourceStatsPanel } from '@/app/components/SourceStatsPanel';
+import { RunConfirmModal } from '@/app/components/RunConfirmModal';
 import { useAiColumns, type AiColumn } from './useAiColumns';
 import { KNOWN_COL, EXPORTED_COL } from '@/lib/leadKeys';
 import { T } from '@/app/theme';
@@ -36,7 +38,6 @@ export default function CsvViewer() {
   const { showToast } = useToast();
   const { id } = useParams<{ id: string }>();
 
-  const [showSrcStats, setShowSrcStats] = useState(false);
   const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
 
   const {
@@ -225,39 +226,7 @@ export default function CsvViewer() {
           >Enrichment starten<Glyph after>→</Glyph></button>
         </div>
 
-        {/* Quellen-Statistik: Zielgruppen-Quote pro Big Player (wie das statistik-Blatt) */}
-        {sourceStats && (
-          <div style={{ marginBottom: 10 }}>
-            <button
-              onClick={() => setShowSrcStats(v => !v)}
-              style={{
-                fontFamily: T.ffMono, fontSize: 10, padding: '4px 12px', borderRadius: 12,
-                border: `1px solid ${T.lineS}`, background: showSrcStats ? 'rgba(255,255,255,.06)' : 'transparent',
-                color: T.inkD, cursor: 'pointer', letterSpacing: '.03em',
-              }}
-            >⌗ Statistik nach {sourceStats.srcCol} ({sourceStats.rows.length}) {showSrcStats ? '▴' : '▾'}</button>
-            {showSrcStats && (
-              <div style={{ marginTop: 8, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden', maxWidth: 640 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 80px 90px', padding: '6px 12px', background: 'rgba(255,255,255,.03)', borderBottom: `1px solid ${T.lineS}` }}>
-                  {[sourceStats.srcCol, 'Zeilen', 'Klassifiziert', sourceStats.audience.value, 'Quote'].map((h, i) => (
-                    <span key={h} style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: T.inkF, textAlign: i > 0 ? 'right' : 'left' }}>{h}</span>
-                  ))}
-                </div>
-                {sourceStats.rows.map(r => (
-                  <div key={r.src} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 80px 90px', padding: '5px 12px', borderBottom: `1px solid ${T.lineS}` }}>
-                    <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.src}</span>
-                    <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, textAlign: 'right' }}>{r.total}</span>
-                    <span style={{ fontFamily: T.ffMono, fontSize: 11, color: T.inkF, textAlign: 'right' }}>{r.done}</span>
-                    <span style={{ fontFamily: T.ffMono, fontSize: 11, color: '#4fd1c5', textAlign: 'right' }}>{r.yes}</span>
-                    <span style={{ fontFamily: T.ffMono, fontSize: 11, color: r.quote >= 0.25 ? '#e8b04b' : T.inkF, textAlign: 'right', fontWeight: r.quote >= 0.25 ? 600 : 400 }}>
-                      {r.done > 0 ? `${Math.round(r.quote * 100)}%` : '—'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {sourceStats && <SourceStatsPanel stats={sourceStats} />}
 
         {/* Full-width table; AI columns are created in place, ⚙ opens the editor */}
         <DataTable
@@ -309,24 +278,7 @@ export default function CsvViewer() {
           onRunAiColumn={runColumnByName}
         />
 
-        {/* Credit-Schutz: großer KI-Lauf erst nach Bestätigung */}
-        {pendingRun && (
-          <div data-testid="ai-run-confirm" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={cancelRun}>
-            <div onClick={e => e.stopPropagation()} style={{ width: 420, maxWidth: '92vw', background: '#10111a', border: '1px solid rgba(232,176,75,.4)', borderRadius: 10, padding: '18px 20px', boxShadow: '0 12px 40px rgba(0,0,0,.6)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <p style={{ fontFamily: T.ffMono, fontSize: 12, fontWeight: 600, color: T.gold }}>KI-Lauf wirklich starten?</p>
-              <p style={{ fontFamily: T.ffBody, fontSize: 13, color: T.inkD, lineHeight: 1.6 }}>
-                <strong style={{ color: T.ink }}>{pendingRun.todo.toLocaleString('de')} Zeilen</strong> werden mit{' '}
-                <strong style={{ color: T.ink }}>{providerLabel(pendingRun.cfg.provider)} · {pendingRun.cfg.model}</strong> klassifiziert
-                {pendingRun.skipped > 0 ? `, ${pendingRun.skipped.toLocaleString('de')} übersprungen (schon fertig, unverändert)` : ''}.
-                Das kostet API-Credits beim Anbieter — ein Aufruf pro Zeile.
-              </p>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={cancelRun} data-testid="ai-run-confirm-cancel" style={{ fontFamily: T.ffMono, fontSize: 11, padding: '6px 14px', borderRadius: 6, border: `1px solid ${T.lineS}`, background: 'transparent', color: T.inkD, cursor: 'pointer' }}>Abbrechen</button>
-                <button onClick={confirmRun} data-testid="ai-run-confirm-start" style={{ fontFamily: T.ffMono, fontSize: 11, fontWeight: 700, padding: '6px 16px', borderRadius: 6, border: 'none', background: T.gold, color: '#07070a', cursor: 'pointer' }}>▶ {pendingRun.todo.toLocaleString('de')} Zeilen klassifizieren</button>
-              </div>
-            </div>
-          </div>
-        )}
+        {pendingRun && <RunConfirmModal cfg={pendingRun.cfg} todo={pendingRun.todo} skipped={pendingRun.skipped} onConfirm={confirmRun} onCancel={cancelRun} />}
 
         {/* ⚙ side panel for the selected AI column */}
         {editingCfg && (
