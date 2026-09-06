@@ -8,6 +8,7 @@ import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { applyPresets, presetFromConfigs, saveUserPreset, getEffectivePresets, readAutorunIds, AUTORUN_KEY, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
 import { runAiColumn, defaultModel, splitMultiOutput, applyDerivedRules, isAiError, normalizeMultiOutput, PENDING, type AnalysisConfig } from '@/lib/ai';
 import { planRun, readHashStore, type HashStore } from '@/lib/aiCache';
+import { appendUsage } from '@/lib/usageLog';
 import { useToast } from '@/app/components/Toast';
 import { useLeadMemory } from './useLeadMemory';
 import { KNOWN_COL, EXPORTED_COL, EMAIL_COL, PHONE_COL } from '@/lib/leadKeys';
@@ -283,6 +284,14 @@ export function useAiColumns(id: string) {
       return derived;
     };
 
+    // Verbrauchsprotokoll: Zeilen, Token und Dauer dieses Laufs (auch bei Abbruch das bereits Bezahlte)
+    const t0 = Date.now();
+    const usage = { input: 0, output: 0 };
+    const logUsage = (rows: number, failed: number) => {
+      if (rows === 0 && usage.input === 0) return;
+      appendUsage({ kind: 'ai', datasetId: id, dataset: run.filename, what: cfg.name, provider: cfg.provider, model: cfg.model, rows, ...(failed > 0 && { failed }), ...usage, ms: Date.now() - t0 });
+    };
+
     try {
       const multi = !!cfg.outputFields?.length;
       if (todo.length === 0) {
@@ -319,6 +328,7 @@ export function useAiColumns(id: string) {
         prompt: cfg.prompt,
         inputColumns: cfg.inputColumns,
         multiOutput: multi,
+        onUsage: u => { usage.input += u.input; usage.output += u.output; },
         onProgress: (partial) => {
           paint(partial);
           setColProgress(p => ({ ...p, [cfg.id]: merged!.filter(v => v !== PENDING).length }));
@@ -326,6 +336,7 @@ export function useAiColumns(id: string) {
       });
       paint(subValues);
       const failed = todo.filter(i => isAiError(merged![i])).length;
+      logUsage(todo.length, failed);
 
       await persistProgress();
       const parts: string[] = [`${todo.length - failed} klassifiziert`];
@@ -341,6 +352,7 @@ export function useAiColumns(id: string) {
       // Whatever chunks completed before the failure are still worth keeping —
       // save them so a retry only redoes what's actually still pending.
       const savedPartial = await persistProgress().catch(() => undefined) !== undefined;
+      logUsage(merged ? todo.filter(i => merged![i] !== PENDING).length : 0, 0);
       const msg = e instanceof Error ? e.message : 'Fehler';
       showToast(savedPartial ? `${msg} — bereits klassifizierte Zeilen wurden gespeichert.` : msg, 'error', 8000);
     } finally {

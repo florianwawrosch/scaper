@@ -142,6 +142,7 @@ export default function EnrichPage() {
         )}
 
         <EnrichmentPanel
+          dataset={{ id, name: meta?.filename ?? '' }}
           rows={activeRows}
           leadsCount={activeRows.length}
           availableColumns={meta?.fields ?? []}

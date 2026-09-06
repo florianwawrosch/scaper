@@ -29,7 +29,8 @@
     "../../lib/aiCache.ts",
     "../../lib/rateLimit.ts",
     "../../lib/tableExport.ts",
-    "../../lib/origin.ts"
+    "../../lib/origin.ts",
+    "../../lib/usageLog.ts"
   ],
   "include": []
 }

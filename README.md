@@ -245,6 +245,13 @@ Ohne zweiten Datensatz werden keine Spalten angelegt.
 
 ## Daten: Backup, Wiederherstellung, Löschen
 
+Unter Einstellungen → **Verbrauch** steht ein Protokoll aller KI- und
+Enrichment-Läufe (Datensatz, Spalte bzw. Felder, Modell, Zeilen, Token laut
+Anbieter, Dauer) mit Summen je Modell über die letzten 30 Tage. Die Kosten sind
+Richtwerte aus `frontend/lib/aiPricing.ts` (USD je 1 Mio. Token) — dort neue
+Modelle und Preise nachtragen. Das Protokoll liegt im gemeinsamen Speicher
+(`usage_log`, max. 500 Einträge) und wird zweistufig geleert.
+
 Unter Einstellungen → **Daten** stehen der Zustand des gemeinsamen Speichers
 (mit Einrichtungs-Anleitung, falls keine Datenbank verbunden ist), der Bestand
 (Datensätze, Zeilen, KI-Spalten, Suchen, Speicherbelegung), **Backup

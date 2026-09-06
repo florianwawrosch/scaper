@@ -20,7 +20,12 @@ interface ProviderJson {
   candidates?: { content?: { parts?: { text?: string }[] } }[];
   content?: { text?: string }[];
   choices?: { message?: { content?: string } }[];
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+  usage?: { input_tokens?: number; output_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
 }
+
+interface AiAnswer { text: string; input: number; output: number }
+const tok = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
 async function readJson(res: Response): Promise<ProviderJson> {
   const text = await res.text();
@@ -28,7 +33,7 @@ async function readJson(res: Response): Promise<ProviderJson> {
   catch { throw new Error(text.slice(0, 200) || `HTTP ${res.status}`); }
 }
 
-async function callAi(provider: string, model: string, prompt: string, key: string): Promise<string> {
+async function callAi(provider: string, model: string, prompt: string, key: string): Promise<AiAnswer> {
   try {
     if (provider === 'gemini') {
       const res = await fetchRetry(
@@ -42,7 +47,7 @@ async function callAi(provider: string, model: string, prompt: string, key: stri
       );
       const data = await readJson(res);
       if (!res.ok) throw new Error(data.error?.message ?? `HTTP ${res.status}`);
-      return (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '—').trim();
+      return { text: (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '—').trim(), input: tok(data.usageMetadata?.promptTokenCount), output: tok(data.usageMetadata?.candidatesTokenCount) };
     }
     if (provider === 'anthropic') {
       const res = await fetchRetry('https://api.anthropic.com/v1/messages', {
@@ -57,7 +62,7 @@ async function callAi(provider: string, model: string, prompt: string, key: stri
       });
       const data = await readJson(res);
       if (!res.ok) throw new Error(data.error?.message ?? `HTTP ${res.status}`);
-      return (data.content?.[0]?.text ?? '—').trim();
+      return { text: (data.content?.[0]?.text ?? '—').trim(), input: tok(data.usage?.input_tokens), output: tok(data.usage?.output_tokens) };
     }
     if (provider === 'openai') {
       const res = await fetchRetry('https://api.openai.com/v1/chat/completions', {
@@ -68,11 +73,11 @@ async function callAi(provider: string, model: string, prompt: string, key: stri
       });
       const data = await readJson(res);
       if (!res.ok) throw new Error(data.error?.message ?? `HTTP ${res.status}`);
-      return (data.choices?.[0]?.message?.content ?? '—').trim();
+      return { text: (data.choices?.[0]?.message?.content ?? '—').trim(), input: tok(data.usage?.prompt_tokens), output: tok(data.usage?.completion_tokens) };
     }
-    return `Fehler: Unbekannter Provider ${provider}`;
+    return { text: `Fehler: Unbekannter Provider ${provider}`, input: 0, output: 0 };
   } catch (e) {
-    return `Fehler: ${friendlyAiError(e instanceof Error ? e.message : String(e))}`;
+    return { text: `Fehler: ${friendlyAiError(e instanceof Error ? e.message : String(e))}`, input: 0, output: 0 };
   }
 }
 
@@ -117,15 +122,18 @@ export async function POST(req: NextRequest) {
   // Limited concurrency so provider rate limits aren't hammered
   const CONCURRENCY = 4;
   const values: string[] = new Array(prompts.length);
+  const usage = { input: 0, output: 0 };
   let next = 0;
   await Promise.all(
     Array.from({ length: Math.min(CONCURRENCY, prompts.length) }, async () => {
       while (next < prompts.length) {
         const i = next++;
-        values[i] = await callAi(provider, model, prompts[i], key);
+        const a = await callAi(provider, model, prompts[i], key);
+        values[i] = a.text; usage.input += a.input; usage.output += a.output;
       }
     }),
   );
 
-  return NextResponse.json({ values });
+  // usage: Token laut Anbieter (Verbrauchsprotokoll in den Einstellungen)
+  return NextResponse.json({ values, usage });
 }

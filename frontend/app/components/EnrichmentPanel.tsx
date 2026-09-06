@@ -32,6 +32,8 @@ interface Props {
   onFieldsChange: (f: EnrichFields) => void;
   /** Zeilen, die enricht werden (Enrichment läuft über die Vercel-Route /api/enrich) */
   rows: Record<string, string>[];
+  /** Für das Verbrauchsprotokoll */
+  dataset?: { id: string; name: string };
 }
 
 const ALL_PROVIDERS = [
@@ -50,7 +52,7 @@ const STATUS_COLOR: Record<ProviderStatus, string>        = { idle: T.inkF, runn
  * Der Lauf selbst lebt in useEnrichmentRun, Zuordnung und Bestätigung in
  * eigenen Komponenten — hier wird nur zusammengesetzt.
  */
-export function EnrichmentPanel({ leadsCount, onEnrichmentComplete, availableColumns, onEmailColumn, rows, fields, onFieldsChange }: Props) {
+export function EnrichmentPanel({ leadsCount, onEnrichmentComplete, availableColumns, onEmailColumn, rows, fields, onFieldsChange, dataset }: Props) {
   const { showToast } = useToast();
   const router = useRouter();
   const run = useEnrichmentRun();
@@ -137,6 +139,7 @@ export function EnrichmentPanel({ leadsCount, onEnrichmentComplete, availableCol
     const wanted: EnrichField[] = [...(wantEmail ? ['email' as const] : []), ...(wantPhone ? ['phone' as const] : [])];
     run.start({
       provider: selected,
+      dataset,
       rows,
       fields: wanted,
       mapping: { nameColumn: effNameCol, companyColumn: effCompanyCol, linkedinColumn: effLinkedinCol },

@@ -190,6 +190,8 @@ export async function runAiColumn(opts: {
   inputColumns?: string[];
   multiOutput?: boolean;
   onProgress?: (partial: string[]) => void;
+  /** Token-Verbrauch je Chunk (laut Anbieter) — für das Verbrauchsprotokoll */
+  onUsage?: (usage: { input: number; output: number }) => void;
 }): Promise<string[]> {
   const { rows, provider, model, prompt, chunkSize = 20, inputColumns, multiOutput, onProgress } = opts;
   const parallel = Math.max(1, opts.parallel ?? PARALLEL_CHUNKS[provider] ?? 2);
@@ -210,6 +212,7 @@ export async function runAiColumn(opts: {
       throw new Error(msg);
     }
     const data = await res.json();
+    if (data.usage && opts.onUsage) opts.onUsage({ input: Number(data.usage.input) || 0, output: Number(data.usage.output) || 0 });
     const got: string[] = data.values ?? [];
     for (let j = 0; j < prompts.length; j++) values[start + j] = got[j] ?? `Fehler: keine Antwort`;
     onProgress?.([...values]);

@@ -64,6 +64,13 @@ const { chromium } = playwright();
   await page.reload({ waitUntil: 'load' }); // networkidle ist unter paralleler Testlast unzuverlässig — der folgende waitForSelector reicht
   await page.waitForSelector('text=120 Zeilen bereits enricht');
   ok((await page.textContent('body')).includes('0 Leads'), 'nach Reload: 0 offene Leads');
+  // Verbrauchsprotokoll: ein Enrichment-Eintrag mit 120 Leads und 120 Treffern
+  const usage = await page.evaluate(() => JSON.parse(localStorage.getItem('usage_log') ?? '[]'));
+  ok(usage.length === 1 && usage[0].kind === 'enrich' && usage[0].provider === 'hunter_io' && usage[0].rows === 120 && usage[0].found === 120 && usage[0].dataset === 'batches.csv', `Verbrauchsprotokoll: Enrichment-Lauf erfasst (${JSON.stringify(usage[0]).slice(0, 100)})`);
+  await page.goto(`${BASE_URL}/settings?tab=usage`, { waitUntil: 'load' });
+  await page.waitForSelector('[data-testid="usage-row"]');
+  const urow = await page.locator('[data-testid="usage-row"]').first().innerText();
+  ok(urow.includes('Hunter.io') && urow.includes('batches.csv') && urow.includes('120'), `Verbrauch zeigt den Enrichment-Lauf: ${urow.replace(/\s+/g, ' ').slice(0, 100)}`);
   ok(errors.length === 0, `keine Page-Errors${errors[0] ? ': ' + errors[0] : ''}`);
   await browser.close();
 })().catch(e => { console.error('FAIL:', e.message); process.exit(1); });

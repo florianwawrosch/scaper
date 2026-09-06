@@ -57,7 +57,7 @@ export function IntegrationsTab({ onCountChange }: Props) {
       </div>
 
       {/* Wo die Keys liegen — mit Link und Klickpfad */}
-      <div data-testid="keys-info" style={{ background: 'rgba(99,129,255,.06)', border: '1px solid rgba(99,129,255,.25)', borderRadius: 8, padding: '14px 16px', marginBottom: 22 }}>
+      <div data-testid="keys-info" style={{ background: 'rgba(99,129,255,.06)', border: '1px solid rgba(99,129,255,.25)', borderRadius: 8, padding: '14px 16px', marginBottom: 22, maxWidth: 760 }}>
         <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: '#8fa3ff', marginBottom: 6 }}>
           API-Keys liegen auf dem Server, nicht im Browser
         </p>
@@ -108,12 +108,12 @@ export function IntegrationsTab({ onCountChange }: Props) {
               const envName = info?.envNames[s.key] ?? '';
               return (
                 <tr key={s.key} data-testid={`integration-${s.key}`}>
-                  <td style={{ ...td, color: T.ink, fontWeight: 500 }}>{s.label}</td>
+                  <td style={{ ...td, color: T.ink, fontWeight: 500, whiteSpace: 'nowrap' }}>{s.label}</td>
                   <td style={{ ...td, color: T.inkF }}>{s.group}</td>
-                  <td style={td}><code style={{ fontFamily: T.mono, fontSize: 11, color: T.ink, background: 'rgba(255,255,255,.04)', border: `1px solid ${T.lineS}`, borderRadius: 4, padding: '2px 6px' }}>{envName || '…'}</code></td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}><code style={{ fontFamily: T.mono, fontSize: 11, color: T.ink, background: 'rgba(255,255,255,.04)', border: `1px solid ${T.lineS}`, borderRadius: 4, padding: '2px 6px' }}>{envName || '…'}</code></td>
                   <td style={td}>
                     <span data-testid={`integration-status-${s.key}`} style={{
-                      fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 4,
+                      fontFamily: T.mono, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap',
                       color: active ? T.teal : '#e8b04b',
                       background: active ? 'rgba(79,209,197,.08)' : 'rgba(232,176,75,.08)',
                       border: `1px solid ${active ? 'rgba(79,209,197,.25)' : 'rgba(232,176,75,.3)'}`,

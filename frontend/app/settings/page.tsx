@@ -9,9 +9,10 @@ import { AiColumnsTab } from './AiColumnsTab';
 import { BlocklistTab } from './BlocklistTab';
 import { DesignTab } from './DesignTab';
 import { DataTab } from './DataTab';
+import { UsageTab } from './UsageTab';
 import { T } from '@/app/theme';
 
-const NAV_KEYS = ['integrations', 'templates', 'blocklist', 'data', 'design'] as const;
+const NAV_KEYS = ['integrations', 'templates', 'blocklist', 'usage', 'data', 'design'] as const;
 type NavKey = typeof NAV_KEYS[number];
 
 /**
@@ -42,6 +43,7 @@ export default function Settings() {
     { key: 'integrations', label: 'Integrationen', badge: keyCount || undefined },
     { key: 'templates',    label: 'KI-Spalten',    badge: tplCount || undefined },
     { key: 'blocklist',    label: 'Blockliste',    badge: blockCount || undefined },
+    { key: 'usage',        label: 'Verbrauch' },
     { key: 'data',         label: 'Daten' },
     { key: 'design',       label: 'Design' },
   ];
@@ -75,11 +77,12 @@ export default function Settings() {
       </div>
 
       {/* ── Content ── */}
-      {/* Tabellen-Tabs (KI-Spalten, Blockliste) brauchen die volle Breite */}
-      <div style={{ flex: 1, padding: '32px 40px', maxWidth: nav === 'templates' || nav === 'blocklist' ? 1240 : 680 }}>
+      {/* Tabellen-Tabs brauchen die volle Breite */}
+      <div style={{ flex: 1, padding: '32px 40px', maxWidth: nav === 'data' || nav === 'design' ? 680 : 1240 }}>
         {nav === 'integrations' && <IntegrationsTab onCountChange={setKeyCount} />}
         {nav === 'templates'    && <AiColumnsTab onCountChange={setTplCount} />}
         {nav === 'blocklist'    && <BlocklistTab onCountChange={setBlockCount} />}
+        {nav === 'usage'        && <UsageTab />}
         {nav === 'data'         && <DataTab />}
         {nav === 'design'       && <DesignTab />}
       </div>

@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useToast } from '@/app/components/Toast';
+import { appendUsage } from '@/lib/usageLog';
 
 export type EnrichField = 'email' | 'phone';
 export interface EnrichResult { email: string; phone: string; enriched: boolean }
@@ -12,6 +13,8 @@ export const ENRICH_BATCH = 50;
 
 export interface EnrichRunOptions {
   provider: string;
+  /** Für das Verbrauchsprotokoll */
+  dataset?: { id: string; name: string };
   rows: Record<string, string>[];
   fields: EnrichField[];
   mapping: { nameColumn: string; companyColumn: string; linkedinColumn: string };
@@ -33,7 +36,7 @@ export function useEnrichmentRun() {
   const stopRef  = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  const start = async ({ provider, rows, fields, mapping, onResults, onComplete }: EnrichRunOptions) => {
+  const start = async ({ provider, dataset, rows, fields, mapping, onResults, onComplete }: EnrichRunOptions) => {
     const wantEmail = fields.includes('email');
     const wantPhone = fields.includes('phone');
     setRunning(true);
@@ -44,6 +47,7 @@ export function useEnrichmentRun() {
     const all: EnrichResult[] = [];
     let enrichedTotal = 0, emailsTotal = 0, phonesTotal = 0, processed = 0;
     let firstError: string | null = null;
+    const t0 = Date.now();
     setProgress({ done: 0, total: rows.length, enriched: 0 });
 
     try {
@@ -91,6 +95,14 @@ export function useEnrichmentRun() {
         aborted ? 'info' : 'error', 8000,
       );
     } finally {
+      // Verbrauchsprotokoll — auch nach Abbruch zählt, was schon bezahlt wurde
+      if (processed > 0) {
+        appendUsage({
+          kind: 'enrich', datasetId: dataset?.id ?? '', dataset: dataset?.name ?? '',
+          what: [wantEmail && 'E-Mail', wantPhone && 'Telefon'].filter(Boolean).join(' + '),
+          provider, rows: processed, found: emailsTotal + phonesTotal, ms: Date.now() - t0,
+        });
+      }
       setRunning(false);
       setProgress(null);
       abortRef.current = null;
