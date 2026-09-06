@@ -28,3 +28,9 @@ export async function downloadXlsx(filename: string, cols: string[], rows: Recor
   XLSX.utils.book_append_sheet(wb, ws, 'Daten');
   XLSX.writeFile(wb, filename);
 }
+
+/** Dateiname-tauglich: «Meta: fitness coaching» → «fitness-coaching», «leads.csv» → «leads» */
+export function exportSlug(name?: string): string {
+  const s = (name ?? '').replace(/^meta:\s*/i, '').replace(/\.(csv|xlsx?)$/i, '').toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  return s || 'export';
+}

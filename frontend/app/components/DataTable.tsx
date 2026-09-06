@@ -5,7 +5,7 @@ import { isPendingAiValue, isAiError } from '@/lib/ai';
 import { Glyph } from './Glyph';
 import { FilterDropdown } from './FilterDropdown';
 import { useTableState } from '@/app/hooks/useTableState';
-import { downloadCsv, downloadXlsx } from '@/lib/tableExport';
+import { downloadCsv, downloadXlsx, exportSlug } from '@/lib/tableExport';
 import { mono } from '@/app/theme';
 import { StatChips, type StatChip } from './table/StatChips';
 import { ColumnMenu } from './table/ColumnMenu';
@@ -59,13 +59,17 @@ interface DataTableProps {
   exportPresets?: ExportPreset[];
   /** Zusätzliche Toolbar-Elemente vor den Export-Buttons (Abgleich, «+ KI-Spalte»-Menü) */
   toolbarExtra?: React.ReactNode;
+  /** Name des Datensatzes — wird zum Export-Dateinamen (sonst «export») */
+  exportName?: string;
 }
+
+
 
 
 export function DataTable({
   data, rawColumns, aiColumns = [], excludedRows = new Set(), onExcludeChange,
   stats, scrollSignal = 0, onConfigureAiColumn, onRunAiColumn, onBlockPages,
-  exportPresets = [], toolbarExtra,
+  exportPresets = [], toolbarExtra, exportName,
 }: DataTableProps) {
   const {
     globalSearch, setGlobalSearch, colFilters, setColFilters, activeFilters,
@@ -112,7 +116,7 @@ export function DataTable({
   const exportRows = () => sorted.filter(row => !excludedRows.has(row._idx));
 
   const exportCsv = () =>
-    downloadCsv(`export_${new Date().toISOString().slice(0, 10)}.csv`, allColumns, exportRows());
+    downloadCsv(`${exportSlug(exportName)}_${new Date().toISOString().slice(0, 10)}.csv`, allColumns, exportRows());
 
   const exportPreset = (p: ExportPreset) => {
     const out = p.transform(exportRows());
@@ -122,7 +126,7 @@ export function DataTable({
   };
 
   const exportXlsx = () =>
-    downloadXlsx(`export_${new Date().toISOString().slice(0, 10)}.xlsx`, allColumns, exportRows());
+    downloadXlsx(`${exportSlug(exportName)}_${new Date().toISOString().slice(0, 10)}.xlsx`, allColumns, exportRows());
 
   const thStyle: React.CSSProperties = {
     ...mono, fontSize: 10, letterSpacing: '.07em', textTransform: 'uppercase',

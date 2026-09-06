@@ -234,7 +234,7 @@ export function useAiColumns(id: string) {
    * KI-Spalte ausfüllen. `confirmed` überspringt die Nachfrage bei großen Läufen —
    * gesetzt vom Bestätigungs-Dialog und vom Autorun («direkt ausfüllen» ist eine bewusste Einstellung).
    */
-  const runColumn = async (cfg: AnalysisConfig, opts: { confirmed?: boolean } = {}) => {
+  const runColumn = async (cfg: AnalysisConfig, opts: { confirmed?: boolean; /** nur die ersten N offenen Zeilen (Prompt-Test) */ limit?: number } = {}) => {
     if (!run || colRunning[cfg.id]) return;
     if (!cfg.prompt.trim()) { setEditingId(cfg.id); return showToast('Erst einen Prompt eingeben (⚙)', 'warning'); }
     // Nie auf einem veralteten Stand klassifizieren: der Lauf schreibt die ganze CSV zurück
@@ -266,7 +266,8 @@ export function useAiColumns(id: string) {
       ? run.data
       : run.data.map(r => Object.fromEntries(Object.entries(r).filter(([k]) => !excluded.has(k))));
     const plan = planRun(inputRows, cfg, existing, allHashes[cfg.id]);
-    const { todo, skipped, promptHash, rowHashes } = plan;
+    const { skipped, promptHash, rowHashes } = plan;
+    const todo = opts.limit ? plan.todo.slice(0, opts.limit) : plan.todo;
     if (!opts.confirmed && todo.length > BIG_AI_RUN) {
       // Große Läufe kosten spürbar Credits — erst bestätigen lassen (Dialog auf der Seite)
       setColRunning(p => ({ ...p, [cfg.id]: false }));
@@ -334,7 +335,12 @@ export function useAiColumns(id: string) {
       const parts: string[] = [`${todo.length - failed} klassifiziert`];
       if (skipped > 0) parts.push(`${skipped} übersprungen (unverändert)`);
       if (failed > 0) parts.push(`${failed} ungültig — erneut ▶ drücken`);
-      showToast(`«${cfg.name}»: ${parts.join(', ')}`, failed > 0 ? 'warning' : 'success', failed > 0 ? 7000 : undefined);
+      if (opts.limit) {
+        const rest = plan.todo.length - todo.length;
+        showToast(`Test «${cfg.name}»: ${todo.length - failed} Zeilen klassifiziert — passt die Antwort? Dann ▶ für die restlichen ${rest.toLocaleString('de')}`, failed > 0 ? 'warning' : 'success', 8000);
+      } else {
+        showToast(`«${cfg.name}»: ${parts.join(', ')}`, failed > 0 ? 'warning' : 'success', failed > 0 ? 7000 : undefined);
+      }
     } catch (e) {
       // Whatever chunks completed before the failure are still worth keeping —
       // save them so a retry only redoes what's actually still pending.

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { adsLibraryUrl, fanpageUrl } from '@/lib/blocklist';
 import { envKey } from '@/lib/serverKeys';
 
 /**
@@ -70,6 +71,9 @@ function flatten(ad: MetaAd, searchTerm: string): Record<string, string> {
     id:             String(ad.id ?? ''),
     page_name:      String(ad.page_name ?? ''),
     page_id:        String(ad.page_id ?? ''),
+    // Direkt anklickbar in der Tabelle: die Seite selbst und alle ihre Anzeigen in der Ads Library
+    page_url:       fanpageUrl({ pageName: String(ad.page_name ?? ''), pageId: String(ad.page_id ?? '') || undefined }) ?? '',
+    ads_library_url: ad.page_id ? adsLibraryUrl(String(ad.page_id)) : '',
     ad_text:        join(ad.ad_creative_bodies),
     ad_title:       join(ad.ad_creative_link_titles),
     ad_description: join(ad.ad_creative_link_descriptions),

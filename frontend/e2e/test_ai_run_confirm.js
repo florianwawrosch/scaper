@@ -35,6 +35,27 @@ const { chromium } = playwright();
   await page.click('[data-testid="ai-run-confirm-start"]');
   await page.waitForFunction(() => document.body.innerText.includes('«ki_x»: 150 klassifiziert'), null, { timeout: 30000 });
   ok(aiCalls > 0, `Starten: KI aufgerufen (${aiCalls} Aufrufe)`);
+  // Prompt-Test im ⚙-Panel: nur 3 Zeilen, keine Nachfrage
+  const id3 = id + '_test';
+  await page.evaluate((id3) => {
+    const data = Array.from({ length: 130 }, (_, i) => ({ page_name: `P ${i + 1}`, ad_text: `A ${i + 1}` }));
+    localStorage.setItem(`csv_run_${id3}`, JSON.stringify({ fields: ['page_name', 'ad_text'], filename: 'test.csv', createdAt: new Date().toISOString(), rowCount: 130, data }));
+    localStorage.setItem(`analysis_configs_${id3}`, JSON.stringify([{ id: 'cfg_t', provider: 'anthropic', model: 'claude-sonnet-5', name: 'ki_t', prompt: 'Coach?' }]));
+  }, id3);
+  await page.goto(`${BASE_URL}/csv/${id3}`, { waitUntil: 'networkidle' });
+  const th3 = page.locator('th:has-text("ki_t")').first();
+  await th3.hover();
+  await th3.locator('button[title*="onfig"], button:has-text("⚙")').first().click();
+  await page.waitForSelector('[data-testid="editor-test-run"]');
+  const callsBefore = aiCalls;
+  await page.click('[data-testid="editor-test-run"]');
+  await page.waitForFunction(() => document.body.innerText.includes('Test «ki_t»: 3 Zeilen klassifiziert'), null, { timeout: 30000 });
+  ok(aiCalls === callsBefore + 1 && (await page.locator('[data-testid="ai-run-confirm"]').count()) === 0, 'Prompt-Test: 3 Zeilen, ein Aufruf, keine Nachfrage');
+  const vals = await page.evaluate(() => [...document.querySelectorAll('tbody tr')].slice(0, 4).map(tr => tr.lastElementChild.innerText.trim()));
+  ok(vals.slice(0, 3).every(v => v === 'ja') && vals[3] === '—', `erste 3 Zeilen gefüllt, Rest offen (${vals.join(',')})`);
+  await page.goto(`${BASE_URL}/csv/${id}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('th:has-text("ki_x")');
+
   // zweiter ▶: alles gecacht → keine Nachfrage, «nichts zu tun»
   await run();
   await page.waitForSelector('text=nichts zu tun');

@@ -17,6 +17,8 @@ interface Props {
   onChange: (patch: Partial<AnalysisConfig>) => void;
   onSave: () => void;
   onRun: () => void;
+  /** Prompt an den ersten 3 offenen Zeilen ausprobieren (kostet 3 Aufrufe) */
+  onTest: () => void;
   onDelete: () => void;
   onClose: () => void;
   /** «☆ In Einstellungen speichern»: diese KI-Spalte als gespeicherte KI-Spalte sichern */
@@ -24,7 +26,7 @@ interface Props {
 }
 
 /** Fixed side panel that edits ONE AI column (name, model, prompt). */
-export function AiColumnEditor({ config, rowCount, providers, running, progress, onChange, onSave, onRun, onDelete, onClose, onSaveAsTemplate }: Props) {
+export function AiColumnEditor({ config, rowCount, providers, running, progress, onChange, onSave, onRun, onTest, onDelete, onClose, onSaveAsTemplate }: Props) {
   // Parent keys this panel by config.id, so switching columns remounts it
   // with a fresh draft — no effect needed to reset the name.
   const [draftName, setDraftName] = useState(config.name);
@@ -106,6 +108,17 @@ export function AiColumnEditor({ config, rowCount, providers, running, progress,
         >
           {running ? (progress ? `Läuft… ${progress}/${rowCount}` : 'Läuft…') : `▶ Analysieren`}
         </button>
+        <button
+          onClick={onTest}
+          disabled={running || rowCount === 0 || !config.prompt.trim()}
+          title="Prompt an 3 Zeilen testen — Antwort prüfen, bevor alle Zeilen Credits kosten"
+          data-testid="editor-test-run"
+          style={{
+            ...mono, fontSize: 11, padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+            border: '1px solid rgba(255,255,255,.12)', background: 'transparent', color: '#9aa7bd',
+            opacity: running || rowCount === 0 || !config.prompt.trim() ? 0.4 : 1,
+          }}
+        >🧪 3 Zeilen</button>
         <button
           onClick={onDelete}
           disabled={running}

@@ -263,6 +263,7 @@ export default function CsvViewer() {
         <DataTable
           data={run.data}
           rawColumns={tableRawColumns}
+          exportName={run.filename}
           stats={statChips}
           aiColumns={labeledAiColumns}
           scrollSignal={scrollSignal}
@@ -342,6 +343,7 @@ export default function CsvViewer() {
               showToast(`Spalte «${editingCfg.name}» gespeichert`, 'success');
             }}
             onRun={() => runColumn(aiConfigs.find(c => c.id === editingCfg.id) ?? editingCfg)}
+            onTest={() => runColumn(aiConfigs.find(c => c.id === editingCfg.id) ?? editingCfg, { limit: 3, confirmed: true })}
             onDelete={() => deleteConfig(editingCfg.id)}
             onClose={() => setEditingId(null)}
             onSaveAsTemplate={flags => saveTemplate(aiConfigs.find(c => c.id === editingCfg.id) ?? editingCfg, flags)}
