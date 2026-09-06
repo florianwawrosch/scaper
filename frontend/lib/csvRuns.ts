@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { loadCsvText, saveCsvText, deleteCsvText } from './csvStorage';
+import { loadCsvText, loadCsvTextLocal, saveCsvText, deleteCsvText } from './csvStorage';
 import { lsSet, lsRemove } from './store';
 import { fetchOrigin } from './origin';
 
@@ -86,7 +86,15 @@ export async function saveCsvRunColumns(
   cols: Record<string, string[]>,
 ): Promise<Record<string, string>[]> {
   const entries = Object.entries(cols);
-  const merged = rows.map((r, i) => {
+  // Grundlage ist der aktuelle lokale CSV-Text, nicht der Stand im Speicher der Seite: hat der
+  // Konfliktschutz inzwischen Spalten eines Kollegen eingemischt, bleiben sie so erhalten.
+  let base = rows;
+  try {
+    const text = await loadCsvTextLocal(id);
+    const parsed = text ? Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true }).data : [];
+    if (parsed.length === rows.length && parsed.length > 0) base = rows.map((r, i) => ({ ...r, ...parsed[i] }));
+  } catch {}
+  const merged = base.map((r, i) => {
     const extra: Record<string, string> = {};
     for (const [n, v] of entries) extra[n] = v[i] ?? String(r[n] ?? '');
     return { ...r, ...extra };

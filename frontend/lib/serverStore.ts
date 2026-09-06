@@ -20,11 +20,18 @@ export interface StoreManifest {
 
 import { isLargeKey } from './storeKeys';
 
+/**
+ * Ergebnis eines Schreibens. ifMatch = Stand (updatedAt), den der Client zuletzt
+ * gesehen hat: null = «gibt es noch nicht», undefined = ohne Prüfung. Stimmt der
+ * Stand nicht (ein Kollege hat inzwischen geschrieben), kommt der aktuelle Wert zurück.
+ */
+export type SetResult = { ok: true; updatedAt: string } | { ok: false; current: StoreItem | null };
+
 export interface StoreDriver {
   name: string;
   manifest(): Promise<StoreManifest>;
   get(key: string): Promise<StoreItem | null>;
-  set(key: string, value: string): Promise<string>;
+  set(key: string, value: string, ifMatch?: string | null): Promise<SetResult>;
   del(key: string): Promise<string>;
   /** Alles in den Papierkorb (Tombstones mit Wert) */
   wipe(): Promise<void>;
@@ -83,10 +90,15 @@ export function fileDriver(dir: string): StoreDriver {
         return r.deleted ? null : { key, value: r.value, updatedAt: r.updatedAt };
       } catch { return null; }
     },
-    async set(key, value) {
+    async set(key, value, ifMatch) {
+      if (ifMatch !== undefined) {
+        let r: FileRecord | null = null;
+        try { r = JSON.parse(await fs.readFile(file(key), 'utf8')); } catch {}
+        if (r && !r.deleted && r.updatedAt !== ifMatch) return { ok: false, current: { key, value: r.value, updatedAt: r.updatedAt } };
+      }
       const updatedAt = new Date().toISOString();
       await write(key, { value, updatedAt });
-      return updatedAt;
+      return { ok: true, updatedAt };
     },
     async del(key) {
       const updatedAt = new Date().toISOString();
@@ -144,6 +156,11 @@ async function pgSql(url: string): Promise<Sql> {
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
 
+async function pgGet(sql: Sql, key: string): Promise<StoreItem | null> {
+  const rows = await sql`SELECT value, updated_at FROM lp_store WHERE key = ${key} AND NOT deleted`;
+  return rows[0] ? { key, value: String(rows[0].value ?? ''), updatedAt: iso(rows[0].updated_at) } : null;
+}
+
 function postgresDriver(url: string): StoreDriver {
   return {
     name: 'postgres',
@@ -161,15 +178,20 @@ function postgresDriver(url: string): StoreDriver {
       return m;
     },
     async get(key) {
-      const sql = await pgSql(url);
-      const rows = await sql`SELECT value, updated_at FROM lp_store WHERE key = ${key} AND NOT deleted`;
-      return rows[0] ? { key, value: String(rows[0].value ?? ''), updatedAt: iso(rows[0].updated_at) } : null;
+      return pgGet(await pgSql(url), key);
     },
-    async set(key, value) {
+    async set(key, value, ifMatch) {
       const sql = await pgSql(url);
-      const rows = await sql`INSERT INTO lp_store (key, value, updated_at, deleted) VALUES (${key}, ${value}, now(), false)
-        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now(), deleted = false RETURNING updated_at`;
-      return iso(rows[0]?.updated_at ?? new Date());
+      // Zeitstempel auf Millisekunden — so lässt sich der ISO-String des Clients exakt vergleichen
+      const rows = ifMatch === undefined
+        ? await sql`INSERT INTO lp_store (key, value, updated_at, deleted) VALUES (${key}, ${value}, date_trunc('milliseconds', now()), false)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = date_trunc('milliseconds', now()), deleted = false RETURNING updated_at`
+        : await sql`INSERT INTO lp_store (key, value, updated_at, deleted) VALUES (${key}, ${value}, date_trunc('milliseconds', now()), false)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = date_trunc('milliseconds', now()), deleted = false
+            WHERE lp_store.deleted OR (${ifMatch}::timestamptz IS NOT NULL AND date_trunc('milliseconds', lp_store.updated_at) = ${ifMatch}::timestamptz)
+            RETURNING updated_at`;
+      if (rows[0]) return { ok: true, updatedAt: iso(rows[0].updated_at) };
+      return { ok: false, current: await pgGet(sql, key) };
     },
     async del(key) {
       const sql = await pgSql(url);

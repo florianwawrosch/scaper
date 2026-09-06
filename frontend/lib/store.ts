@@ -2,9 +2,11 @@
 // schnelle lokale Cache für alle synchronen Lesezugriffe; jede Änderung an
 // geteilten Keys wird als «pending» gemerkt und an /api/store geschickt, beim
 // Laden der App (und beim Zurückkehren in den Tab) wird der Serverstand
-// eingespielt. Server gewinnt bei Konflikten; nur-lokale Einträge werden
-// hochgeladen, serverseitig gelöschte (Tombstones) lokal entfernt.
-// API-Keys und Anzeige-Einstellungen bleiben bewusst nur im Browser.
+// eingespielt. Nur-lokale Einträge werden hochgeladen, serverseitig gelöschte
+// (Tombstones) lokal entfernt. Konfliktschutz: jeder Upload nennt den zuletzt
+// gesehenen Stand (ifMatch); hat ein Kollege inzwischen geschrieben, antwortet
+// der Server 409 und beide Stände werden zusammengeführt (lib/storeMerge.ts)
+// statt still überschrieben. Anzeige-Einstellungen bleiben nur im Browser.
 
 import type { StoreManifest } from './serverStore';
 import { isLargeKey } from './storeKeys';
@@ -22,6 +24,9 @@ const LOCAL_KEY     = 'lp_csv_local';      // { <großer Key>: updatedAt } — S
 export const PART_SIZE = 2_500_000;
 const PARTS_HEADER = 'parts:';
 export const STORE_EVENT = 'lp-store-updated';
+/** Ein Kollege hat gleichzeitig geschrieben — detail: { key, merged } (merged=false: Server gewinnt) */
+export const CONFLICT_EVENT = 'lp-store-conflict';
+export interface ConflictDetail { key: string; merged: boolean }
 
 /** Nur im echten Browser synchronisieren (Unit-Tests haben ein window-Shim, aber kein document) */
 const inBrowser = () => typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -119,8 +124,9 @@ export async function fetchValue(key: string): Promise<{ value: string; updatedA
   return { value: parts.map(p => p!.value).join(''), updatedAt: head.updatedAt };
 }
 
-async function putValue(key: string, value: string): Promise<Response> {
-  return fetch('/api/store', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key, value }) });
+/** PUT mit Stand-Prüfung: ifMatch = zuletzt gesehener Serverstand (null = neu); undefined = ohne Prüfung (Teile) */
+async function putValue(key: string, value: string, ifMatch?: string | null): Promise<Response> {
+  return fetch('/api/store', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key, value, ...(ifMatch !== undefined && { ifMatch }) }) });
 }
 
 /** Teile-Keys, die der Server (laut letztem Stand) für diesen Key hat */
@@ -139,18 +145,59 @@ const deletePart = async (key: string) => { await deleteKey(key).catch(() => {})
 async function uploadValue(key: string, value: string): Promise<Response> {
   const split = isLargeKey(key) ? splitParts(value) : null;
   const before = knownParts(key);
+  const ifMatch = remoteStamp(key) ?? null;
   if (!split) {
-    const r = await putValue(key, value);
+    const r = await putValue(key, value, ifMatch);
     if (r.ok) for (const k of before) await deletePart(k);
     return r;
   }
+  // Teile würden den Stand eines Kollegen überschreiben, bevor der Kopf-Key den Konflikt meldet —
+  // deshalb vorher den Stand des Kopf-Keys prüfen
+  const head = await getJson<{ updatedAt: string }>(`/api/store?key=${encodeURIComponent(key)}`);
+  if ((head?.updatedAt ?? null) !== ifMatch) return new Response(null, { status: 409 });
   const now = new Date().toISOString();
   const results = await Promise.all(split.parts.map((part, i) => putValue(`${key}.p${i}`, part)));
   const bad = results.find(r => !r.ok);
   if (bad) return bad;
   split.parts.forEach((_, i) => setStamps(`${key}.p${i}`, now));
   for (const k of before) if (Number(k.slice(`${key}.p`.length)) >= split.parts.length) await deletePart(k);
-  return putValue(key, split.header);
+  return putValue(key, split.header, ifMatch);
+}
+
+const notifyConflict = (key: string, merged: boolean) => {
+  window.dispatchEvent(new CustomEvent<ConflictDetail>(CONFLICT_EVENT, { detail: { key, merged } }));
+  window.dispatchEvent(new Event(STORE_EVENT));
+};
+
+/**
+ * 409 vom Server: ein Kollege hat den Key geändert, seit dieses Gerät ihn
+ * zuletzt gesehen hat. Serverstand holen, mit dem lokalen zusammenführen
+ * (lib/storeMerge), lokal ablegen und — falls zusammengeführt — erneut
+ * hochladen. Ist kein Zusammenführen möglich, gewinnt der Server.
+ */
+async function resolveConflict(key: string, localValue: string): Promise<Response> {
+  const base = await fetchValue(key);
+  if (!base) { setStamps(key, null); return putValue(key, localValue, null); } // inzwischen gelöscht → einfach anlegen
+  let merged: boolean;
+  let next = base.value;
+  if (key.startsWith('csv_text_')) {
+    const { mergeCsvText } = await import('./storeMerge');
+    const serverText = await unpackText(base.value);
+    const m = mergeCsvText(await unpackText(localValue), serverText);
+    merged = m !== null;
+    const { putCsvTextLocal } = await import('./csvStorage');
+    await putCsvTextLocal(key.slice('csv_text_'.length), m ?? serverText).catch(() => {});
+    if (merged) next = await packText(m!);
+  } else {
+    const { mergeValues } = await import('./storeMerge');
+    const r = mergeValues(key, localValue, base.value);
+    merged = r.merged; next = r.value;
+    try { localStorage.setItem(key, next); } catch {}
+  }
+  setStamps(key, base.updatedAt);
+  notifyConflict(key, merged);
+  if (!merged) return new Response(JSON.stringify({ updatedAt: base.updatedAt }), { status: 200 }); // Server gewinnt: nichts hochladen
+  return uploadValue(key, next); // ifMatch ist jetzt der Serverstand
 }
 
 /** Löschen — inkl. aller Teile, die der Server für diesen Key kennt */
@@ -238,9 +285,10 @@ function flush(): Promise<void> {
           if (value === null) { res = new Response(null, { status: 204 }); }
           else {
             res = await uploadValue(key, value);
-            if (res.ok && isLargeKey(key)) {
-              const { updatedAt } = await res.json() as { updatedAt: string };
-              setStamps(key, updatedAt);
+            if (res.status === 409) res = await resolveConflict(key, value);
+            if (res.ok) {
+              const { updatedAt } = await res.json().catch(() => ({})) as { updatedAt?: string };
+              if (updatedAt) setStamps(key, updatedAt); // Stand gemerkt — der nächste Upload nennt ihn als ifMatch
             }
           }
         }
@@ -287,6 +335,7 @@ export function planHydrate(local: Record<string, string>, m: StoreManifest, loc
   const server = new Map(m.items.map(i => [i.key, i.value] as const));
   const plan: HydratePlan = { setLocal: [], removeLocal: [], upload: [], csvUpload: [], remote: {} };
   for (const d of m.large) plan.remote[d.key] = d.updatedAt;
+  for (const i of m.items) plan.remote[i.key] = i.updatedAt; // Stand aller Keys — ifMatch beim nächsten Upload
   // Eigene, noch nicht hochgeladene Änderungen haben Vorrang vor dem Serverstand
   for (const [key, value] of server) if (local[key] !== value && !pendingKeys.has(key)) plan.setLocal.push({ key, value });
   for (const key of Object.keys(local)) {
@@ -340,7 +389,12 @@ export async function hydrate(): Promise<StoreStatus> {
         setStamps(`csv_text_${id}`, null); setStamps(`analysis_hashes_${id}`, null);
       }
     }
-    writeJson(REMOTE_KEY, plan.remote);
+    // Eigene, noch nicht hochgeladene Änderungen beruhen auf dem ALTEN Stand: der bleibt als
+    // ifMatch gemerkt, sonst überschriebe der Upload still, was ein Kollege inzwischen schrieb
+    const seenBefore = readJson<Record<string, string>>(REMOTE_KEY, {});
+    const remote = { ...plan.remote };
+    for (const k of Object.keys(pending())) { if (seenBefore[k] !== undefined) remote[k] = seenBefore[k]; else delete remote[k]; }
+    writeJson(REMOTE_KEY, remote);
     const p = pending();
     for (const key of plan.upload) p[key] = { op: 'set', v: 0 };
     for (const id of plan.csvUpload) p[`csv_text_${id}`] = { op: 'set', v: 0 };

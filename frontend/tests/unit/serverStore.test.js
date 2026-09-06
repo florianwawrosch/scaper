@@ -8,7 +8,7 @@ const S = lib('serverStore');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lp-store-'));
   const d = S.fileDriver(dir);
   ok((await d.manifest()).items.length === 0, 'leer am Anfang');
-  const t1 = await d.set('user_presets', '[1]');
+  const t1 = (await d.set('user_presets', '[1]')).updatedAt;
   await d.set('csv_run_a', '{"f":1}');
   await d.set('csv_text_a', 'gz:abc');
   await d.set('analysis_hashes_a', '{}');
@@ -24,6 +24,18 @@ const S = lib('serverStore');
   m = await d.manifest();
   ok(!m.items.some(i => i.key === 'csv_run_a') && m.tombstones.some(t => t.key === 'csv_run_a'), 'del → Tombstone statt Eintrag');
   ok((await d.get('csv_run_a')) === null, 'gelöschter Key liest sich als null');
+  // Konfliktschutz: ifMatch muss dem Stand entsprechen
+  const s1 = await d.set('blocklist', '["a"]');
+  let c = await d.set('blocklist', '["b"]', 'anderer-stand');
+  ok(!c.ok && c.current.value === '["a"]' && c.current.updatedAt === s1.updatedAt, 'set mit falschem ifMatch → Konflikt mit aktuellem Wert');
+  c = await d.set('blocklist', '["b"]', null);
+  ok(!c.ok, 'ifMatch null («gibt es noch nicht») bei vorhandenem Key → Konflikt');
+  c = await d.set('blocklist', '["b"]', s1.updatedAt);
+  ok(c.ok && (await d.get('blocklist')).value === '["b"]', 'passender ifMatch → geschrieben');
+  ok((await d.set('nie_da', 'x', null)).ok, 'ifMatch null bei neuem Key → geschrieben');
+  ok((await d.set('csv_run_a', '{"f":9}', 'egal')).ok, 'gelöschter Key: Schreiben erlaubt (Tombstone aufgehoben)');
+  await d.del('csv_run_a'); await d.set('csv_run_a', '{"f":1}');
+  await d.del('csv_run_a');
   // Papierkorb: Wert bleibt, Wiederherstellen hebt den Tombstone auf
   let tr = await d.trash();
   ok(tr.length === 1 && tr[0].key === 'csv_run_a' && tr[0].value === '{"f":1}' && !!tr[0].deletedAt, 'trash: gelöschter Eintrag mit Wert');

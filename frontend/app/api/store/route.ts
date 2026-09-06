@@ -5,7 +5,8 @@ export const runtime = 'nodejs';
 
 /**
  * Gemeinsamer Speicher — GET ?manifest=1 (alles Kleine + Liste der CSV-Texte),
- * GET ?key= (ein Eintrag), GET ?trash=1 (Papierkorb), PUT {key, value},
+ * GET ?key= (ein Eintrag), GET ?trash=1 (Papierkorb), PUT {key, value, ifMatch?}
+ * (ifMatch = zuletzt gesehener Stand; stimmt er nicht → 409 mit aktuellem Wert),
  * PATCH {restore: [keys]} (aus dem Papierkorb zurück), DELETE ?key= (Tombstone),
  * ?all=1 (alles in den Papierkorb) oder ?purge=1[&key=] (endgültig).
  * Zugriff nur mit Session-Cookie (proxy.ts). Ohne Datenbank antwortet manifest
@@ -42,13 +43,16 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const driver = driverFor(req);
   if (!driver) return NextResponse.json({ detail: 'Kein gemeinsamer Speicher konfiguriert' }, { status: 503 });
-  let body: { key?: unknown; value?: unknown };
+  let body: { key?: unknown; value?: unknown; ifMatch?: unknown };
   try { body = await req.json(); } catch { return NextResponse.json({ detail: 'Ungültiger Body' }, { status: 400 }); }
-  const { key, value } = body;
+  const { key, value, ifMatch } = body;
   if (typeof key !== 'string' || !isValidKey(key) || typeof value !== 'string') return NextResponse.json({ detail: 'key/value fehlen' }, { status: 400 });
   if (value.length > MAX_VALUE) return NextResponse.json({ detail: 'Wert zu groß' }, { status: 413 });
+  const cond = ifMatch === undefined ? undefined : typeof ifMatch === 'string' ? ifMatch : null;
   try {
-    return NextResponse.json({ key, updatedAt: await driver.set(key, value) });
+    const r = await driver.set(key, value, cond);
+    if (!r.ok) return NextResponse.json({ detail: 'Inzwischen von jemand anderem geändert', current: r.current }, { status: 409 });
+    return NextResponse.json({ key, updatedAt: r.updatedAt });
   } catch (e) {
     return dbError('Speichern fehlgeschlagen', e);
   }

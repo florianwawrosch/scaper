@@ -87,9 +87,21 @@ einem Key-Value-Store auf dem Server (`frontend/lib/serverStore.ts`,
 Route `/api/store`). Jeder Browser hält nur eine Kopie als Cache
 (localStorage + IndexedDB): beim Öffnen der App und beim Zurückkehren in den
 Tab wird der Serverstand eingespielt, jede Änderung sofort hochgeladen
-(`frontend/lib/store.ts`). Bei Konflikten gewinnt der Server; Löschungen
-bleiben als Tombstone stehen, damit ein Gerät mit altem Stand sie nicht wieder
-hochlädt. CSV-Texte werden gzip-komprimiert übertragen und nur beim Öffnen
+(`frontend/lib/store.ts`). Löschungen bleiben als Tombstone stehen, damit ein
+Gerät mit altem Stand sie nicht wieder hochlädt.
+
+**Konfliktschutz:** Jeder Upload nennt den Stand (`updatedAt`), den das Gerät
+zuletzt vom Server gesehen hat (`ifMatch`). Hat ein Kollege den Key inzwischen
+geändert, lehnt der Server mit 409 ab, statt still zu überschreiben. Der Browser
+führt dann beide Stände zusammen (`frontend/lib/storeMerge.ts`): Listen werden
+vereinigt (KI-Spalten, Blockliste, Suchen, Configs), beim CSV-Text bleiben die
+Spalten beider Seiten (Zeilen werden über den Index zugeordnet, gleiche
+Zeilenzahl vorausgesetzt), und beim Datensatz-Meta die Spaltenliste. Danach
+wird erneut hochgeladen. Ist kein Zusammenführen möglich, gewinnt der Server.
+In beiden Fällen erscheint ein Hinweis, und eine offene Datensatz-Seite bietet
+«↻ Neu laden» an. Grenze: eine Löschung in einer Liste kann wieder auftauchen,
+wenn die andere Seite gleichzeitig etwas anderes an derselben Liste geändert
+hat — dafür geht nichts verloren. CSV-Texte werden gzip-komprimiert übertragen und nur beim Öffnen
 eines Datensatzes geladen. **Anzeige-Einstellungen bleiben im Browser, API-Keys
 liegen nur auf dem Server.** Ohne Datenbank oder bei Fehlern erscheint ein
 Hinweisbanner; sonst bleibt der Speicher unsichtbar.

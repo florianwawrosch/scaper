@@ -27,6 +27,9 @@ function openDb(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
+/** Nur lokal (IndexedDB) schreiben, ohne Upload — für den Konfliktschutz in lib/store */
+export const putCsvTextLocal = (id: string, text: string) => putLocal(id, text);
+
 function putLocal(id: string, text: string): Promise<void> {
   return openDb().then(db => new Promise((resolve, reject) => {
     const req = db.transaction(STORE, 'readwrite').objectStore(STORE).put(text, id);

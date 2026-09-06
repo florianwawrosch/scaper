@@ -2,8 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { hydrate, isHydrated, subscribeStore, getStoreStatus, getStoreError, type StoreStatus } from '@/lib/store';
+import { hydrate, isHydrated, subscribeStore, getStoreStatus, getStoreError, CONFLICT_EVENT, type StoreStatus, type ConflictDetail } from '@/lib/store';
+import { useToast } from './Toast';
 import { mono } from '@/app/theme';
+
+/** Lesbarer Name eines geteilten Keys für den Konflikt-Hinweis */
+function keyLabel(key: string): string {
+  if (key.startsWith('csv_text_') || key.startsWith('csv_run_')) return 'Datensatz';
+  if (key.startsWith('analysis_configs_')) return 'KI-Spalten des Datensatzes';
+  if (key.startsWith('analysis_hashes_')) return 'KI-Cache';
+  return { user_presets: 'gespeicherte KI-Spalten', blocklist: 'Blockliste', presets: 'gespeicherte Suchen', preset_flags: 'KI-Spalten-Schalter', usage_log: 'Verbrauchsprotokoll', trash_items: 'Papierkorb' }[key] ?? key;
+}
 
 /**
  * Lädt beim ersten Aufruf die Daten vom Server in den Browser-Cache, bevor
@@ -12,7 +21,20 @@ import { mono } from '@/app/theme';
  */
 export function StoreGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { showToast } = useToast();
   const [ready, setReady] = useState(() => isHydrated());
+
+  // Gleichzeitige Änderung eines Kollegen: sagen, was passiert ist — nichts geht still verloren
+  useEffect(() => {
+    const onConflict = (e: Event) => {
+      const { key, merged } = (e as CustomEvent<ConflictDetail>).detail;
+      showToast(merged
+        ? `Ein Kollege hat gleichzeitig geändert: ${keyLabel(key)} — beide Änderungen zusammengeführt`
+        : `Ein Kollege hat inzwischen geändert: ${keyLabel(key)} — Serverstand übernommen, eigene Änderung bitte prüfen`, merged ? 'info' : 'warning', 8000);
+    };
+    window.addEventListener(CONFLICT_EVENT, onConflict);
+    return () => window.removeEventListener(CONFLICT_EVENT, onConflict);
+  }, [showToast]);
 
   useEffect(() => {
     if (pathname === '/login' || isHydrated()) return;

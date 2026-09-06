@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { loadCsvRun, saveCsvRunColumns } from '@/lib/csvRuns';
-import { lsSet, ensureLocalKey, STORE_EVENT, hasPending, remoteStamp, localStamp } from '@/lib/store';
+import { lsSet, ensureLocalKey, STORE_EVENT, CONFLICT_EVENT, hasPending, remoteStamp, localStamp, type ConflictDetail } from '@/lib/store';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { applyPresets, presetFromConfigs, saveUserPreset, getEffectivePresets, readAutorunIds, AUTORUN_KEY, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
@@ -86,8 +86,11 @@ export function useAiColumns(id: string) {
       const configsChanged = JSON.stringify(loadAiConfigs(id)) !== JSON.stringify(aiConfigs);
       if (textChanged || metaChanged || configsChanged) setRemoteChanged(true);
     };
+    // Konfliktschutz hat diesen Datensatz mit dem Stand eines Kollegen zusammengeführt → Seite hält einen alten Stand
+    const onConflict = (e: Event) => { if ((e as CustomEvent<ConflictDetail>).detail.key.endsWith(id)) setRemoteChanged(true); };
     window.addEventListener(STORE_EVENT, check);
-    return () => window.removeEventListener(STORE_EVENT, check);
+    window.addEventListener(CONFLICT_EVENT, onConflict);
+    return () => { window.removeEventListener(STORE_EVENT, check); window.removeEventListener(CONFLICT_EVENT, onConflict); };
   }, [id, aiConfigs, colRunning]);
 
   /** «↻ Neu laden»: Serverstand dieses Datensatzes übernehmen (CSV, Meta, KI-Configs) */

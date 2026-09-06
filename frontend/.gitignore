@@ -43,6 +43,7 @@ next-env.d.ts
 # tests
 /e2e/.shots/
 /e2e/fixtures/plain_test.csv
+/e2e/fixtures/origin_test.csv
 /tests/unit/.out/
 /.data/
 /e2e/fixtures/import_test.xlsx
