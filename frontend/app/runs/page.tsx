@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { deleteCsvRun } from '@/lib/csvRuns';
+import { deleteCsvRun, listCsvRuns, type CsvRunSummary } from '@/lib/csvRuns';
 import { STORE_EVENT } from '@/lib/store';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { T } from '@/app/theme';
@@ -11,14 +11,7 @@ const FILTERS = ['all', 'scrape', 'csv'] as const;
 type Filter = typeof FILTERS[number];
 const FILTER_LABELS: Record<Filter, string> = { all: 'Alle', scrape: 'Scrapes', csv: 'CSV-Importe' };
 
-interface LocalRun {
-  id: string;
-  filename: string;
-  createdAt: string;
-  rowCount: number;
-  isScrape: boolean;
-  configSummary?: string;
-}
+type LocalRun = CsvRunSummary & { configSummary?: string };
 
 /** One-line human summary of the settings a scrape was run with. */
 function summarizeConfig(c: Record<string, unknown> | undefined): string {
@@ -32,26 +25,8 @@ function summarizeConfig(c: Record<string, unknown> | undefined): string {
   return parts.join(' · ');
 }
 
-/** Alle Datensätze aus dem lokalen Cache des gemeinsamen Speichers (Scrapes + CSV-Importe), neueste zuerst */
-function loadLocalRuns(): LocalRun[] {
-  const items: LocalRun[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key?.startsWith('csv_run_csv_')) continue;
-    try {
-      const val = JSON.parse(localStorage.getItem(key)!);
-      items.push({
-        id: key.replace('csv_run_', ''),
-        filename: val.filename ?? '?',
-        createdAt: val.createdAt ?? '',
-        rowCount: val.rowCount ?? val.data?.length ?? 0,
-        isScrape: String(val.filename ?? '').startsWith('Meta:'),
-        configSummary: summarizeConfig(val.scrapeConfig),
-      });
-    } catch {}
-  }
-  return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
+/** Alle Datensätze (Scrapes + CSV-Importe), neueste zuerst, mit Zusammenfassung der Scrape-Einstellungen */
+const loadLocalRuns = (): LocalRun[] => listCsvRuns().map(r => ({ ...r, configSummary: summarizeConfig(r.scrapeConfig) }));
 
 export default function RunsList() {
   const router = useRouter();

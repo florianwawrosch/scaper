@@ -106,3 +106,32 @@ export async function deleteCsvRun(id: string): Promise<void> {
   lsRemove(`analysis_hashes_${id}`);
   await deleteCsvText(id);
 }
+
+/** Kurzinfo eines Datensatzes für Listen (Startseite, Verlauf, Abgleich) */
+export interface CsvRunSummary {
+  id: string;
+  filename: string;
+  createdAt: string;
+  rowCount: number;
+  /** Meta-Scrape (Dateiname «Meta: …») oder CSV-Import */
+  isScrape: boolean;
+  scrapeConfig?: Record<string, unknown>;
+}
+
+/** Alle Datensätze aus dem lokalen Cache, neueste zuerst; kaputte Einträge werden übersprungen */
+export function listCsvRuns(): CsvRunSummary[] {
+  const items: CsvRunSummary[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key?.startsWith('csv_run_')) continue;
+    try {
+      const m: CsvRunMeta = JSON.parse(localStorage.getItem(key)!);
+      const filename = String(m.filename ?? '?');
+      items.push({
+        id: key.slice('csv_run_'.length), filename, createdAt: String(m.createdAt ?? ''),
+        rowCount: m.rowCount ?? m.data?.length ?? 0, isScrape: filename.startsWith('Meta:'), scrapeConfig: m.scrapeConfig,
+      });
+    } catch {}
+  }
+  return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}

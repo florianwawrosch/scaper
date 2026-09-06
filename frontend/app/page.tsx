@@ -6,13 +6,13 @@ import { useRouter } from 'next/navigation';
 import { loadSavedSearches, saveSavedSearch, deleteSavedSearch, type SavedSearch } from '@/lib/savedSearches';
 import { fetchKeyAvailability } from '@/lib/keyAvailability';
 import { loadBlocklist } from '@/lib/blocklist';
-import { deleteCsvRun } from '@/lib/csvRuns';
+import { deleteCsvRun, listCsvRuns, type CsvRunSummary } from '@/lib/csvRuns';
+import { HistoryPanel } from '@/app/components/HistoryPanel';
 import { STORE_EVENT } from '@/lib/store';
 import { presetsForSource, applyPresets, pickPresetProvider, availableProviders, type PresetSource } from '@/lib/aiTemplates';
 import { useCsvImport } from '@/app/hooks/useCsvImport';
 import { useScrapeForm, DEFAULT_FORM } from '@/app/hooks/useScrapeForm';
 import { useToast } from '@/app/components/Toast';
-import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { PresetSelector } from '@/app/components/PresetSelector';
 import { SavedSearchesModal } from '@/app/components/SavedSearchesModal';
 import { TagInput } from '@/app/components/TagInput';
@@ -74,7 +74,7 @@ export default function Home() {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [csvRuns,        setCsvRuns]        = useState<{id:string;filename:string;createdAt:string;rowCount:number}[]>([]);
+  const [csvRuns,        setCsvRuns]        = useState<CsvRunSummary[]>([]);
   const [presets,        setPresets]        = useState<Record<string, SavedSearch>>({});
   const [presetName,     setPresetName]     = useState('');
   const [showPresets,    setShowPresets]    = useState(false);
@@ -88,19 +88,7 @@ export default function Home() {
     // Der gemeinsame Speicher (andere Geräte/Kollegen) löst ein erneutes Lesen aus.
     const readLocal = () => {
       setPresets(loadSavedSearches());
-      const csvItems: {id:string;filename:string;createdAt:string;rowCount:number}[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key?.startsWith('csv_run_csv_')) {
-          try {
-            const val = JSON.parse(localStorage.getItem(key)!);
-            const csvId = key.replace('csv_run_', '');
-            csvItems.push({ id: csvId, filename: val.filename, createdAt: val.createdAt, rowCount: val.rowCount ?? val.data?.length ?? 0 });
-          } catch {}
-        }
-      }
-      csvItems.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      setCsvRuns(csvItems);
+      setCsvRuns(listCsvRuns());
       setBlockCount(loadBlocklist().length);
     };
     readLocal();
@@ -167,8 +155,6 @@ export default function Home() {
     setShowPresets(false);
   };
 
-  const fmt = (d: string) =>
-    new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
 
   return (
     <div style={{ minHeight: '100vh' }}>
@@ -382,59 +368,8 @@ export default function Home() {
 
           </div>
 
-          {/* ── Right: combined history ── */}
-          <div style={{ position: 'sticky', top: 20 }}>
-            <div style={{ background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '8px 12px', borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: T.ffMono, fontSize: 9, letterSpacing: '.18em', textTransform: 'uppercase', color: T.inkF }}>Verlauf</span>
-                <button onClick={() => router.push('/runs')} style={{ fontFamily: T.ffMono, fontSize: 10, color: T.gold, background: 'none', border: 'none', cursor: 'pointer' }}>Alle Runs →</button>
-              </div>
-
-              {csvRuns.length === 0 ? (
-                <div style={{ padding: '20px 14px', textAlign: 'center' }}>
-                  <p style={{ fontFamily: T.ffBody, fontSize: 13, color: T.inkF }}>Noch keine Importe</p>
-                </div>
-              ) : (
-                <div>
-                  {/* Merge and sort by date */}
-                  {[
-                    ...csvRuns.map(c => ({ kind: 'csv' as const, date: c.createdAt, csv: c })),
-                  ]
-                    .sort((a, b) => b.date.localeCompare(a.date))
-                    .slice(0, 12)
-                    .map(item => {
-                      const { csv } = item;
-                        return (
-                          <div key={`csv-${csv.id}`} style={{ borderBottom: `1px solid ${T.lineS}`, display: 'flex', alignItems: 'stretch' }}>
-                            <button
-                              onClick={() => router.push(`/csv/${csv.id}`)}
-                              style={{ flex: 1, padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', minWidth: 0 }}
-                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'; }}
-                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-                            >
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ fontFamily: T.ffMono, fontSize: 10, color: T.inkD, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{csv.filename}</p>
-                                <p style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF, marginTop: 1 }}>{fmt(csv.createdAt)}</p>
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                                <span style={{ fontFamily: T.ffMono, fontSize: 9, color: T.inkF }}>{csv.rowCount.toLocaleString('de')} Z</span>
-                                {csv.filename.startsWith('Meta:') ? (
-                                  <span style={{ fontFamily: T.ffMono, fontSize: 8, letterSpacing: '.08em', padding: '1px 5px', borderRadius: 3, background: 'rgba(232,176,75,.1)', border: '1px solid rgba(232,176,75,.25)', color: '#e8b04b' }}>Scrape</span>
-                                ) : (
-                                  <span style={{ fontFamily: T.ffMono, fontSize: 8, letterSpacing: '.08em', padding: '1px 5px', borderRadius: 3, background: 'rgba(99,129,255,.1)', border: '1px solid rgba(99,129,255,.2)', color: '#6381ff' }}>CSV</span>
-                                )}
-                              </div>
-                            </button>
-                            <div style={{ display: 'flex', alignItems: 'center', padding: '0 8px', borderLeft: `1px solid ${T.lineS}` }}>
-                              <ConfirmDelete onConfirm={() => deleteCsvImport(csv.id)} title="Eintrag löschen" />
-                            </div>
-                          </div>
-                        );
-                    })}
-                </div>
-              )}
-            </div>
-          </div>
+          {/* ── Right: history ── */}
+          <HistoryPanel runs={csvRuns} onOpen={id => router.push(`/csv/${id}`)} onDelete={deleteCsvImport} onAll={() => router.push('/runs')} />
 
         </div>
       </div>
