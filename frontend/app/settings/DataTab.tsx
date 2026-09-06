@@ -7,6 +7,8 @@ import { useToast } from '@/app/components/Toast';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { T } from '@/app/theme';
 import { useStoreStatus } from '@/app/components/StoreGate';
+import { fetchTrashDatasets, loadTrashItems, restoreDataset, purgeTrash, TRASH_DAYS, type TrashDataset, type TrashItem } from '@/lib/trash';
+import { restoreTrashItem } from '@/lib/trashRestore';
 
 const fmtBytes = (n?: number) => n == null ? '—' : n > 1e9 ? `${(n / 1e9).toFixed(2)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1e3)} KB`;
 
@@ -18,8 +20,14 @@ export function DataTab() {
   const [pending,     setPending]     = useState<{ file: BackupFile; summary: Summary; name: string } | null>(null);
   const [overwrite,   setOverwrite]   = useState(false);
   const [busy,        setBusy]        = useState(false);
+  const [trashDs,     setTrashDs]     = useState<TrashDataset[]>([]);
+  const [trashItems,  setTrashItems]  = useState<TrashItem[]>([]);
 
-  const refresh = () => { storageStats().then(setStats); };
+  const refresh = () => {
+    storageStats().then(setStats);
+    // Kleineinträge zusammen mit der Server-Antwort setzen (kein synchroner State im Effect)
+    fetchTrashDatasets().then(ds => { setTrashDs(ds); setTrashItems(loadTrashItems()); });
+  };
   useEffect(() => { refresh(); }, []);
 
   const download = async () => {
@@ -62,9 +70,38 @@ export function DataTab() {
 
   const wipe = async () => {
     await wipeLocalData();
-    showToast('Alle Daten gelöscht', 'info');
+    showToast('Alle Daten gelöscht — 30 Tage im Papierkorb', 'info');
     refresh();
   };
+
+  const restoreDs = async (d: TrashDataset) => {
+    setBusy(true);
+    const okRestore = await restoreDataset(d.id);
+    setBusy(false);
+    showToast(okRestore ? `«${d.filename}» wiederhergestellt` : 'Wiederherstellen fehlgeschlagen', okRestore ? 'success' : 'error');
+    refresh();
+  };
+  const restoreItem = (item: TrashItem) => {
+    showToast(`«${restoreTrashItem(item)}» wiederhergestellt`, 'success');
+    refresh();
+  };
+  const purge = async () => {
+    await purgeTrash();
+    showToast('Papierkorb geleert', 'info');
+    refresh();
+  };
+  const KIND: Record<TrashItem['kind'], string> = { search: 'Suche', ki: 'KI-Spalte', block: 'Blockliste' };
+  const trashCount = trashDs.length + trashItems.length;
+  const fmtWhen = (iso: string) => new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const trashRow = (key: string, kind: string, label: string, sub: string, at: string, onRestore: () => void) => (
+    <div key={key} data-testid="trash-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: `1px solid ${T.lineS}` }}>
+      <span style={{ fontFamily: T.mono, fontSize: 8, letterSpacing: '.08em', textTransform: 'uppercase', padding: '1px 6px', borderRadius: 3, background: 'rgba(255,255,255,.04)', border: `1px solid ${T.lineS}`, color: T.inkF, flexShrink: 0 }}>{kind}</span>
+      <span style={{ fontFamily: T.mono, fontSize: 11, color: T.ink, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}{sub && <span style={{ color: T.inkF }}> · {sub}</span>}</span>
+      <span style={{ fontFamily: T.mono, fontSize: 9, color: T.inkF, flexShrink: 0 }}>{fmtWhen(at)}</span>
+      <button type="button" onClick={onRestore} disabled={busy} data-testid={`trash-restore-${key}`}
+        style={{ fontFamily: T.mono, fontSize: 10, padding: '3px 9px', borderRadius: 4, border: '1px solid rgba(79,209,197,.3)', background: 'rgba(79,209,197,.08)', color: T.teal, cursor: 'pointer', flexShrink: 0 }}>↺ Wiederherstellen</button>
+    </div>
+  );
 
   const stat = (label: string, value: string | number) => (
     <div key={label} style={{ background: T.panel2, border: `1px solid ${T.lineS}`, borderRadius: 7, padding: '10px 12px' }}>
@@ -86,7 +123,7 @@ export function DataTab() {
         </h1>
         <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkF, marginTop: 4, lineHeight: 1.6 }}>
           Datensätze, KI-Spalten, gespeicherte Suchen und Blockliste werden auf dem Server gespeichert — jeder angemeldete
-          Kollege sieht denselben Stand. API-Keys bleiben nur im Browser.
+          Kollege sieht denselben Stand. Gelöschtes bleibt {TRASH_DAYS} Tage im Papierkorb.
         </p>
       </div>
 
@@ -121,7 +158,7 @@ export function DataTab() {
         <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: T.ink, marginBottom: 6 }}>Backup herunterladen</p>
         <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, lineHeight: 1.5, marginBottom: 10 }}>
           Eine JSON-Datei mit allem — auf einem anderen Gerät unter «Backup wiederherstellen» einspielen.
-          API-Keys sind nie enthalten; sie bleiben im Browser.
+          API-Keys sind nie enthalten; sie liegen nur auf dem Server.
         </p>
         <button type="button" onClick={download} disabled={busy} data-testid="backup-download" style={btn(true)}>↓ Backup herunterladen</button>
       </div>
@@ -153,11 +190,30 @@ export function DataTab() {
         )}
       </div>
 
+      {/* Papierkorb */}
+      <div data-testid="trash" style={{ background: T.panel2, border: `1px solid ${T.lineS}`, borderRadius: 8, padding: '16px 18px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: T.ink }}>Papierkorb</p>
+          <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, flex: 1 }}>Gelöschtes bleibt {TRASH_DAYS} Tage wiederherstellbar — für alle Kollegen.</p>
+          {trashCount > 0 && (
+            <ConfirmDelete label="Leeren" title="Papierkorb endgültig leeren" question="Endgültig leeren — für alle?" testId="trash-purge" onConfirm={purge} style={{ display: 'flex', alignItems: 'center' }} />
+          )}
+        </div>
+        {trashCount === 0 ? (
+          <p data-testid="trash-empty" style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF }}>Papierkorb ist leer.</p>
+        ) : (
+          <div>
+            {trashDs.map(d => trashRow(`ds-${d.id}`, 'Datensatz', d.filename, `${d.rowCount.toLocaleString('de')} Zeilen`, d.deletedAt, () => restoreDs(d)))}
+            {trashItems.map(it => trashRow(it.id, KIND[it.kind], it.label, '', it.deletedAt, () => restoreItem(it)))}
+          </div>
+        )}
+      </div>
+
       {/* Danger */}
       <div style={{ border: '1px solid rgba(232,115,107,.25)', borderRadius: 8, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ flex: 1 }}>
           <p style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 600, color: '#e8736b' }}>Alle Daten löschen</p>
-          <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, lineHeight: 1.5 }}>Datensätze, KI-Spalten, Suchen, Blockliste — auf dem Server, <strong style={{ color: T.inkD }}>also für alle Kollegen</strong> — plus die in diesem Browser gespeicherten API-Keys. Vorher Backup ziehen.</p>
+          <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkF, lineHeight: 1.5 }}>Datensätze, KI-Spalten, Suchen, Blockliste — auf dem Server, <strong style={{ color: T.inkD }}>also für alle Kollegen</strong>. Datensätze landen {TRASH_DAYS} Tage im Papierkorb; trotzdem vorher Backup ziehen.</p>
         </div>
         <ConfirmDelete label="Alles löschen" title="Alle Daten löschen — für alle Kollegen" question="Wirklich alles löschen — für alle?" testId="wipe-all" onConfirm={wipe} style={{ display: 'flex', alignItems: 'center' }} />
       </div>

@@ -259,9 +259,17 @@ herunterladen** (eine JSON-Datei mit allen Datensätzen inkl. CSV-Text,
 KI-Spalten-Konfigurationen und -Caches, gespeicherten KI-Spalten, Suchen,
 Blockliste — nie API-Keys), **Backup wiederherstellen** (Vorschau, dann
 zusammenführen oder vorhandene Datensätze überschreiben; wiederhergestellte
-Daten landen auch im gemeinsamen Speicher) und **Alle Daten löschen** — in
-diesem Browser und im gemeinsamen Speicher, also für alle. Logik in
-`frontend/lib/backup.ts`.
+Daten landen auch im gemeinsamen Speicher), der **Papierkorb** und **Alle Daten
+löschen** — in diesem Browser und im gemeinsamen Speicher, also für alle. Logik
+in `frontend/lib/backup.ts`.
+
+**Papierkorb:** Gelöschte Datensätze bleiben 30 Tage als Tombstone mit Wert auf
+dem Server (`lib/serverStore.ts`, `PATCH /api/store {restore}` hebt ihn auf,
+`DELETE /api/store?purge=1` leert endgültig; abgelaufene Tombstones räumt das
+nächste Manifest weg). Gelöschte gespeicherte Suchen, KI-Spalten und
+Blocklisten-Einträge landen als Kopie im geteilten Key `trash_items`
+(`lib/trash.ts`, Wiederherstellen in `lib/trashRestore.ts`). Alles davon steht
+unter Einstellungen → Daten → Papierkorb mit «↺ Wiederherstellen».
 
 ## Gespeicherte KI-Spalten & automatisches Laden
 

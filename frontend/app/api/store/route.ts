@@ -5,9 +5,11 @@ export const runtime = 'nodejs';
 
 /**
  * Gemeinsamer Speicher — GET ?manifest=1 (alles Kleine + Liste der CSV-Texte),
- * GET ?key= (ein Eintrag), PUT {key, value}, DELETE ?key= (Tombstone) oder
- * ?all=1 (alles). Zugriff nur mit Session-Cookie (proxy.ts). Ohne Datenbank
- * antwortet manifest mit configured=false und die App bleibt lokal.
+ * GET ?key= (ein Eintrag), GET ?trash=1 (Papierkorb), PUT {key, value},
+ * PATCH {restore: [keys]} (aus dem Papierkorb zurück), DELETE ?key= (Tombstone),
+ * ?all=1 (alles in den Papierkorb) oder ?purge=1[&key=] (endgültig).
+ * Zugriff nur mit Session-Cookie (proxy.ts). Ohne Datenbank antwortet manifest
+ * mit configured=false und die App bleibt lokal.
  */
 const driverFor = (req: NextRequest) => getStoreDriver(req.cookies.get('lp_ns')?.value);
 /** Größer geht ohnehin nicht durch Vercel; schützt die Datenbank vor Unfug */
@@ -21,8 +23,10 @@ const dbError = (what: string, e: unknown) => {
 export async function GET(req: NextRequest) {
   const driver = driverFor(req);
   const key = req.nextUrl.searchParams.get('key');
-  if (!driver) return NextResponse.json(key ? { detail: 'Kein gemeinsamer Speicher konfiguriert' } : { configured: false, driver: null, items: [], large: [], tombstones: [] }, { status: key ? 503 : 200 });
+  const trash = req.nextUrl.searchParams.get('trash') === '1';
+  if (!driver) return NextResponse.json(key || trash ? { detail: 'Kein gemeinsamer Speicher konfiguriert' } : { configured: false, driver: null, items: [], large: [], tombstones: [] }, { status: key || trash ? 503 : 200 });
   try {
+    if (trash) return NextResponse.json({ entries: await driver.trash() });
     if (key) {
       if (!isValidKey(key)) return NextResponse.json({ detail: 'Ungültiger Key' }, { status: 400 });
       const item = await driver.get(key);
@@ -50,11 +54,33 @@ export async function PUT(req: NextRequest) {
   }
 }
 
+/** Aus dem Papierkorb zurück: {restore: [keys]} — Keys ohne Tombstone werden übersprungen */
+export async function PATCH(req: NextRequest) {
+  const driver = driverFor(req);
+  if (!driver) return NextResponse.json({ detail: 'Kein gemeinsamer Speicher konfiguriert' }, { status: 503 });
+  let body: { restore?: unknown };
+  try { body = await req.json(); } catch { return NextResponse.json({ detail: 'Ungültiger Body' }, { status: 400 }); }
+  const keys = Array.isArray(body.restore) ? body.restore.filter((k): k is string => typeof k === 'string' && isValidKey(k)) : [];
+  if (keys.length === 0 || keys.length > 50) return NextResponse.json({ detail: 'restore: 1–50 Keys' }, { status: 400 });
+  try {
+    const restored: { key: string; updatedAt: string }[] = [];
+    for (const key of keys) { const updatedAt = await driver.restore(key); if (updatedAt) restored.push({ key, updatedAt }); }
+    return NextResponse.json({ restored });
+  } catch (e) {
+    return dbError('Wiederherstellen fehlgeschlagen', e);
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   const driver = driverFor(req);
   if (!driver) return NextResponse.json({ detail: 'Kein gemeinsamer Speicher konfiguriert' }, { status: 503 });
   const key = req.nextUrl.searchParams.get('key');
   try {
+    if (req.nextUrl.searchParams.get('purge') === '1') {
+      if (key && !isValidKey(key)) return NextResponse.json({ detail: 'Ungültiger Key' }, { status: 400 });
+      await driver.purge(key ?? undefined);
+      return NextResponse.json({ purged: key ?? 'all' });
+    }
     if (req.nextUrl.searchParams.get('all') === '1') { await driver.wipe(); return NextResponse.json({ wiped: true }); }
     if (!key || !isValidKey(key)) return NextResponse.json({ detail: 'Ungültiger Key' }, { status: 400 });
     return NextResponse.json({ key, deletedAt: await driver.del(key) });

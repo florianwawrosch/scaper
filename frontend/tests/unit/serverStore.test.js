@@ -24,11 +24,29 @@ const S = lib('serverStore');
   m = await d.manifest();
   ok(!m.items.some(i => i.key === 'csv_run_a') && m.tombstones.some(t => t.key === 'csv_run_a'), 'del → Tombstone statt Eintrag');
   ok((await d.get('csv_run_a')) === null, 'gelöschter Key liest sich als null');
+  // Papierkorb: Wert bleibt, Wiederherstellen hebt den Tombstone auf
+  let tr = await d.trash();
+  ok(tr.length === 1 && tr[0].key === 'csv_run_a' && tr[0].value === '{"f":1}' && !!tr[0].deletedAt, 'trash: gelöschter Eintrag mit Wert');
+  await d.del('csv_text_a');
+  tr = await d.trash();
+  ok(tr.find(t => t.key === 'csv_text_a').value === '', 'trash: große Keys ohne Wert');
+  ok(typeof (await d.restore('csv_run_a')) === 'string' && (await d.get('csv_run_a')).value === '{"f":1}', 'restore: Eintrag mit altem Wert zurück');
+  ok((await d.restore('csv_run_a')) === null && (await d.restore('nix')) === null, 'restore: nichts zu tun → null');
+  ok(typeof (await d.restore('csv_text_a')) === 'string' && (await d.get('csv_text_a')).value === 'gz:abc', 'restore: CSV-Text zurück');
+  await d.del('user_presets');
+  await d.purge('user_presets');
+  ok((await d.trash()).length === 0 && !(await d.manifest()).tombstones.length, 'purge(key): Tombstone endgültig weg');
+  // abgelaufene Tombstones verschwinden beim nächsten Manifest
+  fs.writeFileSync(path.join(dir, 'old_key.json'), JSON.stringify({ value: 'x', updatedAt: new Date(Date.now() - 40 * 86400000).toISOString(), deleted: true }));
+  ok(!(await d.manifest()).tombstones.some(t => t.key === 'old_key') && !fs.existsSync(path.join(dir, 'old_key.json')), 'Tombstone älter als 30 Tage wird beim Manifest entfernt');
   await d.set('csv_run_a', '{"f":2}');
   ok((await d.get('csv_run_a')).value === '{"f":2}' && !(await d.manifest()).tombstones.some(t => t.key === 'csv_run_a'), 'erneutes set hebt Tombstone auf');
   await d.wipe();
   m = await d.manifest();
   ok(m.items.length === 0 && m.large.length === 0 && m.tombstones.length >= 3, 'wipe: alles weg, Tombstones bleiben (kein Wieder-Hochladen alter Geräte)');
+  ok((await d.trash()).find(t => t.key === 'csv_run_a').value === '{"f":2}', 'wipe: Werte bleiben im Papierkorb');
+  await d.purge();
+  ok((await d.trash()).length === 0 && (await d.manifest()).tombstones.length === 0, 'purge(): Papierkorb leer');
   ok(S.isValidKey('csv_run_csv_123') && S.isValidKey('user_presets') && !S.isValidKey('a/b') && !S.isValidKey('') && !S.isValidKey('x'.repeat(201)), 'Key-Prüfung');
   // Treiberwahl
   delete process.env.DATABASE_URL; delete process.env.POSTGRES_URL;

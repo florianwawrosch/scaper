@@ -6,6 +6,7 @@ export interface SavedSearch {
 }
 
 import { lsSet } from './store';
+import { trashPut } from './trash';
 
 const KEY = 'presets';
 
@@ -26,8 +27,10 @@ export function saveSavedSearch(name: string, cfg: Omit<SavedSearch, 'savedAt'>)
   return write({ ...loadSavedSearches(), [name]: { ...cfg, savedAt: new Date().toISOString() } });
 }
 
+/** Löschen legt eine Kopie in den Papierkorb (Einstellungen → Daten) */
 export function deleteSavedSearch(name: string): Record<string, SavedSearch> {
   const all = loadSavedSearches();
+  if (all[name]) trashPut('search', name, { name, cfg: all[name] });
   delete all[name];
   return write(all);
 }

@@ -10,6 +10,7 @@ export interface BlockEntry {
 }
 
 import { lsSet } from './store';
+import { trashPut } from './trash';
 
 const KEY = 'blocklist';
 
@@ -88,7 +89,10 @@ export function addBlockInput(text: string): BlockEntry[] | null {
   return addToBlocklist(parsed.pageName, parsed.pageId);
 }
 
+/** Entfernen legt eine Kopie in den Papierkorb (Einstellungen → Daten) */
 export function removeFromBlocklist(pageName: string): BlockEntry[] {
+  const gone = loadBlocklist().find(e => e.pageName === pageName);
+  if (gone) trashPut('block', pageName, gone);
   const next = loadBlocklist().filter(e => e.pageName.toLowerCase() !== pageName.toLowerCase());
   saveBlocklist(next);
   return next;

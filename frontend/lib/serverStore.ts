@@ -2,7 +2,8 @@
 // Kollegen sehen sollen — Datensätze (Meta + CSV-Text), KI-Configs, gespeicherte
 // KI-Spalten, Suchen, Blockliste. Treiber: Postgres (Neon, DATABASE_URL) in
 // Produktion, Dateien unter .data/ in der Entwicklung. Löschungen bleiben als
-// Tombstone stehen, damit ein Gerät mit altem Stand sie nicht wieder hochlädt.
+// Tombstone MIT Wert stehen (Papierkorb, 30 Tage): ein Gerät mit altem Stand
+// lädt sie so nicht wieder hoch, und «Wiederherstellen» hebt den Tombstone auf.
 
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -25,9 +26,19 @@ export interface StoreDriver {
   get(key: string): Promise<StoreItem | null>;
   set(key: string, value: string): Promise<string>;
   del(key: string): Promise<string>;
-  /** Alles löschen — inkl. Tombstones (Neustart) */
+  /** Alles in den Papierkorb (Tombstones mit Wert) */
   wipe(): Promise<void>;
+  /** Papierkorb: gelöschte Einträge mit Wert (große Keys ohne Wert) */
+  trash(): Promise<(StoreItem & { deletedAt: string })[]>;
+  /** Tombstone aufheben — Zeitstempel, oder null wenn nichts zu tun */
+  restore(key: string): Promise<string | null>;
+  /** Tombstones endgültig entfernen — einen Key oder alle */
+  purge(key?: string): Promise<void>;
 }
+
+/** So lange bleiben gelöschte Einträge wiederherstellbar */
+export const TRASH_DAYS = 30;
+const expired = (updatedAt: string, now: number) => now - Date.parse(updatedAt) > TRASH_DAYS * 86_400_000;
 
 const KEY_RE = /^[A-Za-z0-9_.:-]{1,200}$/;
 export const isValidKey = (key: string) => KEY_RE.test(key);
@@ -51,12 +62,15 @@ export function fileDriver(dir: string): StoreDriver {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(file(key), JSON.stringify(rec));
   };
+  const unlink = async (key: string) => { try { await fs.unlink(file(key)); } catch {} };
   return {
     name: 'file',
     async manifest() {
       const all = await readAll();
+      const now = Date.now();
       const m: StoreManifest = { items: [], large: [], tombstones: [] };
       for (const [key, r] of all) {
+        if (r.deleted && expired(r.updatedAt, now)) { await unlink(key); continue; } // Papierkorb abgelaufen
         if (r.deleted) m.tombstones.push({ key, deletedAt: r.updatedAt });
         else if (isLargeKey(key)) m.large.push({ key, updatedAt: r.updatedAt });
         else m.items.push({ key, value: r.value, updatedAt: r.updatedAt });
@@ -76,13 +90,33 @@ export function fileDriver(dir: string): StoreDriver {
     },
     async del(key) {
       const updatedAt = new Date().toISOString();
-      await write(key, { value: '', updatedAt, deleted: true });
+      let value = '';
+      try { value = (JSON.parse(await fs.readFile(file(key), 'utf8')) as FileRecord).value ?? ''; } catch {}
+      await write(key, { value, updatedAt, deleted: true });
       return updatedAt;
     },
     async wipe() {
       // Tombstones statt Kahlschlag: Geräte mit altem Stand laden sonst alles wieder hoch
       const updatedAt = new Date().toISOString();
-      for (const [key, r] of await readAll()) if (!r.deleted) await write(key, { value: '', updatedAt, deleted: true });
+      for (const [key, r] of await readAll()) if (!r.deleted) await write(key, { value: r.value, updatedAt, deleted: true });
+    },
+    async trash() {
+      const now = Date.now();
+      const out: (StoreItem & { deletedAt: string })[] = [];
+      for (const [key, r] of await readAll()) if (r.deleted && !expired(r.updatedAt, now)) out.push({ key, value: isLargeKey(key) ? '' : r.value, updatedAt: r.updatedAt, deletedAt: r.updatedAt });
+      return out;
+    },
+    async restore(key) {
+      let r: FileRecord;
+      try { r = JSON.parse(await fs.readFile(file(key), 'utf8')); } catch { return null; }
+      if (!r.deleted) return null;
+      const updatedAt = new Date().toISOString();
+      await write(key, { value: r.value, updatedAt });
+      return updatedAt;
+    },
+    async purge(key) {
+      if (key) { try { const r: FileRecord = JSON.parse(await fs.readFile(file(key), 'utf8')); if (r.deleted) await unlink(key); } catch {} return; }
+      for (const [k, r] of await readAll()) if (r.deleted) await unlink(k);
     },
   };
 }
@@ -115,6 +149,7 @@ function postgresDriver(url: string): StoreDriver {
     name: 'postgres',
     async manifest() {
       const sql = await pgSql(url);
+      await sql`DELETE FROM lp_store WHERE deleted AND updated_at < now() - make_interval(days => ${TRASH_DAYS})`; // Papierkorb abgelaufen
       const rows = await sql`SELECT key, CASE WHEN key LIKE 'csv_text_%' OR key LIKE 'analysis_hashes_%' THEN '' ELSE value END AS value, updated_at, deleted FROM lp_store`;
       const m: StoreManifest = { items: [], large: [], tombstones: [] };
       for (const r of rows) {
@@ -138,13 +173,29 @@ function postgresDriver(url: string): StoreDriver {
     },
     async del(key) {
       const sql = await pgSql(url);
+      // Wert bleibt (Papierkorb) — nur als gelöscht markiert
       const rows = await sql`INSERT INTO lp_store (key, value, updated_at, deleted) VALUES (${key}, '', now(), true)
-        ON CONFLICT (key) DO UPDATE SET value = '', updated_at = now(), deleted = true RETURNING updated_at`;
+        ON CONFLICT (key) DO UPDATE SET updated_at = now(), deleted = true RETURNING updated_at`;
       return iso(rows[0]?.updated_at ?? new Date());
     },
     async wipe() {
       const sql = await pgSql(url);
-      await sql`UPDATE lp_store SET value = '', deleted = true, updated_at = now() WHERE NOT deleted`;
+      await sql`UPDATE lp_store SET deleted = true, updated_at = now() WHERE NOT deleted`;
+    },
+    async trash() {
+      const sql = await pgSql(url);
+      const rows = await sql`SELECT key, CASE WHEN key LIKE 'csv_text_%' OR key LIKE 'analysis_hashes_%' THEN '' ELSE value END AS value, updated_at FROM lp_store WHERE deleted AND updated_at >= now() - make_interval(days => ${TRASH_DAYS})`;
+      return rows.map(r => ({ key: String(r.key), value: String(r.value ?? ''), updatedAt: iso(r.updated_at), deletedAt: iso(r.updated_at) }));
+    },
+    async restore(key) {
+      const sql = await pgSql(url);
+      const rows = await sql`UPDATE lp_store SET deleted = false, updated_at = now() WHERE key = ${key} AND deleted RETURNING updated_at`;
+      return rows[0] ? iso(rows[0].updated_at) : null;
+    },
+    async purge(key) {
+      const sql = await pgSql(url);
+      if (key) await sql`DELETE FROM lp_store WHERE key = ${key} AND deleted`;
+      else await sql`DELETE FROM lp_store WHERE deleted`;
     },
   };
 }

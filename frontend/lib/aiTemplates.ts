@@ -5,6 +5,7 @@
 // Ein Prompt, ein Aufruf pro Zeile, eine Antwort, eine Tabellenspalte.
 
 import type { AnalysisConfig } from '@/lib/ai';
+import { trashPut } from './trash';
 import { defaultModel, modelsFor } from '@/lib/ai';
 import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { AI_PROVIDERS } from '@/lib/ai';
@@ -232,9 +233,12 @@ export function saveUserPreset(preset: ImportPreset): ImportPreset {
   return next;
 }
 
+/** Löschen legt eine Kopie (inkl. Lade-Schalter) in den Papierkorb (Einstellungen → Daten) */
 export function deleteUserPreset(id: string): void {
-  writeUserPresets(loadUserPresets().filter(p => p.id !== id));
   const flags = loadFlags();
+  const gone = loadUserPresets().find(p => p.id === id);
+  if (gone) trashPut('ki', gone.name, { ...gone, ...flags[id] });
+  writeUserPresets(loadUserPresets().filter(p => p.id !== id));
   delete flags[id];
   lsSet(FLAGS_KEY, JSON.stringify(flags));
 }
