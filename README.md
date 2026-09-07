@@ -35,9 +35,14 @@ App je Dienst, ob der Server einen Key hat, wie die Variable heißt und wo man
 sie setzt (mit Link) und einen **Testen**-Button je Dienst: KI-Anbieter
 bekommen einen Mini-Prompt (ein paar Token), Enrichment-Dienste eine
 Guthaben-Abfrage, der Meta-Token eine Prüfung über `debug_token` mit
-Ablaufdatum und Berechtigung `ads_read` (Warnung ab sieben Tagen vor Ablauf;
-ein System-User-Token aus dem Business Manager läuft nie ab) — so sieht man
-sofort, ob ein Key gültig ist oder nur das Guthaben fehlt. **In der App selbst lassen sich keine Keys eintragen** —
+Ablaufdatum und Berechtigung `ads_read` — so sieht man sofort, ob ein Key
+gültig ist oder nur das Guthaben fehlt. Der Meta-Ablauf steht außerdem ohne
+Klick in der Tabelle (`GET /api/keys/meta`, serverseitig 10 Minuten
+gecacht, Logik in `frontend/lib/metaToken.ts` und `metaTokenServer.ts`), und
+ab sieben Tagen vor Ablauf zeigt jede Seite oben eine Warnleiste mit Countdown
+in Tagen, Stunden und Minuten (`MetaTokenBanner`); ist der Token abgelaufen
+oder ungültig, wird die Leiste rot. Ein System-User-Token aus dem Business
+Manager läuft nie ab. **In der App selbst lassen sich keine Keys eintragen** —
 sie liegen ausschließlich auf dem Server, damit alle Kollegen dieselben Dienste
 nutzen und auf keinem Rechner ein Key zurückbleibt. Optional `ENV_SETTINGS_URL`
 setzen (Direktlink zur Seite mit den Umgebungsvariablen), dann verlinken die

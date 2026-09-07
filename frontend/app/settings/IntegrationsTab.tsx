@@ -5,6 +5,8 @@ import { fetchKeySetup } from '@/lib/keyAvailability';
 import type { KeySetup } from '@/lib/serverKeys';
 import type { KeyTestResult } from '@/app/api/keys/test/route';
 import type { EnrichAccount } from '@/app/api/enrich/account/route';
+import { fetchMetaToken } from '@/lib/metaTokenClient';
+import { metaTokenLevel, metaTokenText, type MetaTokenStatus } from '@/lib/metaToken';
 import { T } from '@/app/theme';
 
 interface Service { key: string; label: string; group: string; where: string }
@@ -43,6 +45,10 @@ const VIA_TEST_ROUTE = [...AI, 'meta_ads'];
 export function IntegrationsTab({ onCountChange }: Props) {
   const [setup, setSetup] = useState<KeySetup | null | 'loading'>('loading');
   const [tests, setTests] = useState<Record<string, TestState>>({});
+  const [meta, setMeta] = useState<MetaTokenStatus | null>(null);
+
+  // Meta-Token: Ablauf immer sichtbar, ohne auf «Testen» zu drücken
+  useEffect(() => { fetchMetaToken().then(s => setMeta(s)); }, []);
 
   /** Verbindungstest: KI-Anbieter über einen Mini-Prompt, Enrichment über die Guthaben-Abfrage */
   const testKey = async (key: string) => {
@@ -52,6 +58,7 @@ export function IntegrationsTab({ onCountChange }: Props) {
       if (VIA_TEST_ROUTE.includes(key)) {
         const r = await fetch('/api/keys/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: key }), signal: AbortSignal.timeout(25000) });
         const j = await r.json() as KeyTestResult & { detail?: string };
+        if (key === 'meta_ads') fetchMetaToken(true).then(s => setMeta(s)); // Anzeige in der Tabelle mit aktualisieren
         next = r.ok ? { ok: j.ok, warn: j.warn, message: j.ok && j.model ? `OK · ${j.model} · ${(j.ms / 1000).toFixed(1)} s` : j.message } : { ok: false, message: j.detail ?? `HTTP ${r.status}` };
       } else {
         const r = await fetch('/api/enrich/account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: key }), signal: AbortSignal.timeout(25000) });
@@ -165,7 +172,13 @@ export function IntegrationsTab({ onCountChange }: Props) {
                       </div>
                     ) : <span style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF }}>—</span>}
                   </td>
-                  <td style={{ ...td, color: T.inkF, fontSize: 10 }}>{s.where}</td>
+                  <td style={{ ...td, color: T.inkF, fontSize: 10 }}>
+                    {s.key === 'meta_ads' && active && meta?.configured ? (() => {
+                      const lvl = metaTokenLevel(meta);
+                      return <div data-testid="integration-meta-status" style={{ fontFamily: T.mono, fontSize: 10, color: lvl === 'expired' ? '#e8736b' : lvl === 'warn' || !meta.scopesOk ? '#e8b04b' : T.teal, marginBottom: 3 }}>{lvl === 'expired' ? '✕ ' : lvl === 'warn' ? '⚠ ' : '✓ '}{metaTokenText(meta)}</div>;
+                    })() : null}
+                    {s.where}
+                  </td>
                 </tr>
               );
             })}

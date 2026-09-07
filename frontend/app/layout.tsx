@@ -4,6 +4,7 @@ import { Header } from "./components/Header";
 import { ToastProvider } from "./components/Toast";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { StoreGate } from "./components/StoreGate";
+import { MetaTokenBanner } from "./components/MetaTokenBanner";
 
 export const metadata: Metadata = {
   title: "Lead Pipeline",
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider />
         <ToastProvider>
           <Header />
+          <MetaTokenBanner />
           <main className="flex-1"><StoreGate>{children}</StoreGate></main>
         </ToastProvider>
       </body>
