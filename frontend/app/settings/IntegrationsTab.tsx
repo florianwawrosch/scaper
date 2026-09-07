@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { fetchKeySetup } from '@/lib/keyAvailability';
 import type { KeySetup } from '@/lib/serverKeys';
+import type { KeyTestResult } from '@/app/api/keys/test/route';
+import type { EnrichAccount } from '@/app/api/enrich/account/route';
 import { T } from '@/app/theme';
 
 interface Service { key: string; label: string; group: string; where: string }
@@ -32,8 +34,33 @@ interface Props {
  * (Umgebungsvariablen). Hier steht, welcher Dienst einen Key hat, wie die
  * Variable heißt und wo man sie setzt — die Keys selbst sieht der Browser nie.
  */
+interface TestState { busy?: boolean; ok?: boolean; message?: string }
+const AI = ['gemini', 'anthropic', 'openai'];
+const ENRICH = ['hunter_io', 'findymail'];
+
 export function IntegrationsTab({ onCountChange }: Props) {
   const [setup, setSetup] = useState<KeySetup | null | 'loading'>('loading');
+  const [tests, setTests] = useState<Record<string, TestState>>({});
+
+  /** Verbindungstest: KI-Anbieter über einen Mini-Prompt, Enrichment über die Guthaben-Abfrage */
+  const testKey = async (key: string) => {
+    setTests(t => ({ ...t, [key]: { busy: true } }));
+    let next: TestState;
+    try {
+      if (AI.includes(key)) {
+        const r = await fetch('/api/keys/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: key }), signal: AbortSignal.timeout(25000) });
+        const j = await r.json() as KeyTestResult & { detail?: string };
+        next = r.ok ? { ok: j.ok, message: j.ok ? `OK · ${j.model} · ${(j.ms / 1000).toFixed(1)} s` : j.message } : { ok: false, message: j.detail ?? `HTTP ${r.status}` };
+      } else {
+        const r = await fetch('/api/enrich/account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: key }), signal: AbortSignal.timeout(25000) });
+        const a = await r.json() as EnrichAccount;
+        next = a.error ? { ok: false, message: a.error } : { ok: true, message: `OK · ${a.available === null ? 'Guthaben nicht abfragbar' : `${a.available.toLocaleString('de')} ${a.unit}`}${a.planName ? ` · ${a.planName}` : ''}` };
+      }
+    } catch (e) {
+      next = { ok: false, message: e instanceof Error && e.name === 'TimeoutError' ? 'Zeitüberschreitung' : 'Test fehlgeschlagen' };
+    }
+    setTests(t => ({ ...t, [key]: next }));
+  };
 
   useEffect(() => { fetchKeySetup().then(s => setSetup(s)); }, []);
 
@@ -99,6 +126,7 @@ export function IntegrationsTab({ onCountChange }: Props) {
               <th style={th}>Bereich</th>
               <th style={th}>Variable</th>
               <th style={th}>Status</th>
+              <th style={th}>Test</th>
               <th style={th}>Key holen bei</th>
             </tr>
           </thead>
@@ -118,6 +146,22 @@ export function IntegrationsTab({ onCountChange }: Props) {
                       background: active ? 'rgba(79,209,197,.08)' : 'rgba(232,176,75,.08)',
                       border: `1px solid ${active ? 'rgba(79,209,197,.25)' : 'rgba(232,176,75,.3)'}`,
                     }}>{setup === 'loading' ? '…' : active ? '✓ gesetzt' : 'fehlt'}</span>
+                  </td>
+                  <td style={td}>
+                    {(AI.includes(s.key) || ENRICH.includes(s.key)) ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button type="button" data-testid={`integration-test-${s.key}`} onClick={() => testKey(s.key)} disabled={!active || !!tests[s.key]?.busy}
+                          title={active ? 'Mini-Anfrage mit dem Server-Key (kostet ein paar Token bzw. eine Guthaben-Abfrage)' : 'Erst Key setzen'}
+                          style={{ fontFamily: T.mono, fontSize: 10, padding: '3px 9px', borderRadius: 4, border: `1px solid ${active ? 'rgba(99,129,255,.35)' : T.lineS}`, background: active ? 'rgba(99,129,255,.08)' : 'transparent', color: active ? '#8fa3ff' : T.inkF, cursor: active ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
+                          {tests[s.key]?.busy ? '…' : 'Testen'}
+                        </button>
+                        {tests[s.key]?.message && !tests[s.key]?.busy && (
+                          <span data-testid={`integration-result-${s.key}`} style={{ fontFamily: T.mono, fontSize: 10, color: tests[s.key]?.ok ? T.teal : '#e8b04b', whiteSpace: 'normal', maxWidth: 320 }}>
+                            {tests[s.key]?.ok ? '✓ ' : '✕ '}{tests[s.key]?.message}
+                          </span>
+                        )}
+                      </div>
+                    ) : <span style={{ fontFamily: T.mono, fontSize: 10, color: T.inkF }}>—</span>}
                   </td>
                   <td style={{ ...td, color: T.inkF, fontSize: 10 }}>{s.where}</td>
                 </tr>

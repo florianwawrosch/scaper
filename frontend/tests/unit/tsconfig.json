@@ -32,7 +32,8 @@
     "../../lib/origin.ts",
     "../../lib/usageLog.ts",
     "../../lib/trash.ts",
-    "../../lib/storeMerge.ts"
+    "../../lib/storeMerge.ts",
+    "../../lib/aiProviders.ts"
   ],
   "include": []
 }

@@ -32,7 +32,10 @@ Variablen erst beim nächsten Deploy. Kontrolle im Browser:
 `/api/keys/available` zeigt als JSON, welche Keys der Server sieht (nur
 Booleans, nie die Werte). Unter Einstellungen → **Integrationen** zeigt die
 App je Dienst, ob der Server einen Key hat, wie die Variable heißt und wo man
-sie setzt (mit Link). **In der App selbst lassen sich keine Keys eintragen** —
+sie setzt (mit Link) und einen **Testen**-Button je Dienst: KI-Anbieter
+bekommen einen Mini-Prompt (ein paar Token), Enrichment-Dienste eine
+Guthaben-Abfrage — so sieht man sofort, ob ein Key gültig ist oder nur das
+Guthaben fehlt. **In der App selbst lassen sich keine Keys eintragen** —
 sie liegen ausschließlich auf dem Server, damit alle Kollegen dieselben Dienste
 nutzen und auf keinem Rechner ein Key zurückbleibt. Optional `ENV_SETTINGS_URL`
 setzen (Direktlink zur Seite mit den Umgebungsvariablen), dann verlinken die

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { envKey } from '@/lib/serverKeys';
-import { fetchRetry } from '@/lib/serverRetry';
+import { callAi } from '@/lib/aiProviders';
 
 /**
  * AI analysis — direct TypeScript port of _call_ai_single from main.py.
@@ -13,91 +13,6 @@ import { fetchRetry } from '@/lib/serverRetry';
  */
 
 export const maxDuration = 60;
-
-/** Loose shape of the three providers' JSON — only the fields we read. */
-interface ProviderJson {
-  error?: { message?: string };
-  candidates?: { content?: { parts?: { text?: string }[] } }[];
-  content?: { text?: string }[];
-  choices?: { message?: { content?: string } }[];
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
-  usage?: { input_tokens?: number; output_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
-}
-
-interface AiAnswer { text: string; input: number; output: number }
-const tok = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
-
-async function readJson(res: Response): Promise<ProviderJson> {
-  const text = await res.text();
-  try { return JSON.parse(text); }
-  catch { throw new Error(text.slice(0, 200) || `HTTP ${res.status}`); }
-}
-
-async function callAi(provider: string, model: string, prompt: string, key: string): Promise<AiAnswer> {
-  try {
-    if (provider === 'gemini') {
-      const res = await fetchRetry(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-          signal: AbortSignal.timeout(30_000),
-        },
-      );
-      const data = await readJson(res);
-      if (!res.ok) throw new Error(data.error?.message ?? `HTTP ${res.status}`);
-      return { text: (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '—').trim(), input: tok(data.usageMetadata?.promptTokenCount), output: tok(data.usageMetadata?.candidatesTokenCount) };
-    }
-    if (provider === 'anthropic') {
-      const res = await fetchRetry('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({ model, max_tokens: 256, messages: [{ role: 'user', content: prompt }] }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      const data = await readJson(res);
-      if (!res.ok) throw new Error(data.error?.message ?? `HTTP ${res.status}`);
-      return { text: (data.content?.[0]?.text ?? '—').trim(), input: tok(data.usage?.input_tokens), output: tok(data.usage?.output_tokens) };
-    }
-    if (provider === 'openai') {
-      const res = await fetchRetry('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ model, max_tokens: 256, messages: [{ role: 'user', content: prompt }] }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      const data = await readJson(res);
-      if (!res.ok) throw new Error(data.error?.message ?? `HTTP ${res.status}`);
-      return { text: (data.choices?.[0]?.message?.content ?? '—').trim(), input: tok(data.usage?.prompt_tokens), output: tok(data.usage?.completion_tokens) };
-    }
-    return { text: `Fehler: Unbekannter Provider ${provider}`, input: 0, output: 0 };
-  } catch (e) {
-    return { text: `Fehler: ${friendlyAiError(e instanceof Error ? e.message : String(e))}`, input: 0, output: 0 };
-  }
-}
-
-/** Translate common provider errors into actionable German messages. */
-function friendlyAiError(msg: string): string {
-  const m = msg.toLowerCase();
-  if (m.includes('exceeded your current quota') || m.includes('insufficient_quota') || m.includes('no credits remaining')) {
-    return 'OpenAI-Guthaben aufgebraucht — unter platform.openai.com → Billing aufladen.';
-  }
-  if (m.includes('incorrect api key') || m.includes('invalid api key') || m.includes('invalid x-api-key') || m.includes('api key not valid')) {
-    return 'API-Key ungültig — Key in Vercel/Einstellungen prüfen.';
-  }
-  if (m.includes('rate limit') || m.includes('429') || m.includes('overloaded')) {
-    return 'Rate-Limit erreicht — kurz warten und erneut versuchen.';
-  }
-  if (m.includes('model') && (m.includes('not found') || m.includes('does not exist') || m.includes('not_found'))) {
-    return 'Modell nicht verfügbar — anderes Modell im ⚙-Panel wählen.';
-  }
-  return msg;
-}
 
 export async function POST(req: NextRequest) {
   let body: Partial<Record<'provider' | 'model' | 'prompts', unknown>> = {};

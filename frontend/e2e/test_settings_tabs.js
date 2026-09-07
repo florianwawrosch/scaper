@@ -16,6 +16,22 @@ const { chromium } = playwright();
   await page.waitForSelector('[data-testid="integration-status-anthropic"]:has-text("gesetzt")');
   ok((await page.locator('[data-testid="integration-status-findymail"]').innerText()).toLowerCase().includes('gesetzt'), 'FindyMail: Server-Key gesetzt');
   ok((await page.locator('[data-testid="integration-status-openai"]').innerText()).toLowerCase().includes('fehlt'), 'OpenAI: fehlt');
+  // Verbindungstest: Key gültig vs. kein Guthaben, Enrichment über die Guthaben-Abfrage
+  await page.route('**/api/keys/test', async route => {
+    const { provider } = JSON.parse(route.request().postData());
+    const body = provider === 'anthropic'
+      ? { provider, ok: true, message: 'Antwort erhalten (12 Token)', model: 'claude-opus-5', ms: 800 }
+      : { provider, ok: false, message: 'Anthropic-Guthaben fehlt — unter console.anthropic.com → Plans & Billing aufladen.', model: 'x', ms: 300 };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await page.route('**/api/enrich/account', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ provider: 'findymail', label: 'FindyMail', available: 250, unit: 'Credits', planName: 'Starter', rule: '', chargedOnlyOnHit: true }) }));
+  ok(await page.locator('[data-testid="integration-test-openai"]').isDisabled(), 'Testen ohne Key gesperrt');
+  await page.click('[data-testid="integration-test-anthropic"]');
+  await page.waitForSelector('[data-testid="integration-result-anthropic"]');
+  ok((await page.locator('[data-testid="integration-result-anthropic"]').innerText()).includes('OK · claude-opus-5'), 'Test Claude: OK mit Modell');
+  await page.click('[data-testid="integration-test-findymail"]');
+  await page.waitForSelector('[data-testid="integration-result-findymail"]');
+  ok((await page.locator('[data-testid="integration-result-findymail"]').innerText()).includes('250 Credits'), 'Test FindyMail: Guthaben angezeigt');
   ok((await page.locator('[data-testid="integration-anthropic"]').innerText()).includes('ANTHROPIC_API_KEY'), 'Variablenname in der Tabelle');
   ok((await page.locator('input').count()) === 0, 'kein Eingabefeld für Keys');
   const info = await page.locator('[data-testid="keys-info"]').innerText();
