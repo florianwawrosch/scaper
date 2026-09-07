@@ -5,7 +5,7 @@ const { chromium } = playwright();
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   await login(page);
-  await mockKeys(page, ['anthropic', 'findymail']);
+  await mockKeys(page, ['anthropic', 'findymail', 'meta_ads']);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(`${BASE_URL}/settings`, { waitUntil: 'networkidle' });
@@ -21,7 +21,9 @@ const { chromium } = playwright();
     const { provider } = JSON.parse(route.request().postData());
     const body = provider === 'anthropic'
       ? { provider, ok: true, message: 'Antwort erhalten (12 Token)', model: 'claude-opus-5', ms: 800 }
-      : { provider, ok: false, message: 'Anthropic-Guthaben fehlt — unter console.anthropic.com → Plans & Billing aufladen.', model: 'x', ms: 300 };
+      : provider === 'meta_ads'
+        ? { provider, ok: true, warn: true, message: 'OK · gültig bis 12.09.2026 (5 Tage) — bald neuen Token setzen', expiresAt: '2026-09-12T00:00:00.000Z', ms: 400 }
+        : { provider, ok: false, message: 'Anthropic-Guthaben fehlt — unter console.anthropic.com → Plans & Billing aufladen.', model: 'x', ms: 300 };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await page.route('**/api/enrich/account', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ provider: 'findymail', label: 'FindyMail', available: 250, unit: 'Credits', planName: 'Starter', rule: '', chargedOnlyOnHit: true }) }));
@@ -32,13 +34,17 @@ const { chromium } = playwright();
   await page.click('[data-testid="integration-test-findymail"]');
   await page.waitForSelector('[data-testid="integration-result-findymail"]');
   ok((await page.locator('[data-testid="integration-result-findymail"]').innerText()).includes('250 Credits'), 'Test FindyMail: Guthaben angezeigt');
+  await page.click('[data-testid="integration-test-meta_ads"]');
+  await page.waitForSelector('[data-testid="integration-result-meta_ads"]');
+  const metaRes = await page.locator('[data-testid="integration-result-meta_ads"]').innerText();
+  ok(metaRes.includes('⚠') && metaRes.includes('gültig bis 12.09.2026'), `Test Meta: Ablaufdatum mit Warnung (${metaRes})`);
   ok((await page.locator('[data-testid="integration-anthropic"]').innerText()).includes('ANTHROPIC_API_KEY'), 'Variablenname in der Tabelle');
   ok((await page.locator('input').count()) === 0, 'kein Eingabefeld für Keys');
   const info = await page.locator('[data-testid="keys-info"]').innerText();
   ok(info.includes('auf dem Server') && info.includes('Environment Variables') && info.includes('Redeploy'), 'Hinweis: Keys auf dem Server, Klickpfad + Redeploy');
   ok((await page.locator('[data-testid="keys-env-link"]').getAttribute('href')) === 'https://vercel.com/dashboard', 'Link zu Vercel');
   const keyBadge = await page.locator('button:has-text("Integrationen") span').last().innerText();
-  ok(keyBadge.trim() === '2', `Badge Integrationen = 2 (${keyBadge.trim()})`);
+  ok(keyBadge.trim() === '3', `Badge Integrationen = 3 (${keyBadge.trim()})`);
   // Alte Browser-Keys werden beim Laden entfernt
   await page.evaluate(() => localStorage.setItem('appSettings', JSON.stringify({ apiKeys: { anthropic: 'sk-alt' }, theme: 'noir' })));
   await page.reload({ waitUntil: 'networkidle' });

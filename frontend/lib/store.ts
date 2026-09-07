@@ -11,7 +11,7 @@
 import type { StoreManifest } from './serverStore';
 import { isLargeKey } from './storeKeys';
 
-const SHARED_EXACT = ['user_presets', 'preset_flags', 'preset_overrides', 'presets', 'blocklist', 'usage_log', 'trash_items'];
+const SHARED_EXACT = ['user_presets', 'preset_flags', 'preset_overrides', 'presets', 'blocklist', 'usage_log', 'trash_items', 'app_budget'];
 const SHARED_PREFIXES = ['csv_run_', 'analysis_configs_', 'analysis_hashes_', 'csv_text_'];
 export const isSharedKey = (key: string) => SHARED_EXACT.includes(key) || SHARED_PREFIXES.some(p => key.startsWith(p));
 

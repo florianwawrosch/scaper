@@ -34,9 +34,11 @@ interface Props {
  * (Umgebungsvariablen). Hier steht, welcher Dienst einen Key hat, wie die
  * Variable heißt und wo man sie setzt — die Keys selbst sieht der Browser nie.
  */
-interface TestState { busy?: boolean; ok?: boolean; message?: string }
+interface TestState { busy?: boolean; ok?: boolean; warn?: boolean; message?: string }
 const AI = ['gemini', 'anthropic', 'openai'];
 const ENRICH = ['hunter_io', 'findymail'];
+/** Anbieter, die /api/keys/test prüft (KI-Prompt bzw. Meta-Token-Prüfung mit Ablaufdatum) */
+const VIA_TEST_ROUTE = [...AI, 'meta_ads'];
 
 export function IntegrationsTab({ onCountChange }: Props) {
   const [setup, setSetup] = useState<KeySetup | null | 'loading'>('loading');
@@ -47,10 +49,10 @@ export function IntegrationsTab({ onCountChange }: Props) {
     setTests(t => ({ ...t, [key]: { busy: true } }));
     let next: TestState;
     try {
-      if (AI.includes(key)) {
+      if (VIA_TEST_ROUTE.includes(key)) {
         const r = await fetch('/api/keys/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: key }), signal: AbortSignal.timeout(25000) });
         const j = await r.json() as KeyTestResult & { detail?: string };
-        next = r.ok ? { ok: j.ok, message: j.ok ? `OK · ${j.model} · ${(j.ms / 1000).toFixed(1)} s` : j.message } : { ok: false, message: j.detail ?? `HTTP ${r.status}` };
+        next = r.ok ? { ok: j.ok, warn: j.warn, message: j.ok && j.model ? `OK · ${j.model} · ${(j.ms / 1000).toFixed(1)} s` : j.message } : { ok: false, message: j.detail ?? `HTTP ${r.status}` };
       } else {
         const r = await fetch('/api/enrich/account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: key }), signal: AbortSignal.timeout(25000) });
         const a = await r.json() as EnrichAccount;
@@ -148,16 +150,16 @@ export function IntegrationsTab({ onCountChange }: Props) {
                     }}>{setup === 'loading' ? '…' : active ? '✓ gesetzt' : 'fehlt'}</span>
                   </td>
                   <td style={td}>
-                    {(AI.includes(s.key) || ENRICH.includes(s.key)) ? (
+                    {(VIA_TEST_ROUTE.includes(s.key) || ENRICH.includes(s.key)) ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <button type="button" data-testid={`integration-test-${s.key}`} onClick={() => testKey(s.key)} disabled={!active || !!tests[s.key]?.busy}
-                          title={active ? 'Mini-Anfrage mit dem Server-Key (kostet ein paar Token bzw. eine Guthaben-Abfrage)' : 'Erst Key setzen'}
+                          title={active ? (s.key === 'meta_ads' ? 'Token prüfen: Gültigkeit, Ablaufdatum, Berechtigung ads_read' : 'Mini-Anfrage mit dem Server-Key (kostet ein paar Token bzw. eine Guthaben-Abfrage)') : 'Erst Key setzen'}
                           style={{ fontFamily: T.mono, fontSize: 10, padding: '3px 9px', borderRadius: 4, border: `1px solid ${active ? 'rgba(99,129,255,.35)' : T.lineS}`, background: active ? 'rgba(99,129,255,.08)' : 'transparent', color: active ? '#8fa3ff' : T.inkF, cursor: active ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
                           {tests[s.key]?.busy ? '…' : 'Testen'}
                         </button>
                         {tests[s.key]?.message && !tests[s.key]?.busy && (
-                          <span data-testid={`integration-result-${s.key}`} style={{ fontFamily: T.mono, fontSize: 10, color: tests[s.key]?.ok ? T.teal : '#e8b04b', whiteSpace: 'normal', maxWidth: 320 }}>
-                            {tests[s.key]?.ok ? '✓ ' : '✕ '}{tests[s.key]?.message}
+                          <span data-testid={`integration-result-${s.key}`} style={{ fontFamily: T.mono, fontSize: 10, color: tests[s.key]?.ok && !tests[s.key]?.warn ? T.teal : '#e8b04b', whiteSpace: 'normal', maxWidth: 320 }}>
+                            {tests[s.key]?.ok ? (tests[s.key]?.warn ? '⚠ ' : '✓ ') : '✕ '}{tests[s.key]?.message}
                           </span>
                         )}
                       </div>

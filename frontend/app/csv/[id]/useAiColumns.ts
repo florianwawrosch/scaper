@@ -8,7 +8,8 @@ import { loadAiConfigs, saveAiConfigs } from '@/lib/analysisConfigs';
 import { applyPresets, presetFromConfigs, saveUserPreset, getEffectivePresets, readAutorunIds, AUTORUN_KEY, type ImportPreset, type PresetFlags } from '@/lib/aiTemplates';
 import { runAiColumn, defaultModel, splitMultiOutput, applyDerivedRules, isAiError, normalizeMultiOutput, PENDING, type AnalysisConfig } from '@/lib/ai';
 import { planRun, readHashStore, type HashStore } from '@/lib/aiCache';
-import { appendUsage } from '@/lib/usageLog';
+import { appendUsage, loadUsageLog } from '@/lib/usageLog';
+import { loadBudget, budgetStatus, estimateRunCost, fmtUsd, type BudgetStatus } from '@/lib/budget';
 import { useToast } from '@/app/components/Toast';
 import { useLeadMemory } from './useLeadMemory';
 import { KNOWN_COL, EXPORTED_COL, EMAIL_COL, PHONE_COL } from '@/lib/leadKeys';
@@ -230,7 +231,7 @@ export function useAiColumns(id: string) {
 
   /** Ab so vielen zu klassifizierenden Zeilen fragt ein manueller ▶ vorher nach (Credits) */
   const BIG_AI_RUN = 100;
-  const [pendingRun, setPendingRun] = useState<{ cfg: AnalysisConfig; todo: number; skipped: number } | null>(null);
+  const [pendingRun, setPendingRun] = useState<{ cfg: AnalysisConfig; todo: number; skipped: number; estimate: number | null; budget: BudgetStatus } | null>(null);
 
   /**
    * KI-Spalte ausfüllen. `confirmed` überspringt die Nachfrage bei großen Läufen —
@@ -270,10 +271,19 @@ export function useAiColumns(id: string) {
     const plan = planRun(inputRows, cfg, existing, allHashes[cfg.id]);
     const { skipped, promptHash, rowHashes } = plan;
     const todo = opts.limit ? plan.todo.slice(0, opts.limit) : plan.todo;
-    if (!opts.confirmed && todo.length > BIG_AI_RUN) {
-      // Große Läufe kosten spürbar Credits — erst bestätigen lassen (Dialog auf der Seite)
+    // Kostendeckel (Einstellungen → Verbrauch): Schätzung dieses Laufs gegen das Monatsbudget
+    const usageLog = loadUsageLog();
+    const estimate = estimateRunCost(usageLog, cfg.model, todo.length).cost;
+    const budget = budgetStatus(usageLog, loadBudget(), new Date(), estimate ?? 0);
+    if (todo.length > 0 && budget.level === 'over') {
       setColRunning(p => ({ ...p, [cfg.id]: false }));
-      setPendingRun({ cfg, todo: todo.length, skipped });
+      showToast(`Monatsbudget erreicht — ${fmtUsd(budget.spent)} von ${fmtUsd(budget.limit)} verbraucht${estimate ? `, dieser Lauf ≈ ${fmtUsd(estimate)}` : ''}. Unter Einstellungen → Verbrauch anpassen.`, 'error', 9000);
+      return;
+    }
+    if (!opts.confirmed && todo.length > 0 && (todo.length > BIG_AI_RUN || (budget.level === 'warn' && !opts.limit))) {
+      // Große Läufe (oder Läufe nahe am Budget) kosten spürbar Credits — erst bestätigen lassen (Dialog auf der Seite)
+      setColRunning(p => ({ ...p, [cfg.id]: false }));
+      setPendingRun({ cfg, todo: todo.length, skipped, estimate, budget });
       return;
     }
 

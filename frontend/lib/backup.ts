@@ -22,7 +22,7 @@ export interface BackupFile {
 
 const DATASET_PREFIX = 'csv_run_';
 const LS_PREFIXES = [DATASET_PREFIX, 'analysis_configs_', 'analysis_hashes_'];
-const LS_KEYS = ['user_presets', 'preset_flags', 'preset_overrides', 'presets', 'blocklist', 'usage_log'];
+const LS_KEYS = ['user_presets', 'preset_flags', 'preset_overrides', 'presets', 'blocklist', 'usage_log', 'app_budget'];
 const SETTINGS_KEY = 'appSettings';
 
 function ownKeys(): string[] {

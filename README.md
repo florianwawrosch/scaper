@@ -34,8 +34,10 @@ Booleans, nie die Werte). Unter Einstellungen → **Integrationen** zeigt die
 App je Dienst, ob der Server einen Key hat, wie die Variable heißt und wo man
 sie setzt (mit Link) und einen **Testen**-Button je Dienst: KI-Anbieter
 bekommen einen Mini-Prompt (ein paar Token), Enrichment-Dienste eine
-Guthaben-Abfrage — so sieht man sofort, ob ein Key gültig ist oder nur das
-Guthaben fehlt. **In der App selbst lassen sich keine Keys eintragen** —
+Guthaben-Abfrage, der Meta-Token eine Prüfung über `debug_token` mit
+Ablaufdatum und Berechtigung `ads_read` (Warnung ab sieben Tagen vor Ablauf;
+ein System-User-Token aus dem Business Manager läuft nie ab) — so sieht man
+sofort, ob ein Key gültig ist oder nur das Guthaben fehlt. **In der App selbst lassen sich keine Keys eintragen** —
 sie liegen ausschließlich auf dem Server, damit alle Kollegen dieselben Dienste
 nutzen und auf keinem Rechner ein Key zurückbleibt. Optional `ENV_SETTINGS_URL`
 setzen (Direktlink zur Seite mit den Umgebungsvariablen), dann verlinken die
@@ -266,6 +268,15 @@ Anbieter, Dauer) mit Summen je Modell über die letzten 30 Tage. Die Kosten sind
 Richtwerte aus `frontend/lib/aiPricing.ts` (USD je 1 Mio. Token) — dort neue
 Modelle und Preise nachtragen. Das Protokoll liegt im gemeinsamen Speicher
 (`usage_log`, max. 500 Einträge) und wird zweistufig geleert.
+
+**Kostendeckel:** Ebenfalls unter Verbrauch lässt sich ein Monatsbudget in USD
+setzen (geteilt, Key `app_budget`, Logik in `frontend/lib/budget.ts`). Vor
+jedem KI-Lauf wird dessen Preis aus den Token je Zeile bisheriger Läufe
+desselben Modells geschätzt (sonst Richtwert). Ab 80 % des Budgets fragt jeder
+Lauf mit Kosten und Stand nach, ist es erreicht oder würde der Lauf es
+überschreiten, blockiert die App mit Hinweis. Enrichment-Credits zählen nicht
+mit. Das ist eine Schätzung — die harte Bremse sind die Ausgabenlimits im
+Konto des Anbieters.
 
 Unter Einstellungen → **Daten** stehen der Zustand des gemeinsamen Speichers
 (mit Einrichtungs-Anleitung, falls keine Datenbank verbunden ist), der Bestand

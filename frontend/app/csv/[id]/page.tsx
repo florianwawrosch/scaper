@@ -278,7 +278,7 @@ export default function CsvViewer() {
           onRunAiColumn={runColumnByName}
         />
 
-        {pendingRun && <RunConfirmModal cfg={pendingRun.cfg} todo={pendingRun.todo} skipped={pendingRun.skipped} onConfirm={confirmRun} onCancel={cancelRun} />}
+        {pendingRun && <RunConfirmModal cfg={pendingRun.cfg} todo={pendingRun.todo} skipped={pendingRun.skipped} estimate={pendingRun.estimate} budget={pendingRun.budget} onConfirm={confirmRun} onCancel={cancelRun} />}
 
         {/* ⚙ side panel for the selected AI column */}
         {editingCfg && (

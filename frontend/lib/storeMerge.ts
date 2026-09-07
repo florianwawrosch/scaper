@@ -24,7 +24,7 @@ function unionBy(local: Row[], server: Row[], keyOf: (r: Row) => string): Row[] 
 }
 
 const ID_LISTS = ['user_presets', 'usage_log', 'trash_items'];
-const MAP_KEYS = ['presets', 'preset_flags', 'preset_overrides'];
+const MAP_KEYS = ['presets', 'preset_flags', 'preset_overrides', 'app_budget'];
 
 /** Lokalen und Server-Wert eines kleinen Keys zusammenführen; merged=false heißt: Server gewinnt unverändert */
 export function mergeValues(key: string, local: string, server: string): { value: string; merged: boolean } {

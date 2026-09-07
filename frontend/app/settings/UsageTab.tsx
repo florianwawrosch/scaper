@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { loadUsageLog, clearUsageLog, summarizeUsage, usageProviderLabel, type UsageEntry } from '@/lib/usageLog';
 import { STORE_EVENT } from '@/lib/store';
 import { estimateCost } from '@/lib/aiPricing';
+import { loadBudget, saveBudget, budgetStatus, fmtUsd, WARN_RATIO } from '@/lib/budget';
 import { ConfirmDelete } from '@/app/components/ConfirmDelete';
 import { SectionLabel } from '@/app/components/SectionLabel';
 import { T } from '@/app/theme';
@@ -20,11 +21,13 @@ const dur = (ms: number) => ms < 1000 ? `${ms} ms` : ms < 60_000 ? `${(ms / 1000
 /** Einstellungen → Verbrauch: Summen der letzten 30 Tage, je Modell, Protokoll aller Läufe */
 export function UsageTab() {
   const [entries, setEntries] = useState<UsageEntry[]>([]);
+  const [budgetDraft, setBudgetDraft] = useState('');
+  const [budgetSaved, setBudgetSaved] = useState(false);
 
   useEffect(() => {
     // localStorage gibt es erst im Browser — Effect statt lazy useState; der
     // gemeinsame Speicher löst ein erneutes Lesen aus (Läufe der Kollegen).
-    const read = () => setEntries(loadUsageLog());
+    const read = () => { setEntries(loadUsageLog()); const b = loadBudget().monthlyUsd; setBudgetDraft(b ? String(b) : ''); };
     read();
     window.addEventListener(STORE_EVENT, read);
     return () => window.removeEventListener(STORE_EVENT, read);
@@ -32,6 +35,15 @@ export function UsageTab() {
 
   const s = summarizeUsage(entries, 30);
   const clear = () => { clearUsageLog(); setEntries([]); };
+  const budget = budgetStatus(entries, loadBudget());
+  const saveBudgetDraft = () => {
+    const n = Number(budgetDraft.replace(',', '.'));
+    saveBudget(Number.isFinite(n) && n > 0 ? n : null);
+    setBudgetSaved(true);
+    setTimeout(() => setBudgetSaved(false), 1500);
+    setEntries(loadUsageLog()); // Stand neu berechnen
+  };
+  const barColor = budget.level === 'over' ? '#e8736b' : budget.level === 'warn' ? '#e8b04b' : T.teal;
 
   const card = (label: string, value: string, hint?: string) => (
     <div style={{ flex: 1, minWidth: 120, background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 8, padding: '10px 14px' }}>
@@ -55,6 +67,32 @@ export function UsageTab() {
         {entries.length > 0 && (
           <ConfirmDelete title="Protokoll leeren" question="Protokoll für alle leeren?" onConfirm={clear}
             style={{ display: 'inline-flex', alignItems: 'center' }} />
+        )}
+      </div>
+
+      <SectionLabel>Monatsbudget für KI-Läufe</SectionLabel>
+      <div data-testid="budget" style={{ background: T.panel, border: `1px solid ${T.lineS}`, borderRadius: 8, padding: '12px 14px', marginBottom: 22, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <input data-testid="budget-input" type="number" min={0} step={1} inputMode="decimal" placeholder="kein Limit" value={budgetDraft}
+            onChange={e => setBudgetDraft(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveBudgetDraft()}
+            style={{ fontFamily: T.mono, fontSize: 12, width: 110, padding: '5px 8px', borderRadius: 5, border: `1px solid ${T.line}`, background: 'rgba(255,255,255,.04)', color: T.ink, outline: 'none' }} />
+          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.inkF }}>$ pro Monat</span>
+          <button type="button" data-testid="budget-save" onClick={saveBudgetDraft}
+            style={{ fontFamily: T.mono, fontSize: 10, padding: '4px 10px', borderRadius: 4, border: `1px solid ${T.gold}`, background: 'rgba(232,176,75,.1)', color: T.gold, cursor: 'pointer' }}>Speichern</button>
+          {budgetSaved && <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal }}>✓ Gespeichert</span>}
+          <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkF, marginLeft: 'auto' }}>
+            Ab {Math.round(WARN_RATIO * 100)} % fragt jeder KI-Lauf nach, bei Erreichen wird blockiert. Gilt für alle; Enrichment-Credits zählen nicht mit.
+          </span>
+        </div>
+        {budget.limit !== null && (
+          <div>
+            <div data-testid="budget-status" style={{ fontFamily: T.mono, fontSize: 11, color: barColor, marginBottom: 4 }}>
+              {fmtUsd(budget.spent)} von {fmtUsd(budget.limit)} in diesem Monat{budget.level === 'over' ? ' — Budget erreicht, KI-Läufe sind blockiert' : budget.level === 'warn' ? ' — fast aufgebraucht' : ''}
+            </div>
+            <div data-testid="budget-bar" style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,.06)', overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min(100, Math.round((budget.spent / budget.limit) * 100))}%`, height: '100%', background: barColor, transition: 'width .2s' }} />
+            </div>
+          </div>
         )}
       </div>
 
